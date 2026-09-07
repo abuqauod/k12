@@ -1,0 +1,34 @@
+services:
+  db:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-mongo_root_password}
+      MONGO_INITDB_DATABASE: timetable
+    ports:
+      - '${DB_PORT:-27018}:27017'
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: mongodb://root:${MONGO_ROOT_PASSWORD:-mongo_root_password}@db:27017/timetable?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET before starting the API}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:5183}
+    ports:
+      - '${API_PORT:-4000}:4000'
+    command: sh -c "node dist/migrate.js && node dist/server.js"
+
+volumes:
+  mongodata:

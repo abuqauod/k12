@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+release
+# Downloaded OSM extract + compiled OSRM routing graph (~340MB) — build data,
+# not source. Regenerate locally per the OSRM setup, don't commit it.
+osrm

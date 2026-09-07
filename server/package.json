@@ -1,0 +1,37 @@
+{
+  "name": "timetable-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "migrate": "tsx src/migrate.ts",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "tsx src/smoke.ts",
+    "migrate:prod": "node dist/migrate.js",
+    "seed:prod": "node dist/seed.js",
+    "smoke:prod": "node dist/smoke.js",
+    "release": "node scripts/make-release.mjs"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.1",
+    "@node-rs/argon2": "^2.0.2",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "jose": "^6.0.10",
+    "mongodb": "^6.11.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "archiver": "^7.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "~5.7.3"
+  }
+}

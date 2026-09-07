@@ -1,0 +1,1042 @@
+/* Application shell, login and dashboard surfaces.
+   Design tokens all come from styles.css. */
+
+/* =========================================================== app shell ==== */
+.shell {
+  display: grid;
+  grid-template-columns: 246px minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+/* Collapsed: an icon rail. The mark and the menu icons stay visible.
+   The track drives the width — animating it (either here or as a `width` on
+   the sidebar) leaves the track and the element disagreeing, so the collapse
+   is deliberately instant and only the contents fade. */
+.shell--collapsed {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+
+.shell__main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.shell__burger {
+  display: none;
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-start: 10px;
+  z-index: 20;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 12px;
+  background: var(--surface);
+  border-inline-end: 1px solid var(--line);
+  min-height: 0;
+  overflow: auto;
+  overflow-x: hidden;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px 10px;
+  border-block-end: 1px solid var(--line);
+}
+
+.sidebar__wordmark {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar__toggle {
+  margin-inline-start: auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 130ms ease, color 130ms ease, border-color 130ms ease;
+}
+
+.sidebar__toggle:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+/* The chevron points at the edge the sidebar will move toward. Its direction is
+   drawn from React state (a rotate here gets stuck mid-transition), and RTL is
+   handled by mirroring the button, which needs no cascade juggling. */
+:root[dir='rtl'] .sidebar__toggle {
+  scale: -1 1;
+}
+
+.sidebar__brand b {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.sidebar__section {
+  margin: 12px 8px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--nav-item);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 550;
+  position: relative;
+  transition: background 130ms ease, color 130ms ease;
+}
+
+.sidebar__link:hover {
+  background: var(--surface-2);
+  color: var(--nav-item-hover);
+}
+
+.sidebar__link.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 650;
+}
+
+/* Gradient rail marking the active item. */
+.sidebar__link.is-active::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 7px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--brand-gradient);
+}
+
+.sidebar__icon {
+  width: 20px;
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.sidebar__foot {
+  display: grid;
+  gap: 10px;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--line);
+}
+
+.sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.sidebar__user-text {
+  display: grid;
+  min-width: 0;
+}
+
+.sidebar__user-text b {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__user-text small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--brand-gradient);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sidebar__scrim {
+  display: none;
+}
+
+/* ------------------------------------------------- collapsed icon rail ---- */
+.sidebar--collapsed {
+  padding-inline: 8px;
+  align-items: stretch;
+}
+
+.sidebar--collapsed .sidebar__wordmark,
+.sidebar--collapsed .sidebar__label,
+.sidebar--collapsed .sidebar__section,
+.sidebar--collapsed .sidebar__user-text {
+  display: none;
+}
+
+.sidebar--collapsed .sidebar__brand {
+  flex-direction: column;
+  gap: 8px;
+  padding-inline: 0;
+}
+
+.sidebar--collapsed .sidebar__toggle {
+  margin-inline-start: 0;
+}
+
+.sidebar--collapsed .sidebar__link {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
+}
+
+.sidebar--collapsed .sidebar__icon {
+  width: auto;
+  font-size: 16px;
+}
+
+/* The active rail would sit under a centred icon, so it becomes a full tint. */
+.sidebar--collapsed .sidebar__link.is-active::before {
+  inset-inline: 0;
+  inset-block: 0;
+  width: auto;
+  border-radius: 9px;
+  opacity: 0.22;
+}
+
+.sidebar--collapsed .sidebar__nav {
+  gap: 4px;
+}
+
+.sidebar--collapsed .sidebar__user {
+  justify-content: center;
+}
+
+.sidebar--collapsed .sidebar__foot {
+  justify-items: center;
+}
+
+.sidebar--collapsed .sidebar__foot .segmented {
+  flex-direction: column;
+  width: 100%;
+}
+
+.sidebar--collapsed .sidebar__foot .segmented button {
+  padding: 4px 0;
+  text-align: center;
+}
+
+.sidebar--collapsed .btn--block {
+  padding-inline: 0;
+  gap: 0;
+}
+
+/* ============================================================== pages ==== */
+.page {
+  padding: 24px 26px 40px;
+  overflow: auto;
+  min-height: 0;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.page__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.page__subtitle {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.page__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Page-level tabs (Settings). Underline style, distinct from the sidebar
+   panel's own .tabs so the two never read as the same control. */
+.page-tabs {
+  display: flex;
+  gap: 4px;
+  border-block-end: 1px solid var(--line);
+  margin-block-start: -4px;
+}
+
+.page-tabs button {
+  padding: 9px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--muted);
+  border-block-end: 2px solid transparent;
+  margin-block-end: -1px;
+  transition: color 130ms ease, border-color 130ms ease;
+}
+
+.page-tabs button:hover {
+  color: var(--ink);
+}
+
+.page-tabs button {
+  position: relative;
+}
+
+.page-tabs button[aria-selected='true'] {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+/* Gradient underline, drawn over the shared hairline. */
+.page-tabs button[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand-gradient);
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.kpi {
+  padding: 15px 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 3px;
+  background: var(--brand-gradient);
+}
+
+.kpi__label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kpi__value {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.kpi__hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.card-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card__title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.card__subtitle {
+  margin: 14px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.card__hint,
+.card__empty {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.verdict--ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.verdict--bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.break-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 0;
+  border-block-end: 1px dotted var(--line);
+  font-size: 12.5px;
+}
+
+.break-line:last-child {
+  border-block-end: none;
+}
+
+.break-line__groups {
+  font-size: 11.5px;
+  color: var(--muted);
+  flex-basis: 100%;
+}
+
+.load-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 18px;
+}
+
+.load__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  margin-block-end: 4px;
+}
+
+.load__head b {
+  font-family: var(--mono);
+  font-weight: 550;
+}
+
+.load__head b.is-over {
+  color: var(--bad);
+}
+
+.load__warn {
+  font-size: 11px;
+  color: var(--bad);
+}
+
+.option-list {
+  display: grid;
+  gap: 8px;
+}
+
+.option {
+  display: grid;
+  gap: 1px;
+  text-align: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.option:hover {
+  border-color: var(--accent);
+}
+
+.option--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.option b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.option small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ============================================================== login ==== */
+.login {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+.login__aside {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 34px;
+  padding: 48px 52px;
+  background: var(--brand-gradient);
+  color: #2b1400;
+  overflow: hidden;
+}
+
+/* Faint grid, echoing the timetable the product produces. */
+.login__aside::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(43, 20, 0, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(43, 20, 0, 0.09) 1px, transparent 1px);
+  background-size: 58px 44px;
+  mask-image: radial-gradient(circle at 30% 40%, #000 0%, transparent 72%);
+  pointer-events: none;
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+/* On the orange panel the shield inverts to the deep navy of the mark. */
+.login__brand .brand__mark {
+  color: #0d0a46;
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.lockup__text {
+  display: grid;
+  gap: 2px;
+}
+
+.lockup__word {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #0d0a46;
+}
+
+.lockup__tagline {
+  font-size: 13.5px;
+  letter-spacing: 0.01em;
+  color: rgba(13, 10, 70, 0.72);
+}
+
+.login__brand .brand__title,
+.login__brand .brand__subtitle {
+  color: #2b1400;
+}
+
+.login__brand .brand__subtitle {
+  opacity: 0.72;
+}
+
+.login__points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 22px;
+  max-width: 30rem;
+  position: relative;
+  z-index: 1;
+}
+
+.login__points li {
+  display: grid;
+  gap: 4px;
+  padding-inline-start: 16px;
+  border-inline-start: 2px solid rgba(43, 20, 0, 0.28);
+}
+
+.login__points strong {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.login__points span {
+  font-size: 13px;
+  opacity: 0.78;
+  line-height: 1.5;
+}
+
+.login__main {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow: auto;
+}
+
+.login__topbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.login__form {
+  width: min(408px, 100%);
+  margin: auto;
+  display: grid;
+  gap: 14px;
+  padding: 8px 0 24px;
+}
+
+.login__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.login__subtitle {
+  margin: -8px 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.login__error {
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 12.5px;
+}
+
+.input-affix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input-affix .input {
+  flex: 1;
+}
+
+.login__demo {
+  margin-block-start: 10px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: grid;
+  gap: 6px;
+}
+
+.login__demo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: start;
+  font-size: 11.5px;
+}
+
+.login__demo-row:hover {
+  border-color: var(--accent);
+}
+
+.login__note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ========================================================= responsive ==== */
+@media (max-width: 900px) {
+  .login {
+    grid-template-columns: 1fr;
+  }
+  .login__aside {
+    padding: 28px 24px;
+    gap: 20px;
+  }
+  .login__points {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .shell,
+  .shell--collapsed {
+    grid-template-columns: 1fr;
+  }
+  .shell__burger {
+    display: inline-flex;
+  }
+
+  /* Below this width the sidebar is a drawer, so the rail does not apply and
+     the collapse toggle has nothing to do. */
+  #hide-sidebar-collapse-toggle {
+    display: none;
+  }
+  .sidebar--collapsed {
+    padding-inline: 12px;
+  }
+  .sidebar--collapsed .sidebar__wordmark,
+  .sidebar--collapsed .sidebar__label {
+    display: inline;
+  }
+  .sidebar--collapsed .sidebar__section {
+    display: block;
+  }
+  .sidebar--collapsed .sidebar__user-text {
+    display: grid;
+  }
+  .sidebar--collapsed .sidebar__brand {
+    flex-direction: row;
+  }
+  .sidebar--collapsed .sidebar__link {
+    justify-content: flex-start;
+    padding: 9px 10px;
+    gap: 10px;
+  }
+  .sidebar--collapsed .sidebar__link.is-active::before {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+    inset-block: 7px;
+    width: 3px;
+    border-radius: 3px;
+    opacity: 1;
+  }
+  .sidebar--collapsed .sidebar__user {
+    justify-content: flex-start;
+  }
+  .sidebar--collapsed .sidebar__foot {
+    justify-items: stretch;
+  }
+  .sidebar--collapsed .sidebar__foot .segmented {
+    flex-direction: row;
+  }
+  .sidebar--collapsed .btn--block {
+    padding-inline: 9px;
+    gap: 7px;
+  }
+  .sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 246px;
+    z-index: 40;
+    transform: translateX(-110%);
+    transition: transform 180ms ease;
+  }
+  :root[dir='rtl'] .sidebar {
+    transform: translateX(110%);
+  }
+  .sidebar--open {
+    transform: none;
+  }
+  .sidebar__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(13, 10, 70, 0.4);
+    z-index: 30;
+  }
+  .app .header {
+    padding-inline-start: 52px;
+  }
+  .page {
+    padding-block-start: 52px;
+  }
+}
+
+/* ============================================ solver panel hidden ========= */
+/* The board takes the freed column; the grid track is not animated, matching
+   the sidebar rail. */
+.workspace--no-inspector {
+  grid-template-columns: minmax(280px, 322px) minmax(0, 1fr);
+}
+
+.panel__head-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-btn--quiet:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* =============================================== resizable workspace ====== */
+.splitter {
+  position: relative;
+  cursor: col-resize;
+  background: var(--surface-2);
+  border-inline: 1px solid var(--line);
+  padding: 0;
+  touch-action: none;
+  transition: background 130ms ease;
+}
+
+.splitter:hover,
+.splitter:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+/* A wider invisible hit area than the 6px the layout gives it. */
+.splitter::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline: -4px;
+}
+
+/* Always-visible grip so the divider reads as draggable, not as a border. */
+.splitter__grip {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  translate: -50% -50%;
+  width: 4px;
+  height: 34px;
+  border-radius: 3px;
+  background: var(--muted);
+  opacity: 0.55;
+  pointer-events: none;
+  transition: background 130ms ease, opacity 130ms ease, height 130ms ease;
+}
+
+.splitter:hover .splitter__grip,
+.splitter:focus-visible .splitter__grip {
+  background: var(--accent);
+  opacity: 1;
+  height: 56px;
+}
+
+/* Kills text selection and cursor flicker while a drag is in flight. */
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.is-resizing .lesson,
+body.is-resizing .sidebar__link {
+  pointer-events: none;
+}
+
+@media print {
+  .splitter {
+    display: none !important;
+  }
+}
+
+/* ============================================== bus routing (VRP) ======== */
+.workspace--routes {
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr) minmax(280px, 340px);
+}
+
+.column--map {
+  padding: 0;
+  overflow: hidden;
+}
+
+.routemap {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  background: var(--surface-2);
+}
+
+/* Leaflet paints its own white; keep it legible in dark mode. */
+:root[data-theme='dark'] .leaflet-tile,
+:root:not([data-theme='light']) .leaflet-tile {
+  filter: brightness(0.75) contrast(1.05);
+}
+
+.map-pin--school {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-gradient);
+  color: #2b1400;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(13, 10, 70, 0.35);
+}
+
+.route-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-inline-end: 7px;
+  vertical-align: middle;
+  flex: none;
+}
+
+.route-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: start;
+  padding: 10px 12px;
+  margin: 0 14px 8px;
+  width: calc(100% - 28px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.route-card:hover {
+  border-color: var(--line-strong);
+}
+
+.route-card--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.route-card__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.route-card__head .mono {
+  margin-inline-start: auto;
+}
+
+.route-card__meta {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.route-card__stops {
+  margin: 6px 0 0;
+  padding-inline-start: 18px;
+  display: grid;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.route-card__stops li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 1180px) {
+  .workspace--routes {
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  }
+}
+
+.cell-input--bad {
+  border-color: var(--bad) !important;
+  background: var(--bad-soft);
+}
+
+.name-cell {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
