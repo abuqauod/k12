@@ -76,10 +76,22 @@ export interface UserDoc extends Document {
   _id: string
   /** Always lower-cased before it is stored or queried — Mongo has no citext. */
   email: string
-  passwordHash: string
+  /**
+   * Null for a user who was invited but hasn't accepted yet — they exist (so
+   * the invite and any future membership can reference them) but cannot log
+   * in until `POST /auth/accept-invite` sets a real hash.
+   */
+  passwordHash: string | null
   displayName: string
   displayNameAr: string | null
   active: boolean
+  /**
+   * The vendor's own operator flag — not a tenant role. Grants access to
+   * `/admin/*` (creating tenants, etc.), which by definition happens outside
+   * any one school's context. Set only via `npm run create-admin`; there is
+   * no API that can grant it, deliberately.
+   */
+  platformAdmin: boolean
   createdAt: Date
   lastLoginAt: Date | null
 }
@@ -96,7 +108,8 @@ export interface MembershipDoc extends Document {
 export interface RefreshTokenDoc extends Document {
   _id: string
   userId: string
-  tenantId: string
+  /** Null for a platform-admin session, which has no single school's context. */
+  tenantId: string | null
   /** Denormalized so refresh doesn't need a second lookup to rebuild the JWT. */
   email: string
   /** Only the SHA-256 is stored — a database leak must not yield live sessions. */
@@ -138,6 +151,54 @@ export interface AuditLogDoc extends Document {
   entityId: string | null
   meta: Record<string, unknown>
   createdAt: Date
+}
+
+export interface ApiKeyDoc extends Document {
+  _id: string
+  tenantId: string
+  name: string
+  /** Only the SHA-256 is stored, same reasoning as refresh tokens. */
+  keyHash: string
+  /** First few characters of the real key, kept so a listing can identify
+   * which key is which without ever storing or showing the rest of it. */
+  keyPreview: string
+  /** The role the key acts as on every request — fixed at creation. */
+  role: 'admin' | 'scheduler' | 'viewer'
+  createdAt: Date
+  createdBy: string
+  lastUsedAt: Date | null
+  revokedAt: Date | null
+}
+
+/**
+ * A single-use bearer for an action that has to work before the holder is
+ * authenticated: accepting an invite (sets a first password) or resetting a
+ * forgotten one. Both are the same shape, distinguished by `purpose`, so
+ * there is exactly one expiry/consumption code path to get right instead of
+ * two similar ones.
+ */
+export interface ActionTokenDoc extends Document {
+  _id: string
+  userId: string
+  purpose: 'invite' | 'password_reset'
+  /** Only the SHA-256 is stored — same reasoning as refresh tokens. */
+  tokenHash: string
+  /** Invite-only: the membership to create once the invite is accepted. */
+  grant: { tenantId: string; role: MembershipDoc['role'] } | null
+  createdAt: Date
+  expiresAt: Date
+  usedAt: Date | null
+}
+
+/**
+ * Backs login rate limiting / account lockout. One document per email,
+ * TTL-expired automatically so a quiet account's history doesn't linger.
+ */
+export interface LoginAttemptDoc extends Document {
+  _id: string
+  count: number
+  lockedUntil: Date | null
+  expiresAt: Date
 }
 
 // ---------------------------------------------------------- tenant scoping --
@@ -192,6 +253,10 @@ export interface TenantContext {
   datasets: TenantScope<DatasetDoc>
   datasetVersions: TenantScope<DatasetVersionDoc>
   auditLog: TenantScope<AuditLogDoc>
+  /** Scoped view for a signed-in admin managing their own school's staff. */
+  memberships: TenantScope<MembershipDoc>
+  /** Scoped view for a signed-in admin managing their own school's API keys. */
+  apiKeys: TenantScope<ApiKeyDoc>
 }
 
 /**
@@ -217,6 +282,8 @@ export async function withTenant<T>(
           session,
         ),
         auditLog: new TenantScope(db.collection<AuditLogDoc>('auditLog'), tenantId, session),
+        memberships: new TenantScope(db.collection<MembershipDoc>('memberships'), tenantId, session),
+        apiKeys: new TenantScope(db.collection<ApiKeyDoc>('apiKeys'), tenantId, session),
       })
     })
     return result as T
@@ -230,15 +297,20 @@ export interface UnscopedDb {
   users: Collection<UserDoc>
   memberships: Collection<MembershipDoc>
   refreshTokens: Collection<RefreshTokenDoc>
+  /** Looked up by key hash, before the tenant it belongs to is known. */
+  apiKeys: Collection<ApiKeyDoc>
+  actionTokens: Collection<ActionTokenDoc>
+  loginAttempts: Collection<LoginAttemptDoc>
 }
 
 /**
  * For the few operations that are legitimately tenant-less: authenticating by
- * email, reading `tenants` itself, and answering "which schools does this
- * user belong to?" during login — the one place Postgres needed a
+ * email or API key, reading `tenants` itself, answering "which schools does
+ * this user belong to?" during login (the one place Postgres needed a
  * SECURITY DEFINER escape hatch, because RLS otherwise refused to answer that
- * question before a tenant was known. Nothing here bypasses tenant scoping on
- * `datasets` — those collections aren't exposed through this function at all.
+ * question before a tenant was known), and platform-admin operations that by
+ * definition act across tenants. Nothing here bypasses tenant scoping on
+ * `datasets` — that collection isn't exposed through this function at all.
  */
 export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Promise<T> {
   const database = await getDb()
@@ -247,5 +319,8 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     users: database.collection<UserDoc>('users'),
     memberships: database.collection<MembershipDoc>('memberships'),
     refreshTokens: database.collection<RefreshTokenDoc>('refreshTokens'),
+    apiKeys: database.collection<ApiKeyDoc>('apiKeys'),
+    actionTokens: database.collection<ActionTokenDoc>('actionTokens'),
+    loginAttempts: database.collection<LoginAttemptDoc>('loginAttempts'),
   })
 }

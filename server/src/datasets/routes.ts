@@ -35,7 +35,7 @@ export function registerDatasetRoutes(app: FastifyInstance): void {
   app.get('/datasets/:key', guarded, async (request, reply) => {
     const key = keyParam.safeParse((request.params as { key: string }).key)
     if (!key.success) return reply.code(400).send({ error: 'INVALID_KEY' })
-    const tenantId = request.auth!.tenantId
+    const tenantId = request.auth!.tenantId!
 
     const row = await withTenant(tenantId, (ctx) => ctx.datasets.findOne({ key: key.data }))
 
@@ -65,7 +65,7 @@ export function registerDatasetRoutes(app: FastifyInstance): void {
       if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
       const { baseRevision, problem } = parsed.data
-      const tenantId = request.auth!.tenantId
+      const tenantId = request.auth!.tenantId!
       const userId = request.auth!.sub
 
       return withTenant(tenantId, async (ctx) => {
@@ -130,7 +130,7 @@ export function registerDatasetRoutes(app: FastifyInstance): void {
     if (!key.success) return reply.code(400).send({ error: 'INVALID_KEY' })
     const limit = Math.min(Number((request.query as { limit?: string }).limit ?? 20), 100)
 
-    const rows = await withTenant(request.auth!.tenantId, (ctx) =>
+    const rows = await withTenant(request.auth!.tenantId!, (ctx) =>
       ctx.datasetVersions
         .find({ key: key.data })
         .sort({ revision: -1 })
@@ -155,7 +155,7 @@ export function registerDatasetRoutes(app: FastifyInstance): void {
       return reply.code(400).send({ error: 'INVALID_KEY' })
     }
 
-    const row = await withTenant(request.auth!.tenantId, (ctx) =>
+    const row = await withTenant(request.auth!.tenantId!, (ctx) =>
       ctx.datasetVersions.findOne({ key: key.data, revision }),
     )
 

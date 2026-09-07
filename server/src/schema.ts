@@ -26,4 +26,17 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('datasetVersions').createIndex({ tenantId: 1, key: 1, revision: -1 })
 
   await db.collection('auditLog').createIndex({ tenantId: 1, createdAt: -1 })
+
+  await db.collection('apiKeys').createIndex({ keyHash: 1 }, { unique: true })
+  await db.collection('apiKeys').createIndex({ tenantId: 1 })
+
+  await db.collection('actionTokens').createIndex({ tokenHash: 1 }, { unique: true })
+  await db.collection('actionTokens').createIndex({ userId: 1 })
+  // Same self-cleaning reasoning as refreshTokens: an expired invite or
+  // password-reset link is useless the moment it expires.
+  await db.collection('actionTokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+
+  // Rolling window for login rate limiting — expires whether or not the
+  // account ever got locked, so a quiet account carries no history.
+  await db.collection('loginAttempts').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 }

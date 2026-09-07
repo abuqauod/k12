@@ -17,19 +17,26 @@
     "migrate:prod": "node dist/migrate.js",
     "seed:prod": "node dist/seed.js",
     "smoke:prod": "node dist/smoke.js",
-    "release": "node scripts/make-release.mjs"
+    "release": "node scripts/make-release.mjs",
+    "create-admin": "tsx src/createAdmin.ts",
+    "create-admin:prod": "node dist/createAdmin.js",
+    "smoke-admin": "tsx src/smokeAdmin.ts",
+    "smoke-admin:prod": "node dist/smokeAdmin.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
+    "@fastify/static": "^10.1.3",
     "@node-rs/argon2": "^2.0.2",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
     "jose": "^6.0.10",
     "mongodb": "^6.11.0",
+    "nodemailer": "^10.0.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "@types/nodemailer": "^6.4.16",
     "archiver": "^7.0.1",
     "tsx": "^4.19.2",
     "typescript": "~5.7.3"

@@ -1,9 +1,40 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { DEMO_HINTS, useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/AuthContext'
+import type { TenantChoice } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
+import type { TranslationKey } from '../i18n/translations'
 import { BrandLockup } from '../components/BrandMark'
 import { LanguageToggle } from '../components/LanguageToggle'
+
+/**
+ * Matches the two schools `server/src/seed.ts` creates. These only work once
+ * that server has actually been seeded (`npm run seed`) — real accounts,
+ * shown here purely so the login page has something to demo with.
+ */
+const DEMO_HINTS: Array<{ email: string; password: string; role: 'owner' | 'scheduler' }> = [
+  { email: 'admin@northgate.test', password: 'admin123', role: 'owner' },
+  { email: 'planner@northgate.test', password: 'plan123', role: 'scheduler' },
+  { email: 'admin@riverside.test', password: 'admin123', role: 'owner' },
+]
+
+function errorKey(code: string): TranslationKey {
+  switch (code) {
+    case 'INVALID_CREDENTIALS':
+      return 'login.error'
+    case 'NO_ACTIVE_TENANT':
+    case 'NOT_A_MEMBER':
+      return 'login.errorInactiveTenant'
+    case 'NOT_CONFIGURED':
+      return 'login.errorNotConfigured'
+    case 'TIMEOUT':
+    case 'OFFLINE':
+    case 'NETWORK_ERROR':
+      return 'login.errorNetwork'
+    default:
+      return 'login.errorUnknown'
+  }
+}
 
 export function LoginPage() {
   const { t } = useI18n()
@@ -16,10 +47,33 @@ export function LoginPage() {
   const [reveal, setReveal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /** Set when the account belongs to more than one school. */
+  const [tenants, setTenants] = useState<TenantChoice[] | null>(null)
 
   if (user) {
     const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
     return <Navigate to={from} replace />
+  }
+
+  const goIn = () => {
+    const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+    navigate(from, { replace: true })
+  }
+
+  const attempt = async (tenantSlug?: string) => {
+    setBusy(true)
+    setError(null)
+    const result = await signIn(email, password, tenantSlug)
+    setBusy(false)
+    if (result.ok) {
+      goIn()
+      return
+    }
+    if (result.needsTenant) {
+      setTenants(result.tenants)
+      return
+    }
+    setError(t(errorKey(result.error)))
   }
 
   const submit = async (event: React.FormEvent) => {
@@ -28,16 +82,7 @@ export function LoginPage() {
       setError(t('login.emptyError'))
       return
     }
-    setBusy(true)
-    setError(null)
-    const ok = await signIn(email, password)
-    setBusy(false)
-    if (ok) {
-      const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
-      navigate(from, { replace: true })
-    } else {
-      setError(t('login.error'))
-    }
+    await attempt()
   }
 
   const highlights = [
@@ -68,74 +113,111 @@ export function LoginPage() {
           <LanguageToggle />
         </div>
 
-        <form className="login__form" onSubmit={submit} noValidate>
-          <h2 className="login__title">{t('login.title')}</h2>
-          <p className="login__subtitle">{t('login.subtitle')}</p>
+        {tenants ? (
+          <div className="login__form">
+            <h2 className="login__title">{t('login.chooseSchool')}</h2>
+            <p className="login__subtitle">{t('login.chooseSchoolHint')}</p>
 
-          <label className="field">
-            <span>{t('login.email')}</span>
-            <input
-              className="input"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="admin@school.test"
-            />
-          </label>
-
-          <label className="field">
-            <span>{t('login.password')}</span>
-            <div className="input-affix">
-              <input
-                className="input"
-                type={reveal ? 'text' : 'password'}
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
+            {tenants.map((tenant) => (
               <button
                 type="button"
-                className="btn btn--ghost btn--sm"
-                onClick={() => setReveal(!reveal)}
-                aria-label={reveal ? t('login.hidePassword') : t('login.showPassword')}
-              >
-                {reveal ? '🙈' : '👁'}
-              </button>
-            </div>
-          </label>
-
-          {error && (
-            <p className="login__error" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
-            {busy ? t('login.signingIn') : t('login.submit')}
-          </button>
-
-          <div className="login__demo">
-            <h3 className="panel__title">{t('login.demoTitle')}</h3>
-            {DEMO_HINTS.map((account) => (
-              <button
-                type="button"
-                key={account.email}
+                key={tenant.slug}
                 className="login__demo-row"
-                onClick={() => {
-                  setEmail(account.email)
-                  setPassword(account.password)
-                  setError(null)
-                }}
+                disabled={busy}
+                onClick={() => void attempt(tenant.slug)}
               >
-                <span className="mono">{account.email}</span>
-                <span className="mono">{account.password}</span>
-                <span className="chip">{t(`settings.role.${account.role}`)}</span>
+                <span>{tenant.name}</span>
               </button>
             ))}
-            <p className="login__note">{t('login.demoNote')}</p>
+
+            {error && (
+              <p className="login__error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="btn btn--ghost btn--block"
+              disabled={busy}
+              onClick={() => {
+                setTenants(null)
+                setError(null)
+              }}
+            >
+              {t('login.back')}
+            </button>
           </div>
-        </form>
+        ) : (
+          <form className="login__form" onSubmit={submit} noValidate>
+            <h2 className="login__title">{t('login.title')}</h2>
+            <p className="login__subtitle">{t('login.subtitle')}</p>
+
+            <label className="field">
+              <span>{t('login.email')}</span>
+              <input
+                className="input"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="admin@school.test"
+              />
+            </label>
+
+            <label className="field">
+              <span>{t('login.password')}</span>
+              <div className="input-affix">
+                <input
+                  className="input"
+                  type={reveal ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setReveal(!reveal)}
+                  aria-label={reveal ? t('login.hidePassword') : t('login.showPassword')}
+                >
+                  {reveal ? '🙈' : '👁'}
+                </button>
+              </div>
+            </label>
+
+            {error && (
+              <p className="login__error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
+              {busy ? t('login.signingIn') : t('login.submit')}
+            </button>
+
+            <div className="login__demo">
+              <h3 className="panel__title">{t('login.demoTitle')}</h3>
+              {DEMO_HINTS.map((account) => (
+                <button
+                  type="button"
+                  key={account.email}
+                  className="login__demo-row"
+                  onClick={() => {
+                    setEmail(account.email)
+                    setPassword(account.password)
+                    setError(null)
+                  }}
+                >
+                  <span className="mono">{account.email}</span>
+                  <span className="mono">{account.password}</span>
+                  <span className="chip">{t(`settings.role.${account.role}`)}</span>
+                </button>
+              ))}
+              <p className="login__note">{t('login.demoNote')}</p>
+            </div>
+          </form>
+        )}
       </main>
     </div>
   )

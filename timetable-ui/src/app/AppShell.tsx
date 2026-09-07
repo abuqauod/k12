@@ -55,7 +55,7 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapsed])
 
-  const displayName = user ? (lang === 'ar' ? user.nameAr : user.name) : ''
+  const displayName = user ? (lang === 'ar' ? user.displayNameAr ?? user.displayName : user.displayName) : ''
   const initials = displayName
     .split(' ')
     .map((part) => part[0])

@@ -8,9 +8,16 @@ export type Role = 'owner' | 'admin' | 'scheduler' | 'viewer'
 
 export interface AccessClaims {
   sub: string
-  tenantId: string
-  role: Role
   email: string
+  /**
+   * Absent for a platform-admin session, which by definition has no single
+   * school's context — `/admin/*` routes take a tenant id as a parameter
+   * instead of reading it from the token.
+   */
+  tenantId?: string
+  role?: Role
+  /** The vendor's own operator flag — see `UserDoc.platformAdmin`. */
+  platformAdmin?: boolean
 }
 
 /**
@@ -18,7 +25,12 @@ export interface AccessClaims {
  * a caller cannot ask for another school's data by changing a URL.
  */
 export async function signAccessToken(claims: AccessClaims): Promise<string> {
-  return new SignJWT({ tenantId: claims.tenantId, role: claims.role, email: claims.email })
+  return new SignJWT({
+    tenantId: claims.tenantId,
+    role: claims.role,
+    email: claims.email,
+    platformAdmin: claims.platformAdmin || undefined,
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.sub)
     .setIssuedAt()
@@ -29,19 +41,21 @@ export async function signAccessToken(claims: AccessClaims): Promise<string> {
 
 export async function verifyAccessToken(token: string): Promise<AccessClaims> {
   const { payload } = await jwtVerify(token, secret, { issuer: 'timetable-studio' })
-  if (
-    typeof payload.sub !== 'string' ||
-    typeof payload.tenantId !== 'string' ||
-    typeof payload.role !== 'string' ||
-    typeof payload.email !== 'string'
-  ) {
+  if (typeof payload.sub !== 'string' || typeof payload.email !== 'string') {
+    throw new Error('Malformed token payload')
+  }
+  if (payload.tenantId !== undefined && typeof payload.tenantId !== 'string') {
+    throw new Error('Malformed token payload')
+  }
+  if (payload.role !== undefined && typeof payload.role !== 'string') {
     throw new Error('Malformed token payload')
   }
   return {
     sub: payload.sub,
-    tenantId: payload.tenantId,
-    role: payload.role as Role,
     email: payload.email,
+    tenantId: payload.tenantId as string | undefined,
+    role: payload.role as Role | undefined,
+    platformAdmin: payload.platformAdmin === true,
   }
 }
 
