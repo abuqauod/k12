@@ -4,6 +4,8 @@ import { AppShell } from './app/AppShell'
 import { useAuth } from './auth/AuthContext'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
+import { SetPasswordPage } from './pages/SetPasswordPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TimetablePage } from './pages/TimetablePage'
 import { RoutesPage } from './pages/RoutesPage'
@@ -22,6 +24,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/accept-invite" element={<SetPasswordPage mode="invite" />} />
+      <Route path="/reset-password" element={<SetPasswordPage mode="reset" />} />
       <Route
         element={
           <RequireAuth>

@@ -699,6 +699,27 @@
   font-size: 12.5px;
 }
 
+.login__success {
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 12.5px;
+}
+
+.login__forgot {
+  align-self: flex-start;
+  margin: -4px 0 2px;
+  font-size: 12.5px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.login__forgot:hover {
+  text-decoration: underline;
+}
+
 .input-affix {
   display: flex;
   align-items: center;
