@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Platform Console</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e2e5ea;
+    --text: #1a1d23;
+    --muted: #6b7280;
+    --accent: #1a56db;
+    --accent-hover: #16469f;
+    --danger: #b91c1c;
+    --danger-bg: #fef2f2;
+    --success: #15803d;
+    --success-bg: #f0fdf4;
+    --warn-bg: #fffbeb;
+    --warn-text: #92400e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  [hidden] { display: none !important; }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .who { color: var(--muted); font-size: 13px; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { margin: 0 0 14px; font-size: 15px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); flex: 1; min-width: 140px; }
+  input, select {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--text);
+  }
+  button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  button:hover { background: #f3f4f6; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: var(--accent-hover); }
+  button.danger { color: var(--danger); border-color: #fca5a5; }
+  button.danger:hover { background: var(--danger-bg); }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .02em; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: #fafafa; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.active { background: var(--success-bg); color: var(--success); }
+  .badge.suspended { background: var(--warn-bg); color: var(--warn-text); }
+  .badge.cancelled { background: var(--danger-bg); color: var(--danger); }
+  .msg { padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+  .msg.error { background: var(--danger-bg); color: var(--danger); }
+  .msg.success { background: var(--success-bg); color: var(--success); }
+  .back { color: var(--accent); cursor: pointer; font-size: 13px; margin-bottom: 12px; display: inline-block; }
+  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-card { width: 320px; }
+  .muted { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="view-login" class="login-wrap">
+  <div class="card login-card">
+    <h2>Platform Console</h2>
+    <div id="login-error"></div>
+    <form id="login-form">
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <label>Email <input type="email" id="login-email" autocomplete="username" required /></label>
+        <label>Password <input type="password" id="login-password" autocomplete="current-password" required /></label>
+        <button type="submit" class="primary" id="login-submit">Sign in</button>
+      </div>
+    </form>
+    <p class="muted" style="margin-top:12px;">Platform-admin accounts only — see <code>npm run create-admin</code>.</p>
+  </div>
+</div>
+
+<div id="view-app" hidden>
+  <header>
+    <h1>Platform Console</h1>
+    <div>
+      <span class="who" id="who"></span>
+      <button id="logout-btn" style="margin-left:12px;">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="view-list">
+      <div class="card">
+        <h2>Create a school</h2>
+        <div id="create-msg"></div>
+        <form id="create-form">
+          <div class="row">
+            <label>Slug <input id="c-slug" placeholder="northgate" required pattern="[a-z0-9]+(-[a-z0-9]+)*" /></label>
+            <label>Name <input id="c-name" placeholder="Northgate International School" required /></label>
+            <label>Seats <input id="c-seats" type="number" value="25" min="1" /></label>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <label>Owner email <input id="c-owner-email" type="email" required /></label>
+            <label>Owner name <input id="c-owner-name" placeholder="optional" /></label>
+            <label>Valid until <input id="c-valid-until" type="date" /></label>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button type="submit" class="primary">Create & invite owner</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Schools</h2>
+        <table>
+          <thead>
+            <tr><th>School</th><th>Status</th><th>Plan</th><th>Members</th><th>Valid until</th></tr>
+          </thead>
+          <tbody id="tenants-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="view-detail" hidden>
+      <span class="back" id="back-link">&larr; All schools</span>
+      <div class="card">
+        <h2 id="detail-name"></h2>
+        <div id="detail-msg"></div>
+        <div class="row">
+          <label>Status
+            <select id="d-status">
+              <option value="active">active</option>
+              <option value="suspended">suspended</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </label>
+          <label>Plan <input id="d-plan" /></label>
+          <label>Seats <input id="d-seats" type="number" min="1" /></label>
+          <label>Valid until <input id="d-valid-until" type="date" /></label>
+          <label>Grace days <input id="d-grace-days" type="number" min="0" /></label>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button class="primary" id="save-tenant-btn">Save</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Members</h2>
+        <table>
+          <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Active</th></tr></thead>
+          <tbody id="members-body"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Invite someone directly</h2>
+        <p class="muted">Support path — a school's own admins normally do this themselves from within the app.</p>
+        <div id="invite-msg"></div>
+        <div class="row">
+          <label>Email <input id="i-email" type="email" required /></label>
+          <label>Role
+            <select id="i-role">
+              <option value="owner">owner</option>
+              <option value="admin">admin</option>
+              <option value="scheduler" selected>scheduler</option>
+              <option value="viewer">viewer</option>
+            </select>
+          </label>
+          <button id="invite-btn">Invite</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var API = window.location.origin; // this page is served by the same backend it manages
+  var STORAGE_KEY = 'console.session';
+
+  var accessToken = null;
+  var refreshToken = null;
+  var refreshingPromise = null;
+  var currentTenantId = null;
+
+  function loadSession() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+  function saveSession(session) {
+    try {
+      if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  function el(id) { return document.getElementById(id); }
+  function showMsg(container, text, kind) {
+    container.innerHTML = text ? '<div class="msg ' + kind + '">' + escapeHtml(text) + '</div>' : '';
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // --- API client, mirrors the pattern used in the main app's AuthContext ---
+  function rawFetch(path, opts, token) {
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = 'Bearer ' + token;
+    return fetch(API + path, Object.assign({}, opts, { headers: Object.assign(headers, (opts && opts.headers) || {}) }));
+  }
+
+  function refreshAccessToken() {
+    if (!refreshToken) return Promise.resolve(null);
+    if (!refreshingPromise) {
+      refreshingPromise = rawFetch('/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken: refreshToken }) })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (body) {
+          if (!body) { signOut(); return null; }
+          accessToken = body.accessToken;
+          refreshToken = body.refreshToken;
+          saveSession({ refreshToken: refreshToken });
+          return accessToken;
+        })
+        .finally(function () { refreshingPromise = null; });
+    }
+    return refreshingPromise;
+  }
+
+  function api(path, opts) {
+    opts = opts || {};
+    var tokenPromise = accessToken ? Promise.resolve(accessToken) : refreshAccessToken();
+    return tokenPromise.then(function (token) {
+      return rawFetch(path, opts, token).then(function (res) {
+        if (res.status === 401) {
+          return refreshAccessToken().then(function (fresh) {
+            return rawFetch(path, opts, fresh);
+          });
+        }
+        return res;
+      });
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (e) { body = text; }
+        if (!res.ok) {
+          var err = new Error((body && body.error) || ('HTTP ' + res.status));
+          err.status = res.status;
+          err.body = body;
+          throw err;
+        }
+        return body;
+      });
+    });
+  }
+
+  // --- auth ---
+  function signIn(email, password) {
+    return rawFetch('/auth/login', { method: 'POST', body: JSON.stringify({ email: email, password: password }) })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body.error || ('HTTP ' + res.status));
+          if (!body.platformAdmin) throw new Error('This account is not a platform admin.');
+          accessToken = body.accessToken;
+          refreshToken = body.refreshToken;
+          saveSession({ refreshToken: refreshToken });
+          el('who').textContent = body.user.email;
+          return body;
+        });
+      });
+  }
+
+  function signOut() {
+    accessToken = null;
+    var rt = refreshToken;
+    refreshToken = null;
+    saveSession(null);
+    if (rt) rawFetch('/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken: rt }) });
+    el('view-app').hidden = true;
+    el('view-login').hidden = false;
+  }
+
+  function enterApp() {
+    el('view-login').hidden = true;
+    el('view-app').hidden = false;
+    loadTenants();
+  }
+
+  // --- tenants list ---
+  function loadTenants() {
+    api('/admin/tenants').then(function (data) {
+      var body = el('tenants-body');
+      body.innerHTML = '';
+      data.tenants.forEach(function (t) {
+        var tr = document.createElement('tr');
+        tr.className = 'clickable';
+        tr.onclick = function () { openTenant(t.id); };
+        tr.innerHTML =
+          '<td><strong>' + escapeHtml(t.name) + '</strong><br><span class="muted">' + escapeHtml(t.slug) + '</span></td>' +
+          '<td><span class="badge ' + t.status + '">' + t.status + '</span></td>' +
+          '<td>' + escapeHtml(t.plan) + '</td>' +
+          '<td>' + t.memberCount + ' / ' + t.seats + '</td>' +
+          '<td>' + (t.validUntil || '—') + '</td>';
+        body.appendChild(tr);
+      });
+    }).catch(function (e) { alert('Failed to load schools: ' + e.message); });
+  }
+
+  el('create-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = el('create-msg');
+    showMsg(msg, '', '');
+    api('/admin/tenants', {
+      method: 'POST',
+      body: JSON.stringify({
+        slug: el('c-slug').value.trim(),
+        name: el('c-name').value.trim(),
+        seats: Number(el('c-seats').value) || 25,
+        validUntil: el('c-valid-until').value || null,
+        ownerEmail: el('c-owner-email').value.trim(),
+        ownerName: el('c-owner-name').value.trim() || undefined,
+      }),
+    }).then(function (result) {
+      var outcome = result.ownerInvite;
+      var note = outcome === 'invited' ? 'Owner invited by email.'
+        : outcome === 'added' ? 'Owner already had an account — granted access directly.'
+        : outcome === 'EMAIL_NOT_CONFIGURED' ? 'School created, but SMTP isn\'t configured — no invite email was sent. Re-invite once SMTP is set up.'
+        : outcome === 'EMAIL_SEND_FAILED' ? 'School created, but the invite email failed to send. Re-invite from the school\'s page.'
+        : 'School created.';
+      showMsg(msg, note, outcome === 'invited' || outcome === 'added' ? 'success' : 'error');
+      el('create-form').reset();
+      el('c-seats').value = 25;
+      loadTenants();
+    }).catch(function (e) { showMsg(msg, e.message, 'error'); });
+  });
+
+  // --- tenant detail ---
+  function openTenant(id) {
+    currentTenantId = id;
+    api('/admin/tenants/' + id).then(function (t) {
+      el('view-list').hidden = true;
+      el('view-detail').hidden = false;
+      el('detail-name').textContent = t.name;
+      el('d-status').value = t.status;
+      el('d-plan').value = t.plan;
+      el('d-seats').value = t.seats;
+      el('d-valid-until').value = t.validUntil || '';
+      el('d-grace-days').value = t.graceDays;
+
+      var body = el('members-body');
+      body.innerHTML = '';
+      t.members.forEach(function (m) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapeHtml(m.email || '—') + '</td>' +
+          '<td>' + escapeHtml(m.displayName || '—') + '</td>' +
+          '<td>' + escapeHtml(m.role) + '</td>' +
+          '<td>' + (m.active ? 'yes' : 'invited — not accepted yet') + '</td>';
+        body.appendChild(tr);
+      });
+    }).catch(function (e) { alert('Failed to load school: ' + e.message); });
+  }
+
+  el('back-link').addEventListener('click', function () {
+    el('view-detail').hidden = true;
+    el('view-list').hidden = false;
+    currentTenantId = null;
+    loadTenants();
+  });
+
+  el('save-tenant-btn').addEventListener('click', function () {
+    var msg = el('detail-msg');
+    showMsg(msg, '', '');
+    api('/admin/tenants/' + currentTenantId, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: el('d-status').value,
+        plan: el('d-plan').value.trim(),
+        seats: Number(el('d-seats').value),
+        validUntil: el('d-valid-until').value || null,
+        graceDays: Number(el('d-grace-days').value),
+      }),
+    }).then(function () {
+      showMsg(msg, 'Saved.', 'success');
+      loadTenants();
+    }).catch(function (e) { showMsg(msg, e.message, 'error'); });
+  });
+
+  el('invite-btn').addEventListener('click', function () {
+    var msg = el('invite-msg');
+    showMsg(msg, '', '');
+    var email = el('i-email').value.trim();
+    if (!email) return;
+    api('/admin/tenants/' + currentTenantId + '/invite', {
+      method: 'POST',
+      body: JSON.stringify({ email: email, role: el('i-role').value }),
+    }).then(function (result) {
+      var note = result.outcome === 'invited' ? 'Invited by email.'
+        : result.outcome === 'added' ? 'Already had an account — granted access directly.'
+        : 'Already a member of this school.';
+      showMsg(msg, note, 'success');
+      el('i-email').value = '';
+      openTenant(currentTenantId);
+    }).catch(function (e) { showMsg(msg, e.message, 'error'); });
+  });
+
+  // --- login form ---
+  el('login-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = el('login-submit');
+    btn.disabled = true;
+    showMsg(el('login-error'), '', '');
+    signIn(el('login-email').value.trim(), el('login-password').value)
+      .then(enterApp)
+      .catch(function (err) { showMsg(el('login-error'), err.message, 'error'); })
+      .finally(function () { btn.disabled = false; });
+  });
+
+  el('logout-btn').addEventListener('click', signOut);
+
+  // --- boot: try to resume a session from a stored refresh token ---
+  var stored = loadSession();
+  if (stored && stored.refreshToken) {
+    refreshToken = stored.refreshToken;
+    refreshAccessToken().then(function (token) {
+      if (token) {
+        return api('/auth/me').then(function (me) {
+          el('who').textContent = me.email;
+          enterApp();
+        });
+      }
+    }).catch(signOut);
+  }
+})();
+</script>
+</body>
+</html>

@@ -4,7 +4,10 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { config } from '../config.js'
 import { withoutTenant } from '../db.js'
+import { EmailNotConfiguredError, sendPasswordResetEmail } from '../email.js'
+import { consumeActionToken, createActionToken, PASSWORD_RESET_TTL_MS } from './actionTokens.js'
 import { authenticate } from './guard.js'
+import { clearLoginFailures, isLockedOut, recordLoginFailure } from './rateLimit.js'
 import { createRefreshToken, hashRefreshToken, signAccessToken } from './tokens.js'
 import type { Role } from './tokens.js'
 
@@ -16,6 +19,13 @@ const loginBody = z.object({
 })
 
 const refreshBody = z.object({ refreshToken: z.string().min(1) })
+const forgotPasswordBody = z.object({ email: z.string().email() })
+const resetPasswordBody = z.object({ token: z.string().min(1), password: z.string().min(8) })
+const acceptInviteBody = z.object({ token: z.string().min(1), password: z.string().min(8) })
+const changePasswordBody = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+})
 
 export async function hashPassword(plain: string): Promise<string> {
   // argon2id with parameters that cost ~50ms on a small VPS.
@@ -62,13 +72,46 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     const { password, tenantSlug } = parsed.data
     const email = parsed.data.email.toLowerCase()
 
+    if (await isLockedOut(email)) {
+      return reply.code(429).send({ error: 'TOO_MANY_ATTEMPTS' })
+    }
+
     const user = await withoutTenant((db) => db.users.findOne({ email }))
 
     // Same response whether the user is unknown or the password is wrong, so
-    // the endpoint cannot be used to enumerate staff email addresses.
-    const ok = user ? await verify(user.passwordHash, password).catch(() => false) : false
+    // the endpoint cannot be used to enumerate staff email addresses. An
+    // invited-but-not-yet-accepted user has no passwordHash yet — that's
+    // "not recognised" too, not a crash.
+    const ok = user?.passwordHash ? await verify(user.passwordHash, password).catch(() => false) : false
     if (!user || !user.active || !ok) {
+      await recordLoginFailure(email)
       return reply.code(401).send({ error: 'INVALID_CREDENTIALS' })
+    }
+    await clearLoginFailures(email)
+
+    // The vendor's own account: no single school's context, so tenant
+    // selection doesn't apply. See UserDoc.platformAdmin.
+    if (user.platformAdmin) {
+      const { refreshTokenId: _refreshTokenId, ...tokens } = await issueSession({
+        userId: user._id,
+        email,
+        platformAdmin: true,
+      })
+      await withoutTenant((db) =>
+        db.users.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } }),
+      )
+      return reply.send({
+        ...tokens,
+        user: {
+          id: user._id,
+          email,
+          displayName: user.displayName,
+          displayNameAr: user.displayNameAr,
+          role: null,
+        },
+        tenant: null,
+        platformAdmin: true,
+      })
     }
 
     const memberships = await membershipsForUser(user._id)
@@ -88,12 +131,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       })
     }
 
-    const { refreshTokenId: _refreshTokenId, ...tokens } = await issueSession(
-      user._id,
-      chosen.tenantId,
-      chosen.role,
+    const { refreshTokenId: _refreshTokenId, ...tokens } = await issueSession({
+      userId: user._id,
       email,
-    )
+      tenantId: chosen.tenantId,
+      role: chosen.role,
+    })
     await withoutTenant((db) =>
       db.users.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } }),
     )
@@ -136,12 +179,26 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       return reply.code(401).send({ error: 'REFRESH_EXPIRED' })
     }
 
-    const membership = await withoutTenant((db) =>
-      db.memberships.findOne({ _id: `${result.tenantId}:${result.userId}` }),
-    )
-    if (!membership) return reply.code(403).send({ error: 'NOT_A_MEMBER' })
+    let session: Awaited<ReturnType<typeof issueSession>>
+    if (result.tenantId === null) {
+      // Platform-admin session — re-check the flag fresh, same reasoning as
+      // requirePlatformAdmin: revocation should take effect immediately.
+      const user = await withoutTenant((db) => db.users.findOne({ _id: result.userId }))
+      if (!user?.platformAdmin) return reply.code(403).send({ error: 'NOT_A_MEMBER' })
+      session = await issueSession({ userId: result.userId, email: result.email, platformAdmin: true })
+    } else {
+      const membership = await withoutTenant((db) =>
+        db.memberships.findOne({ _id: `${result.tenantId}:${result.userId}` }),
+      )
+      if (!membership) return reply.code(403).send({ error: 'NOT_A_MEMBER' })
+      session = await issueSession({
+        userId: result.userId,
+        email: result.email,
+        tenantId: result.tenantId,
+        role: membership.role,
+      })
+    }
 
-    const session = await issueSession(result.userId, result.tenantId, membership.role, result.email)
     await withoutTenant((db) =>
       db.refreshTokens.updateOne({ _id: result._id }, { $set: { rotatedTo: session.refreshTokenId } }),
     )
@@ -164,12 +221,161 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   app.get('/auth/me', { preHandler: authenticate }, async (request, reply) => {
     const auth = request.auth
     if (!auth) return reply.code(401).send({ error: 'MISSING_TOKEN' })
-    return reply.send({ userId: auth.sub, email: auth.email, tenantId: auth.tenantId, role: auth.role })
+    return reply.send({
+      userId: auth.sub,
+      email: auth.email,
+      tenantId: auth.tenantId ?? null,
+      role: auth.role ?? null,
+      platformAdmin: auth.platformAdmin ?? false,
+    })
+  })
+
+  /** Every active (non-revoked, non-expired) session for the caller. */
+  app.get('/auth/sessions', { preHandler: authenticate }, async (request, reply) => {
+    const sessions = await withoutTenant((db) =>
+      db.refreshTokens
+        .find({ userId: request.auth!.sub, revokedAt: null, expiresAt: { $gt: new Date() } })
+        .sort({ issuedAt: -1 })
+        .toArray(),
+    )
+    return reply.send({
+      sessions: sessions.map((s) => ({
+        id: s._id,
+        tenantId: s.tenantId,
+        issuedAt: s.issuedAt.toISOString(),
+        expiresAt: s.expiresAt.toISOString(),
+      })),
+    })
+  })
+
+  app.delete('/auth/sessions/:id', { preHandler: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = await withoutTenant((db) =>
+      db.refreshTokens.updateOne(
+        { _id: id, userId: request.auth!.sub, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+      ),
+    )
+    if (result.matchedCount === 0) return reply.code(404).send({ error: 'NOT_FOUND' })
+    return reply.code(204).send()
+  })
+
+  /**
+   * Always the same response whether or not the email exists — the one place
+   * that isn't true is when SMTP itself isn't configured, which isn't a
+   * secret worth protecting.
+   */
+  app.post('/auth/forgot-password', async (request, reply) => {
+    const parsed = forgotPasswordBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const email = parsed.data.email.toLowerCase()
+
+    const user = await withoutTenant((db) => db.users.findOne({ email }))
+    if (user?.active) {
+      const token = await createActionToken({
+        userId: user._id,
+        purpose: 'password_reset',
+        ttlMs: PASSWORD_RESET_TTL_MS,
+      })
+      try {
+        await sendPasswordResetEmail({ to: email, token })
+      } catch (error) {
+        if (error instanceof EmailNotConfiguredError) {
+          return reply.code(501).send({ error: 'EMAIL_NOT_CONFIGURED' })
+        }
+        request.log.error(error, 'failed to send password reset email')
+        return reply.code(502).send({ error: 'EMAIL_SEND_FAILED' })
+      }
+    }
+    return reply.send({ ok: true })
+  })
+
+  app.post('/auth/reset-password', async (request, reply) => {
+    const parsed = resetPasswordBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+
+    const result = await consumeActionToken(parsed.data.token, 'password_reset')
+    if (!result.ok) return reply.code(400).send({ error: `TOKEN_${result.error}` })
+
+    const passwordHash = await hashPassword(parsed.data.password)
+    await withoutTenant(async (db) => {
+      await db.users.updateOne({ _id: result.userId }, { $set: { passwordHash } })
+      // A reset means the old password may have leaked — end every session,
+      // not just issue a new password alongside the old sessions.
+      await db.refreshTokens.updateMany(
+        { userId: result.userId, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+      )
+    })
+    return reply.send({ ok: true })
+  })
+
+  /** Sets a first password for a user created by an invite (see admin/memberships routes). */
+  app.post('/auth/accept-invite', async (request, reply) => {
+    const parsed = acceptInviteBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+
+    const result = await consumeActionToken(parsed.data.token, 'invite')
+    if (!result.ok) return reply.code(400).send({ error: `TOKEN_${result.error}` })
+
+    const passwordHash = await hashPassword(parsed.data.password)
+    await withoutTenant(async (db) => {
+      await db.users.updateOne(
+        { _id: result.userId },
+        { $set: { passwordHash, active: true } },
+      )
+      if (result.grant) {
+        const { tenantId, role } = result.grant
+        await db.memberships.updateOne(
+          { _id: `${tenantId}:${result.userId}` },
+          { $set: { tenantId, userId: result.userId, role }, $setOnInsert: { createdAt: new Date() } },
+          { upsert: true },
+        )
+      }
+    })
+    return reply.send({ ok: true })
+  })
+
+  app.post('/auth/change-password', { preHandler: authenticate }, async (request, reply) => {
+    const parsed = changePasswordBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+
+    const user = await withoutTenant((db) => db.users.findOne({ _id: request.auth!.sub }))
+    const ok = user?.passwordHash
+      ? await verify(user.passwordHash, parsed.data.currentPassword).catch(() => false)
+      : false
+    if (!user || !ok) return reply.code(401).send({ error: 'INVALID_CREDENTIALS' })
+
+    const passwordHash = await hashPassword(parsed.data.newPassword)
+    await withoutTenant(async (db) => {
+      await db.users.updateOne({ _id: user._id }, { $set: { passwordHash } })
+      // Same reasoning as a reset: a changed password ends every session,
+      // this request's own included — sign in again with the new one.
+      await db.refreshTokens.updateMany(
+        { userId: user._id, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+      )
+    })
+    return reply.send({ ok: true })
   })
 }
 
-async function issueSession(userId: string, tenantId: string, role: Role, email: string) {
-  const accessToken = await signAccessToken({ sub: userId, tenantId, role, email })
+interface SessionParams {
+  userId: string
+  email: string
+  tenantId?: string
+  role?: Role
+  platformAdmin?: boolean
+}
+
+async function issueSession(params: SessionParams) {
+  const accessToken = await signAccessToken({
+    sub: params.userId,
+    email: params.email,
+    tenantId: params.tenantId,
+    role: params.role,
+    platformAdmin: params.platformAdmin,
+  })
   const refresh = createRefreshToken()
   const refreshTokenId = randomUUID()
   const expiresAt = new Date(Date.now() + config.refreshTokenDays * 86_400_000)
@@ -177,9 +383,9 @@ async function issueSession(userId: string, tenantId: string, role: Role, email:
   await withoutTenant((db) =>
     db.refreshTokens.insertOne({
       _id: refreshTokenId,
-      userId,
-      tenantId,
-      email,
+      userId: params.userId,
+      tenantId: params.tenantId ?? null,
+      email: params.email,
       tokenHash: refresh.hash,
       issuedAt: new Date(),
       expiresAt,

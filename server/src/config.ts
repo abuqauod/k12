@@ -37,6 +37,29 @@ export const config = {
     .filter(Boolean),
   /** Largest accepted dataset document. A big school is well under this. */
   maxBodyBytes: Number(process.env.MAX_BODY_BYTES ?? 8 * 1024 * 1024),
+  /**
+   * Where invite and password-reset links point — the frontend, not this API.
+   * Defaults to the first configured CORS origin, since that's almost always
+   * the intended frontend anyway.
+   */
+  appUrl: (process.env.APP_URL ?? process.env.CORS_ORIGINS?.split(',')[0] ?? 'http://localhost:5183').replace(/\/+$/, ''),
+  /**
+   * SMTP is optional: invite and password-reset emails simply can't be sent
+   * without it (the route returns a clear error rather than pretending to
+   * succeed). Everything else works regardless.
+   */
+  smtp: process.env.SMTP_HOST
+    ? {
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT ?? 587),
+        // Port 465 is implicit TLS; anything else (587, 25) starts plain and
+        // upgrades via STARTTLS, which nodemailer does on its own.
+        secure: Number(process.env.SMTP_PORT ?? 587) === 465,
+        user: required('SMTP_USER'),
+        pass: required('SMTP_PASS'),
+        from: process.env.SMTP_FROM ?? required('SMTP_USER'),
+      }
+    : null,
 }
 
 export const isProduction = process.env.NODE_ENV === 'production'

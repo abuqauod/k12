@@ -73,7 +73,7 @@ async function main(): Promise<void> {
             displayName: user.name,
             displayNameAr: user.nameAr,
           },
-          $setOnInsert: { active: true, createdAt: now, lastLoginAt: null },
+          $setOnInsert: { active: true, platformAdmin: false, createdAt: now, lastLoginAt: null },
         },
         { upsert: true },
       )

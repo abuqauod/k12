@@ -42,6 +42,9 @@ async function main() {
   await cp(join(root, 'dist'), join(stageDir, 'dist'), { recursive: true })
   log('dist/')
 
+  await cp(join(root, 'public'), join(stageDir, 'public'), { recursive: true })
+  log('public/ (the platform-admin console)')
+
   await cp(join(root, '.env.example'), join(stageDir, '.env.example'))
   log('.env.example')
 
@@ -60,6 +63,8 @@ async function main() {
       migrate: 'node dist/migrate.js',
       seed: 'node dist/seed.js',
       smoke: 'node dist/smoke.js',
+      'smoke-admin': 'node dist/smokeAdmin.js',
+      'create-admin': 'node dist/createAdmin.js',
     },
     dependencies: full.dependencies,
   }
@@ -96,10 +101,14 @@ async function main() {
 6. Open this app's terminal (or SSH in) and run, once:
    \`\`\`
    npm run migrate
+   npm run create-admin -- you@example.com 'a strong password'
    \`\`\`
-   (Creates indexes — safe to re-run on every future deploy too.)
+   (\`migrate\` creates indexes — safe to re-run on every future deploy too.
+   \`create-admin\` is your own platform-admin login for the console below.)
 7. Restart the app.
-8. Check \`https://<your-app-domain>/health\` returns \`{"ok":true}\`.
+8. Check \`https://<your-app-domain>/health\` returns \`{"ok":true}\`, then
+   sign in at \`https://<your-app-domain>/console\` with the account from
+   step 6 to create and manage schools.
 
 See the main README's "Deploying to shared hosting" section for the full
 walkthrough and troubleshooting notes.
