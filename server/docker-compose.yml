@@ -1,6 +1,36 @@
 services:
+  # One-shot: MongoDB requires an internal cluster keyfile whenever both
+  # authentication AND a replica set are enabled together (even a
+  # single-member one) — mongod refuses to start without it. Generated once
+  # into a named volume rather than a bind-mounted file, so this works
+  # identically on Windows (dev) and Linux (prod) — a host-mounted keyfile
+  # hits Windows/Linux permission-bit translation issues that a
+  # container-internal volume never does.
+  db-keygen:
+    image: mongo:7
+    entrypoint: ['bash', '-c']
+    command:
+      - |
+        set -e
+        if [ ! -f /keyfile/mongo-keyfile ]; then
+          head -c 756 /dev/urandom | base64 > /keyfile/mongo-keyfile
+        fi
+        chmod 400 /keyfile/mongo-keyfile
+        chown mongodb:mongodb /keyfile/mongo-keyfile
+    volumes:
+      - mongokeyfile:/keyfile
+    restart: 'no'
+
   db:
     image: mongo:7
+    # Transactions (used by withTenant, see src/db.ts) only work on a replica
+    # set, even a one-node one — a plain standalone mongod refuses them
+    # outright. --replSet turns this node into one; db-init below is what
+    # actually activates it.
+    command: ['--replSet', 'rs0', '--bind_ip_all', '--keyFile', '/keyfile/mongo-keyfile']
+    depends_on:
+      db-keygen:
+        condition: service_completed_successfully
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-mongo_root_password}
@@ -9,17 +39,31 @@ services:
       - '${DB_PORT:-27018}:27017'
     volumes:
       - mongodata:/data/db
+      - mongokeyfile:/keyfile
     healthcheck:
       test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
       interval: 3s
       timeout: 3s
       retries: 20
 
-  api:
-    build: .
+  # One-shot: activates the replica set the first time this stack ever runs.
+  # Safe to re-run on every subsequent `docker compose up` — "already
+  # initialized" is the expected outcome then, not an error.
+  db-init:
+    image: mongo:7
     depends_on:
       db:
         condition: service_healthy
+    restart: 'no'
+    command: >
+      mongosh "mongodb://root:${MONGO_ROOT_PASSWORD:-mongo_root_password}@db:27017/admin"
+      --eval "try { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'db:27017'}]}) } catch (e) { if (!/already initialized/i.test(e.message)) { throw e } }"
+
+  api:
+    build: .
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 4000
@@ -30,5 +74,27 @@ services:
       - '${API_PORT:-4000}:4000'
     command: sh -c "node dist/migrate.js && node dist/server.js"
 
+  # Reverse proxy + automatic HTTPS. Caddy gets a free Let's Encrypt
+  # certificate for API_DOMAIN on its own — no separate hPanel subdomain
+  # setup, no manual certbot, no renewal cron. Requires ports 80/443 to be
+  # free on the host and API_DOMAIN's DNS already pointed at it.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN to the backend's public domain, e.g. api.heymueen.com}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   mongodata:
+  mongokeyfile:
+  caddy_data:
+  caddy_config:

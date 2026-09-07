@@ -112,6 +112,98 @@ returns `{"ok":true}`.
   frontend's origin(s), comma-separated, including the scheme
   (`https://...`).
 
+## Deploying with Docker (a VPS with root access — Hostinger VPS included)
+
+Different path from the section above: this one's for when you have real
+SSH + Docker access, not the Node.js Selector. Everything — MongoDB, the
+API, and HTTPS — runs as containers on the one machine, via
+`docker-compose.yml`; no MongoDB Atlas account needed here, no separate
+subdomain/certificate dance in a hosting panel.
+
+**1. Point DNS at the server first.** Add an A record for your API's
+subdomain (e.g. `api.your-domain.com`) to the VPS's IP, in whatever DNS
+manager controls that domain (Hostinger's hPanel → DNS Zone Editor, if the
+domain is with Hostinger). Caddy (step 5) needs this to already resolve
+before it can get a certificate.
+
+**2. SSH in and get Docker + git**, if the VPS doesn't already have them —
+most Hostinger VPS "Docker" OS templates do; a plain Ubuntu template
+doesn't:
+```bash
+curl -fsSL https://get.docker.com | sh
+apt-get install -y git   # or whatever the distro's package manager is
+```
+
+**3. Clone the repo** (first time), or **pull** (every time after, to
+deploy a new version):
+```bash
+git clone https://github.com/abuqauod/k12.git
+cd k12/server
+# later, to update:
+git pull
+```
+
+**4. Set up `.env`**:
+```bash
+cp .env.example .env
+```
+Edit it — at minimum:
+```
+MONGO_ROOT_PASSWORD=<openssl rand -base64 24>
+JWT_SECRET=<openssl rand -base64 48>
+API_DOMAIN=api.your-domain.com
+CORS_ORIGINS=https://your-frontend-domain.com
+```
+Add the `SMTP_*` variables too if you want invite/reset emails working.
+
+**5. Bring the whole stack up**:
+```bash
+docker compose up -d --build
+```
+This builds the API image, starts MongoDB as a single-node replica set
+(needed for the transactions `withTenant` uses — see the comment in
+`docker-compose.yml` for why that isn't as simple as it sounds), runs the
+index setup automatically on every start, and brings up Caddy, which gets
+itself a free Let's Encrypt certificate for `API_DOMAIN` the moment it can
+reach it — no action needed beyond DNS already pointing here.
+
+**6. Create your platform-admin account and, optionally, demo data**:
+```bash
+docker compose exec api node dist/createAdmin.js you@example.com 'a strong password'
+docker compose exec api node dist/seed.js   # optional: two demo schools
+```
+
+**7. Verify**: `https://api.your-domain.com/health` → `{"ok":true}`, and
+`https://api.your-domain.com/console` → sign in with the account from step 6.
+
+**Updating later** is just steps 3 and 5 again:
+```bash
+git pull
+docker compose up -d --build api
+```
+`--build api` only rebuilds the API image — Mongo and Caddy keep running
+undisturbed, so there's no downtime for the database or the certificate.
+
+### Troubleshooting
+
+- **`security.keyFile is required...`** — you're seeing an older version of
+  this compose file (or hand-edited it); the current one generates a
+  cluster keyfile automatically via the `db-keygen` service. Pull the
+  latest and `docker compose up -d --build`.
+- **Caddy never gets a certificate** — almost always DNS: confirm
+  `dig api.your-domain.com` (or `nslookup`) resolves to this server's IP
+  *before* starting Caddy, and that ports 80 and 443 are actually reachable
+  from the internet (a cloud firewall/security-group rule blocking them is
+  the usual culprit, separate from anything Docker or Caddy does).
+- **Port 80/443 already in use** — something else on the VPS (e.g. Apache
+  from a previous shared-hosting-style setup) is already bound to those
+  ports. Stop it, or this stack can't get a certificate.
+- **Want to lock port 4000 down** so the API is reachable only through
+  Caddy's HTTPS, never directly by IP: remove the `api` service's `ports:`
+  mapping in `docker-compose.yml`, or firewall 4000 from the public
+  internet at the OS/cloud level. Left open by default because it's useful
+  for local debugging (`curl http://<vps-ip>:4000/health`).
+
 ## Isolation
 
 Shared database, `tenantId` on every tenant-scoped document. There is no
