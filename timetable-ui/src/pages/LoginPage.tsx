@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import type { TenantChoice } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
-import { BrandLockup } from '../components/BrandMark'
-import { LanguageToggle } from '../components/LanguageToggle'
+import { AuthShell } from '../components/AuthShell'
 
 /**
  * Matches the two schools `server/src/seed.ts` creates. These only work once
@@ -85,35 +84,9 @@ export function LoginPage() {
     await attempt()
   }
 
-  const highlights = [
-    { title: t('login.marketing.solver'), body: t('login.marketing.solverBody') },
-    { title: t('login.marketing.breaks'), body: t('login.marketing.breaksBody') },
-    { title: t('login.marketing.tiers'), body: t('login.marketing.tiersBody') },
-  ]
-
   return (
-    <div className="login">
-      <aside className="login__aside">
-        <div className="login__brand">
-          <BrandLockup tagline={t('app.tagline')} />
-        </div>
-
-        <ul className="login__points">
-          {highlights.map((item) => (
-            <li key={item.title}>
-              <strong>{item.title}</strong>
-              <span>{item.body}</span>
-            </li>
-          ))}
-        </ul>
-      </aside>
-
-      <main className="login__main">
-        <div className="login__topbar">
-          <LanguageToggle />
-        </div>
-
-        {tenants ? (
+    <AuthShell>
+      {tenants ? (
           <div className="login__form">
             <h2 className="login__title">{t('login.chooseSchool')}</h2>
             <p className="login__subtitle">{t('login.chooseSchoolHint')}</p>
@@ -186,6 +159,10 @@ export function LoginPage() {
               </div>
             </label>
 
+            <Link to="/forgot-password" className="login__forgot">
+              {t('login.forgotPassword')}
+            </Link>
+
             {error && (
               <p className="login__error" role="alert">
                 {error}
@@ -218,7 +195,6 @@ export function LoginPage() {
             </div>
           </form>
         )}
-      </main>
-    </div>
+    </AuthShell>
   )
 }

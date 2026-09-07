@@ -119,6 +119,41 @@ const en = {
   'login.chooseSchool': 'Choose a school',
   'login.chooseSchoolHint': 'This account belongs to more than one school.',
   'login.back': 'Back',
+  'login.forgotPassword': 'Forgot password?',
+
+  'forgot.title': 'Forgot your password?',
+  'forgot.subtitle': "Enter your email and we'll send you a reset link.",
+  'forgot.submit': 'Send reset link',
+  'forgot.sending': 'Sending…',
+  'forgot.success': 'If that email has an account, a reset link is on its way.',
+  'forgot.emailNotConfigured': "Password reset isn't set up on this server yet — ask your administrator.",
+  'forgot.backToLogin': 'Back to sign in',
+
+  'setpw.newPassword': 'New password',
+  'setpw.confirmPassword': 'Confirm password',
+  'setpw.mismatch': "Passwords don't match.",
+  'setpw.tooShort': 'Password must be at least 8 characters.',
+  'setpw.submit': 'Save password',
+  'setpw.saving': 'Saving…',
+  'setpw.goToLogin': 'Go to sign in',
+  'setpw.missingToken': "This link is missing its token — check you copied the whole link from the email.",
+
+  'invite.title': 'Set your password',
+  'invite.subtitle': 'Choose a password to activate your account.',
+  'invite.success': 'Your account is ready. You can sign in now.',
+  'invite.tokenInvalid': "This invite link isn't valid. Ask whoever invited you to send a new one.",
+  'invite.tokenExpired': 'This invite link has expired. Ask whoever invited you to send a new one.',
+  'invite.tokenUsed':
+    'This invite link has already been used. Sign in with the password you set, or use "Forgot password" if you don\'t remember it.',
+
+  'reset.title': 'Reset your password',
+  'reset.subtitle': 'Choose a new password for your account.',
+  'reset.success': 'Your password has been reset. Sign in with your new password.',
+  'reset.tokenInvalid': "This reset link isn't valid. Request a new one.",
+  'reset.tokenExpired': 'This reset link has expired. Request a new one.',
+  'reset.tokenUsed':
+    'This reset link has already been used. Request a new one if you still need to reset your password.',
+
   'login.marketing.solver': 'Conflict-free by construction',
   'login.marketing.solverBody':
     'Room, teacher and cohort clashes are hard constraints — a published timetable has zero.',
@@ -530,6 +565,40 @@ const ar: Record<TranslationKey, string> = {
   'login.chooseSchool': 'اختر مدرسة',
   'login.chooseSchoolHint': 'ينتمي هذا الحساب إلى أكثر من مدرسة.',
   'login.back': 'رجوع',
+  'login.forgotPassword': 'نسيت كلمة المرور؟',
+
+  'forgot.title': 'نسيت كلمة المرور؟',
+  'forgot.subtitle': 'أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين.',
+  'forgot.submit': 'إرسال رابط إعادة التعيين',
+  'forgot.sending': 'جارٍ الإرسال…',
+  'forgot.success': 'إذا كان لهذا البريد حساب، فسيصلك رابط إعادة التعيين قريباً.',
+  'forgot.emailNotConfigured': 'إعادة تعيين كلمة المرور غير مُفعّلة على هذا الخادم بعد — تواصل مع المسؤول.',
+  'forgot.backToLogin': 'العودة لتسجيل الدخول',
+
+  'setpw.newPassword': 'كلمة المرور الجديدة',
+  'setpw.confirmPassword': 'تأكيد كلمة المرور',
+  'setpw.mismatch': 'كلمتا المرور غير متطابقتين.',
+  'setpw.tooShort': 'يجب أن تتكوّن كلمة المرور من 8 أحرف على الأقل.',
+  'setpw.submit': 'حفظ كلمة المرور',
+  'setpw.saving': 'جارٍ الحفظ…',
+  'setpw.goToLogin': 'الذهاب لتسجيل الدخول',
+  'setpw.missingToken': 'هذا الرابط ناقص الرمز — تأكد من نسخ الرابط كاملاً من الرسالة.',
+
+  'invite.title': 'عيّن كلمة المرور',
+  'invite.subtitle': 'اختر كلمة مرور لتفعيل حسابك.',
+  'invite.success': 'حسابك جاهز الآن. يمكنك تسجيل الدخول.',
+  'invite.tokenInvalid': 'رابط الدعوة هذا غير صالح. اطلب من من دعاك إرسال رابط جديد.',
+  'invite.tokenExpired': 'انتهت صلاحية رابط الدعوة هذا. اطلب من من دعاك إرسال رابط جديد.',
+  'invite.tokenUsed':
+    'تم استخدام رابط الدعوة هذا من قبل. سجّل الدخول بكلمة المرور التي عيّنتها، أو استخدم "نسيت كلمة المرور" إذا لم تتذكّرها.',
+
+  'reset.title': 'إعادة تعيين كلمة المرور',
+  'reset.subtitle': 'اختر كلمة مرور جديدة لحسابك.',
+  'reset.success': 'تمت إعادة تعيين كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.',
+  'reset.tokenInvalid': 'رابط إعادة التعيين هذا غير صالح. اطلب رابطاً جديداً.',
+  'reset.tokenExpired': 'انتهت صلاحية رابط إعادة التعيين هذا. اطلب رابطاً جديداً.',
+  'reset.tokenUsed': 'تم استخدام رابط إعادة التعيين هذا من قبل. اطلب رابطاً جديداً إذا كنت لا تزال بحاجة لإعادة التعيين.',
+
   'login.marketing.solver': 'جدول خالٍ من التعارضات',
   'login.marketing.solverBody':
     'تعارضات القاعات والمعلمين والصفوف قيود صارمة — الجدول المعتمد لا يحتوي أياً منها.',

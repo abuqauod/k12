@@ -112,3 +112,42 @@ export async function logout(refreshToken: string): Promise<void> {
     // Nothing to do — the refresh token will simply age out server-side.
   }
 }
+
+export type ActionResult = { kind: 'ok' } | { kind: 'error'; error: string }
+
+/** The invite/reset link a school's owner or a forgotten-password email points at. */
+export async function acceptInvite(token: string, password: string): Promise<ActionResult> {
+  if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
+  try {
+    const response = await post('/auth/accept-invite', { token, password })
+    if (response.ok) return { kind: 'ok' }
+    const body = (await response.json().catch(() => ({}))) as { error?: string }
+    return { kind: 'error', error: body.error ?? `HTTP_${response.status}` }
+  } catch (error) {
+    return { kind: 'error', error: describeNetworkError(error) }
+  }
+}
+
+export async function forgotPassword(email: string): Promise<ActionResult> {
+  if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
+  try {
+    const response = await post('/auth/forgot-password', { email })
+    if (response.ok) return { kind: 'ok' }
+    const body = (await response.json().catch(() => ({}))) as { error?: string }
+    return { kind: 'error', error: body.error ?? `HTTP_${response.status}` }
+  } catch (error) {
+    return { kind: 'error', error: describeNetworkError(error) }
+  }
+}
+
+export async function resetPassword(token: string, password: string): Promise<ActionResult> {
+  if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
+  try {
+    const response = await post('/auth/reset-password', { token, password })
+    if (response.ok) return { kind: 'ok' }
+    const body = (await response.json().catch(() => ({}))) as { error?: string }
+    return { kind: 'error', error: body.error ?? `HTTP_${response.status}` }
+  } catch (error) {
+    return { kind: 'error', error: describeNetworkError(error) }
+  }
+}
