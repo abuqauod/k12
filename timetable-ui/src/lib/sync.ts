@@ -17,6 +17,9 @@ import type { Problem } from '../domain/types'
  *
  * A 409 is a real outcome, not an error: someone else saved first. The caller
  * decides whether to keep local work or take the server copy.
+ *
+ * Authentication is the signed-in user's session, not a setting here — see
+ * `getToken` on every call below, which is `AuthContext`'s `getAccessToken`.
  */
 
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'conflict' | 'error' | 'unconfigured'
@@ -24,9 +27,11 @@ export type SyncState = 'idle' | 'syncing' | 'synced' | 'conflict' | 'error' | '
 export interface SyncSettings {
   baseUrl: string
   schoolId: string
-  /** Sent as `Authorization: Bearer …` when present. */
-  token: string
 }
+
+/** A token getter: no-arg returns the cached token (refreshing if there is
+ * none yet); `force: true` skips the cache — used after a 401. */
+export type TokenGetter = (force?: boolean) => Promise<string | null>
 
 export interface SyncStatus {
   state: SyncState
@@ -53,7 +58,10 @@ export interface PushResult {
   message?: string
 }
 
-export const EMPTY_SYNC_SETTINGS: SyncSettings = { baseUrl: '', schoolId: 'default', token: '' }
+/** The backend this build ships pointed at by default; still editable in Settings. */
+export const DEFAULT_BASE_URL = 'http://179.198.205.174:4000'
+
+export const EMPTY_SYNC_SETTINGS: SyncSettings = { baseUrl: DEFAULT_BASE_URL, schoolId: 'default' }
 
 const SETTINGS_KEY = 'timetable.sync'
 
@@ -63,9 +71,8 @@ export function loadSyncSettings(): SyncSettings {
     if (!raw) return { ...EMPTY_SYNC_SETTINGS }
     const parsed = JSON.parse(raw) as Partial<SyncSettings>
     return {
-      baseUrl: parsed.baseUrl ?? '',
+      baseUrl: parsed.baseUrl ?? DEFAULT_BASE_URL,
       schoolId: parsed.schoolId || 'default',
-      token: parsed.token ?? '',
     }
   } catch {
     return { ...EMPTY_SYNC_SETTINGS }
@@ -89,12 +96,6 @@ function endpoint(settings: SyncSettings): string {
   return `${base}/datasets/${encodeURIComponent(settings.schoolId || 'default')}`
 }
 
-function headers(settings: SyncSettings): HeadersInit {
-  const out: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (settings.token.trim()) out.Authorization = `Bearer ${settings.token.trim()}`
-  return out
-}
-
 /** Aborts rather than hanging when the server is unreachable. */
 async function request(url: string, init: RequestInit, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController()
@@ -106,14 +107,33 @@ async function request(url: string, init: RequestInit, timeoutMs = 15000): Promi
   }
 }
 
-export async function pullDataset(settings: SyncSettings): Promise<PullResult> {
+/**
+ * Attaches the current session token and retries once, with a forced refresh,
+ * if the server says the token is no good — covers the access token simply
+ * having expired mid-session (it's short-lived by design).
+ */
+async function authorizedRequest(
+  url: string,
+  init: RequestInit,
+  getToken: TokenGetter,
+): Promise<Response> {
+  const withAuth = async (token: string | null) =>
+    request(url, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    })
+
+  const first = await withAuth(await getToken())
+  if (first.status !== 401) return first
+  return withAuth(await getToken(true))
+}
+
+export async function pullDataset(settings: SyncSettings, getToken: TokenGetter): Promise<PullResult> {
   if (!isConfigured(settings)) return { kind: 'error', message: 'NOT_CONFIGURED' }
   try {
-    const response = await request(endpoint(settings), {
-      method: 'GET',
-      headers: headers(settings),
-    })
+    const response = await authorizedRequest(endpoint(settings), { method: 'GET' }, getToken)
     if (response.status === 404) return { kind: 'empty' }
+    if (response.status === 401) return { kind: 'error', message: 'SESSION_EXPIRED' }
     if (!response.ok) return { kind: 'error', message: `HTTP ${response.status}` }
     const body = (await response.json()) as {
       revision: number
@@ -136,14 +156,16 @@ export async function pushDataset(
   settings: SyncSettings,
   problem: Problem,
   baseRevision: number,
+  getToken: TokenGetter,
 ): Promise<PushResult> {
   if (!isConfigured(settings)) return { kind: 'error', message: 'NOT_CONFIGURED' }
   try {
-    const response = await request(endpoint(settings), {
-      method: 'PUT',
-      headers: headers(settings),
-      body: JSON.stringify({ baseRevision, problem }),
-    })
+    const response = await authorizedRequest(
+      endpoint(settings),
+      { method: 'PUT', body: JSON.stringify({ baseRevision, problem }) },
+      getToken,
+    )
+    if (response.status === 401) return { kind: 'error', message: 'SESSION_EXPIRED' }
     if (response.status === 409) {
       const body = (await response.json()) as {
         revision: number

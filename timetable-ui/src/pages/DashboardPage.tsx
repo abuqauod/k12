@@ -31,7 +31,7 @@ export function DashboardPage() {
     { key: 'dash.kpi.rooms', value: problem.rooms.length },
   ] as const
 
-  const displayName = user ? (lang === 'ar' ? user.nameAr : user.name) : ''
+  const displayName = user ? (lang === 'ar' ? user.displayNameAr ?? user.displayName : user.displayName) : ''
 
   return (
     <div className="page">

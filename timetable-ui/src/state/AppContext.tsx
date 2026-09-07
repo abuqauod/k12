@@ -19,6 +19,7 @@ import {
   saveSyncSettings,
 } from '../lib/sync'
 import type { SyncSettings, SyncStatus } from '../lib/sync'
+import { useAuth } from '../auth/AuthContext'
 
 export type Theme = 'auto' | 'light' | 'dark'
 
@@ -84,6 +85,9 @@ function readTheme(): Theme {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  // Sync authenticates as the signed-in user — no separate token setting.
+  const { getAccessToken } = useAuth()
+
   // Restore the saved dataset; only fall back to the sample on a fresh install.
   const restored = useRef(loadDataset()).current
   const [problem, setProblemState] = useState<Problem>(() => restored?.problem ?? sampleProblem())
@@ -245,7 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
     setSyncStatus((c) => ({ ...c, state: 'syncing', message: null }))
-    const result = await pushDataset(syncSettings, problem, revision)
+    const result = await pushDataset(syncSettings, problem, revision, getAccessToken)
     if (result.kind === 'pushed') {
       setSyncStatus({
         state: 'synced',
@@ -263,7 +267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setSyncStatus((c) => ({ ...c, state: 'error', message: result.message ?? 'UNKNOWN' }))
     }
-  }, [syncSettings, problem, revision])
+  }, [syncSettings, problem, revision, getAccessToken])
 
   /** Take the server copy, discarding local edits. */
   const pullFromServer = useCallback(async () => {
@@ -272,7 +276,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
     setSyncStatus((c) => ({ ...c, state: 'syncing', message: null }))
-    const result = await pullDataset(syncSettings)
+    const result = await pullDataset(syncSettings, getAccessToken)
     if (result.kind === 'pulled' && result.problem) {
       setProblemState(result.problem)
       setRevision(result.revision ?? 1)
@@ -287,7 +291,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setSyncStatus((c) => ({ ...c, state: 'error', message: result.message ?? 'UNKNOWN' }))
     }
-  }, [syncSettings])
+  }, [syncSettings, getAccessToken])
 
   const value = useMemo<AppValue>(
     () => ({

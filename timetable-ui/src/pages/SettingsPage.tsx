@@ -126,7 +126,7 @@ function AccountTab() {
         <section className="card">
           <h2 className="card__title">{t('settings.account')}</h2>
           <div className="stat-row">
-            <span>{user ? (lang === 'ar' ? user.nameAr : user.name) : ''}</span>
+            <span>{user ? (lang === 'ar' ? user.displayNameAr ?? user.displayName : user.displayName) : ''}</span>
             <b className="mono">{user?.email}</b>
           </div>
           <div className="stat-row">
@@ -241,19 +241,9 @@ function SyncCard() {
             }
           />
         </label>
-        <label className="field">
-          <span>{t('sync.token')}</span>
-          <input
-            className="input"
-            type="password"
-            autoComplete="off"
-            value={syncSettings.token}
-            onChange={(event) => setSyncSettings({ ...syncSettings, token: event.target.value })}
-          />
-        </label>
       </div>
       <p className="card__hint" style={{ margin: '10px 0 0' }}>
-        {t('sync.tokenHint')}
+        {t('sync.usingSession')}
       </p>
     </section>
   )
