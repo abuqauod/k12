@@ -18,8 +18,11 @@ import type { Problem } from '../domain/types'
  * A 409 is a real outcome, not an error: someone else saved first. The caller
  * decides whether to keep local work or take the server copy.
  *
- * Authentication is the signed-in user's session, not a setting here — see
- * `getToken` on every call below, which is `AuthContext`'s `getAccessToken`.
+ * Authentication is normally the signed-in user's session — see `getToken`
+ * on every call below, which is `AuthContext`'s `getAccessToken`. Setting
+ * `apiKey` switches every request to `X-Api-Key` instead, for syncing
+ * without anyone logged in (a script, a scheduled task) — see
+ * `server/src/apikeys/` for how a key is created and what it can do.
  */
 
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'conflict' | 'error' | 'unconfigured'
@@ -27,6 +30,8 @@ export type SyncState = 'idle' | 'syncing' | 'synced' | 'conflict' | 'error' | '
 export interface SyncSettings {
   baseUrl: string
   schoolId: string
+  /** When set, used instead of the signed-in user's session for every request. */
+  apiKey?: string
 }
 
 /** A token getter: no-arg returns the cached token (refreshing if there is
@@ -73,6 +78,7 @@ export function loadSyncSettings(): SyncSettings {
     return {
       baseUrl: parsed.baseUrl ?? DEFAULT_BASE_URL,
       schoolId: parsed.schoolId || 'default',
+      apiKey: parsed.apiKey || undefined,
     }
   } catch {
     return { ...EMPTY_SYNC_SETTINGS }
@@ -108,15 +114,26 @@ async function request(url: string, init: RequestInit, timeoutMs = 15000): Promi
 }
 
 /**
- * Attaches the current session token and retries once, with a forced refresh,
- * if the server says the token is no good — covers the access token simply
- * having expired mid-session (it's short-lived by design).
+ * With `settings.apiKey` set, every request goes out with `X-Api-Key`
+ * instead — no session, no refresh, nothing to retry (a key is either valid
+ * or it isn't). Otherwise, attaches the current session token and retries
+ * once, with a forced refresh, if the server says the token is no good —
+ * covers the access token simply having expired mid-session (it's
+ * short-lived by design).
  */
 async function authorizedRequest(
   url: string,
   init: RequestInit,
   getToken: TokenGetter,
+  settings: SyncSettings,
 ): Promise<Response> {
+  if (settings.apiKey) {
+    return request(url, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.apiKey },
+    })
+  }
+
   const withAuth = async (token: string | null) =>
     request(url, {
       ...init,
@@ -131,9 +148,11 @@ async function authorizedRequest(
 export async function pullDataset(settings: SyncSettings, getToken: TokenGetter): Promise<PullResult> {
   if (!isConfigured(settings)) return { kind: 'error', message: 'NOT_CONFIGURED' }
   try {
-    const response = await authorizedRequest(endpoint(settings), { method: 'GET' }, getToken)
+    const response = await authorizedRequest(endpoint(settings), { method: 'GET' }, getToken, settings)
     if (response.status === 404) return { kind: 'empty' }
-    if (response.status === 401) return { kind: 'error', message: 'SESSION_EXPIRED' }
+    if (response.status === 401) {
+      return { kind: 'error', message: settings.apiKey ? 'API_KEY_INVALID' : 'SESSION_EXPIRED' }
+    }
     if (!response.ok) return { kind: 'error', message: `HTTP ${response.status}` }
     const body = (await response.json()) as {
       revision: number
@@ -164,8 +183,11 @@ export async function pushDataset(
       endpoint(settings),
       { method: 'PUT', body: JSON.stringify({ baseRevision, problem }) },
       getToken,
+      settings,
     )
-    if (response.status === 401) return { kind: 'error', message: 'SESSION_EXPIRED' }
+    if (response.status === 401) {
+      return { kind: 'error', message: settings.apiKey ? 'API_KEY_INVALID' : 'SESSION_EXPIRED' }
+    }
     if (response.status === 409) {
       const body = (await response.json()) as {
         revision: number
