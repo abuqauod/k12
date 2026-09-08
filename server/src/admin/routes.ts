@@ -5,6 +5,8 @@ import { withoutTenant } from '../db.js'
 import { authenticate, requirePlatformAdmin } from '../auth/guard.js'
 import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from '../memberships/invite.js'
+import { changeMemberRole, removeMember } from '../memberships/service.js'
+import { createApiKey, listApiKeys, revokeApiKey } from '../apikeys/service.js'
 
 /**
  * The vendor's own console: onboarding a school, recording an offline
@@ -45,6 +47,13 @@ const inviteBody = z.object({
   email: z.string().email(),
   role: z.enum(['owner', 'admin', 'scheduler', 'viewer']),
   displayName: z.string().min(1).max(200).optional(),
+})
+
+const roleBody = z.object({ role: z.enum(['owner', 'admin', 'scheduler', 'viewer']) })
+
+const createKeyBody = z.object({
+  name: z.string().min(1).max(100),
+  role: z.enum(['admin', 'scheduler', 'viewer']),
 })
 
 export function registerAdminRoutes(app: FastifyInstance): void {
@@ -211,5 +220,54 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       request.log.error(error, 'failed to send invite email')
       return reply.code(502).send({ error: 'EMAIL_SEND_FAILED' })
     }
+  })
+
+  // ------------------------------------------------------------- members --
+  // A platform admin isn't held to the tenant self-service "only an owner
+  // can grant owner" rule below — they're already fully trusted with this
+  // school's data, so there's no extra permission to protect here beyond
+  // the last-owner safety guard every path shares (see memberships/service.ts).
+
+  app.patch('/admin/tenants/:id/members/:userId', guarded, async (request, reply) => {
+    const { id, userId } = request.params as { id: string; userId: string }
+    const parsed = roleBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+
+    const result = await changeMemberRole(id, userId, parsed.data.role)
+    if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_DEMOTE_LAST_OWNER' })
+    return reply.send({ ok: true })
+  })
+
+  app.delete('/admin/tenants/:id/members/:userId', guarded, async (request, reply) => {
+    const { id, userId } = request.params as { id: string; userId: string }
+    const result = await removeMember(id, userId)
+    if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_REMOVE_LAST_OWNER' })
+    return reply.code(204).send()
+  })
+
+  // ------------------------------------------------------------ api keys --
+
+  app.get('/admin/tenants/:id/api-keys', guarded, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const keys = await listApiKeys(id)
+    return reply.send({ keys })
+  })
+
+  app.post('/admin/tenants/:id/api-keys', guarded, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = createKeyBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+
+    const created = await createApiKey(id, parsed.data.name, parsed.data.role, request.auth!.sub)
+    return reply.code(201).send(created)
+  })
+
+  app.delete('/admin/tenants/:id/api-keys/:keyId', guarded, async (request, reply) => {
+    const { id, keyId } = request.params as { id: string; keyId: string }
+    const found = await revokeApiKey(id, keyId)
+    if (!found) return reply.code(404).send({ error: 'NOT_FOUND' })
+    return reply.code(204).send()
   })
 }

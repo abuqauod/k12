@@ -157,6 +157,10 @@
       <span class="back" id="back-link">&larr; All schools</span>
       <div class="card">
         <h2 id="detail-name"></h2>
+        <p class="muted">
+          School ID: <code id="detail-id"></code>
+          <button type="button" id="copy-id-btn" style="padding:2px 8px; font-size:11px; margin-left:6px;">Copy</button>
+        </p>
         <div id="detail-msg"></div>
         <div class="row">
           <label>Status
@@ -179,7 +183,7 @@
       <div class="card">
         <h2>Members</h2>
         <table>
-          <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Active</th></tr></thead>
+          <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Active</th><th></th></tr></thead>
           <tbody id="members-body"></tbody>
         </table>
       </div>
@@ -199,6 +203,27 @@
             </select>
           </label>
           <button id="invite-btn">Invite</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>API keys</h2>
+        <p class="muted">Machine-to-machine access for this school's sync — pasted into that school's Settings &rarr; Server sync instead of signing in.</p>
+        <div id="key-msg"></div>
+        <table>
+          <thead><tr><th>Name</th><th>Key</th><th>Role</th><th></th></tr></thead>
+          <tbody id="keys-body"></tbody>
+        </table>
+        <div class="row" style="margin-top:10px;">
+          <label>Name <input id="k-name" placeholder="Nightly backup script" /></label>
+          <label>Role
+            <select id="k-role">
+              <option value="admin">admin</option>
+              <option value="scheduler" selected>scheduler</option>
+              <option value="viewer">viewer</option>
+            </select>
+          </label>
+          <button id="create-key-btn">New key</button>
         </div>
       </div>
     </div>
@@ -373,31 +398,124 @@
   });
 
   // --- tenant detail ---
+  var ROLES = ['owner', 'admin', 'scheduler', 'viewer'];
+
   function openTenant(id) {
     currentTenantId = id;
     api('/admin/tenants/' + id).then(function (t) {
       el('view-list').hidden = true;
       el('view-detail').hidden = false;
       el('detail-name').textContent = t.name;
+      el('detail-id').textContent = t.id;
       el('d-status').value = t.status;
       el('d-plan').value = t.plan;
       el('d-seats').value = t.seats;
       el('d-valid-until').value = t.validUntil || '';
       el('d-grace-days').value = t.graceDays;
+      renderMembers(t.members);
+    }).catch(function (e) { alert('Failed to load school: ' + e.message); });
+    loadKeys();
+  }
 
-      var body = el('members-body');
+  function renderMembers(members) {
+    var body = el('members-body');
+    body.innerHTML = '';
+    members.forEach(function (m) {
+      var tr = document.createElement('tr');
+      var roleSelect = document.createElement('select');
+      ROLES.forEach(function (r) {
+        var opt = document.createElement('option');
+        opt.value = r; opt.textContent = r;
+        if (r === m.role) opt.selected = true;
+        roleSelect.appendChild(opt);
+      });
+      roleSelect.addEventListener('change', function () {
+        var msg = el('detail-msg');
+        api('/admin/tenants/' + currentTenantId + '/members/' + m.userId, {
+          method: 'PATCH',
+          body: JSON.stringify({ role: roleSelect.value }),
+        }).then(function () {
+          showMsg(msg, 'Role updated.', 'success');
+        }).catch(function (e) {
+          roleSelect.value = m.role;
+          showMsg(msg, e.message, 'error');
+        });
+      });
+
+      var removeBtn = document.createElement('button');
+      removeBtn.className = 'danger';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', function () {
+        if (!confirm('Remove ' + (m.email || 'this member') + ' from this school?')) return;
+        var msg = el('detail-msg');
+        api('/admin/tenants/' + currentTenantId + '/members/' + m.userId, { method: 'DELETE' })
+          .then(function () { openTenant(currentTenantId); })
+          .catch(function (e) { showMsg(msg, e.message, 'error'); });
+      });
+
+      var tdEmail = document.createElement('td'); tdEmail.textContent = m.email || '—';
+      var tdName = document.createElement('td'); tdName.textContent = m.displayName || '—';
+      var tdRole = document.createElement('td'); tdRole.appendChild(roleSelect);
+      var tdActive = document.createElement('td'); tdActive.textContent = m.active ? 'yes' : 'invited — not accepted yet';
+      var tdActions = document.createElement('td'); tdActions.appendChild(removeBtn);
+      tr.appendChild(tdEmail); tr.appendChild(tdName); tr.appendChild(tdRole); tr.appendChild(tdActive); tr.appendChild(tdActions);
+      body.appendChild(tr);
+    });
+  }
+
+  el('copy-id-btn').addEventListener('click', function () {
+    if (!currentTenantId) return;
+    navigator.clipboard.writeText(currentTenantId).catch(function () {});
+    var btn = el('copy-id-btn');
+    var original = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(function () { btn.textContent = original; }, 1200);
+  });
+
+  // --- api keys ---
+  function loadKeys() {
+    api('/admin/tenants/' + currentTenantId + '/api-keys').then(function (data) {
+      var body = el('keys-body');
       body.innerHTML = '';
-      t.members.forEach(function (m) {
+      data.keys.forEach(function (k) {
         var tr = document.createElement('tr');
+        var actionCell;
+        if (k.revoked) {
+          actionCell = '<span class="muted">revoked</span>';
+        } else {
+          actionCell = '<button class="danger" data-id="' + k.id + '">Revoke</button>';
+        }
         tr.innerHTML =
-          '<td>' + escapeHtml(m.email || '—') + '</td>' +
-          '<td>' + escapeHtml(m.displayName || '—') + '</td>' +
-          '<td>' + escapeHtml(m.role) + '</td>' +
-          '<td>' + (m.active ? 'yes' : 'invited — not accepted yet') + '</td>';
+          '<td>' + escapeHtml(k.name) + '</td>' +
+          '<td><code>' + escapeHtml(k.preview) + '</code></td>' +
+          '<td>' + escapeHtml(k.role) + '</td>' +
+          '<td>' + actionCell + '</td>';
         body.appendChild(tr);
       });
-    }).catch(function (e) { alert('Failed to load school: ' + e.message); });
+      body.querySelectorAll('button.danger').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (!confirm('Revoke this key? Anything using it will stop syncing immediately.')) return;
+          api('/admin/tenants/' + currentTenantId + '/api-keys/' + btn.getAttribute('data-id'), { method: 'DELETE' })
+            .then(loadKeys)
+            .catch(function (e) { showMsg(el('key-msg'), e.message, 'error'); });
+        });
+      });
+    }).catch(function (e) { showMsg(el('key-msg'), e.message, 'error'); });
   }
+
+  el('create-key-btn').addEventListener('click', function () {
+    var msg = el('key-msg');
+    var name = el('k-name').value.trim();
+    if (!name) return;
+    api('/admin/tenants/' + currentTenantId + '/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name: name, role: el('k-role').value }),
+    }).then(function (result) {
+      showMsg(msg, 'Created — copy this now, it will not be shown again: ' + result.key, 'success');
+      el('k-name').value = '';
+      loadKeys();
+    }).catch(function (e) { showMsg(msg, e.message, 'error'); });
+  });
 
   el('back-link').addEventListener('click', function () {
     el('view-detail').hidden = true;

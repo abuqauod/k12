@@ -26,6 +26,8 @@ function errorKey(code: string): TranslationKey {
       return 'login.errorInactiveTenant'
     case 'NOT_CONFIGURED':
       return 'login.errorNotConfigured'
+    case 'TOO_MANY_ATTEMPTS':
+      return 'login.errorTooManyAttempts'
     case 'TIMEOUT':
     case 'OFFLINE':
     case 'NETWORK_ERROR':

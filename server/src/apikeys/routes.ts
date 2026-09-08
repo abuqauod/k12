@@ -1,9 +1,7 @@
-import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { withTenant } from '../db.js'
 import { authenticate, requireRole } from '../auth/guard.js'
-import { generateApiKey } from './hash.js'
+import { createApiKey, listApiKeys, revokeApiKey } from './service.js'
 
 /**
  * Machine-to-machine access for one school: a script pushing/pulling its
@@ -11,6 +9,11 @@ import { generateApiKey } from './hash.js'
  * request — see `authenticate` in auth/guard.ts for the other half of this
  * (an `X-Api-Key` header resolves straight to `request.auth`, same shape a
  * user's JWT produces, so dataset routes don't need to know the difference).
+ *
+ * This is the self-service surface — a tenant's own admin managing their
+ * school's keys. The platform-admin equivalent (`admin/routes.ts`) calls
+ * the same `service.ts` functions with a tenant id from the URL instead of
+ * the caller's own JWT.
  */
 
 const createBody = z.object({
@@ -22,19 +25,8 @@ export function registerApiKeyRoutes(app: FastifyInstance): void {
   const guarded = { preHandler: [authenticate, requireRole('admin')] }
 
   app.get('/api-keys', guarded, async (request, reply) => {
-    const tenantId = request.auth!.tenantId!
-    const keys = await withTenant(tenantId, (ctx) => ctx.apiKeys.find().toArray())
-    return reply.send({
-      keys: keys.map((k) => ({
-        id: k._id,
-        name: k.name,
-        preview: k.keyPreview,
-        role: k.role,
-        createdAt: k.createdAt.toISOString(),
-        lastUsedAt: k.lastUsedAt?.toISOString() ?? null,
-        revoked: k.revokedAt !== null,
-      })),
-    })
+    const keys = await listApiKeys(request.auth!.tenantId!)
+    return reply.send({ keys })
   })
 
   /** The raw key is returned exactly once, here — only its hash is ever stored. */
@@ -42,32 +34,19 @@ export function registerApiKeyRoutes(app: FastifyInstance): void {
     const parsed = createBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
-    const tenantId = request.auth!.tenantId!
-    const generated = generateApiKey()
-    const id = randomUUID()
-    await withTenant(tenantId, (ctx) =>
-      ctx.apiKeys.insertOne({
-        _id: id,
-        name: parsed.data.name,
-        keyHash: generated.hash,
-        keyPreview: generated.preview,
-        role: parsed.data.role,
-        createdAt: new Date(),
-        createdBy: request.auth!.sub,
-        lastUsedAt: null,
-        revokedAt: null,
-      }),
+    const created = await createApiKey(
+      request.auth!.tenantId!,
+      parsed.data.name,
+      parsed.data.role,
+      request.auth!.sub,
     )
-    return reply.code(201).send({ id, key: generated.key, preview: generated.preview })
+    return reply.code(201).send(created)
   })
 
   app.delete('/api-keys/:id', guarded, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const tenantId = request.auth!.tenantId!
-    const result = await withTenant(tenantId, (ctx) =>
-      ctx.apiKeys.findOneAndUpdate({ _id: id }, { $set: { revokedAt: new Date() } }),
-    )
-    if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
+    const found = await revokeApiKey(request.auth!.tenantId!, id)
+    if (!found) return reply.code(404).send({ error: 'NOT_FOUND' })
     return reply.code(204).send()
   })
 }

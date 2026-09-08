@@ -1,15 +1,18 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { withoutTenant, withTenant } from '../db.js'
+import { withoutTenant } from '../db.js'
 import { authenticate, requireRole } from '../auth/guard.js'
 import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from './invite.js'
+import { changeMemberRole, listMembers, removeMember } from './service.js'
 
 /**
  * A school managing its own staff — distinct from `/admin/*`, which is the
  * vendor operating across schools. Everything here is scoped to the caller's
  * own `tenantId` (from the JWT), never a parameter, so one school's admin
- * can't reach into another's roster by changing an id in the URL.
+ * can't reach into another's roster by changing an id in the URL. The
+ * platform-admin equivalent (`admin/routes.ts`) calls the same
+ * `service.ts` functions with a tenant id from the URL instead.
  */
 
 const inviteBody = z.object({
@@ -24,25 +27,8 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
   const guarded = { preHandler: [authenticate, requireRole('admin')] }
 
   app.get('/memberships', guarded, async (request, reply) => {
-    const tenantId = request.auth!.tenantId!
-    const memberships = await withTenant(tenantId, (ctx) => ctx.memberships.find().toArray())
-    const users = await withoutTenant((db) =>
-      db.users.find({ _id: { $in: memberships.map((m) => m.userId) } }).toArray(),
-    )
-    const byId = new Map(users.map((u) => [u._id, u]))
-
-    return reply.send({
-      members: memberships.map((m) => {
-        const user = byId.get(m.userId)
-        return {
-          userId: m.userId,
-          role: m.role,
-          email: user?.email ?? null,
-          displayName: user?.displayName ?? null,
-          active: user?.active ?? false,
-        }
-      }),
-    })
+    const members = await listMembers(request.auth!.tenantId!)
+    return reply.send({ members })
   })
 
   app.post('/memberships/invite', guarded, async (request, reply) => {
@@ -87,59 +73,17 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
       return reply.code(403).send({ error: 'FORBIDDEN', required: 'owner' })
     }
 
-    const tenantId = request.auth!.tenantId!
-    const result = await withTenant(tenantId, async (ctx) => {
-      const target = await ctx.memberships.findOne({ userId })
-      if (!target) return { kind: 'not_found' as const }
-
-      if (target.role === 'owner' && parsed.data.role !== 'owner') {
-        const owners = await ctx.memberships.find({ role: 'owner' }).toArray()
-        if (owners.length <= 1) return { kind: 'last_owner' as const }
-      }
-
-      await ctx.memberships.findOneAndUpdate({ userId }, { $set: { role: parsed.data.role } })
-      return { kind: 'ok' as const }
-    })
-
-    if (result.kind === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
-    if (result.kind === 'last_owner') {
-      return reply.code(409).send({ error: 'CANNOT_DEMOTE_LAST_OWNER' })
-    }
+    const result = await changeMemberRole(request.auth!.tenantId!, userId, parsed.data.role)
+    if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_DEMOTE_LAST_OWNER' })
     return reply.send({ ok: true })
   })
 
   app.delete('/memberships/:userId', guarded, async (request, reply) => {
     const { userId } = request.params as { userId: string }
-    const tenantId = request.auth!.tenantId!
-
-    const result = await withTenant(tenantId, async (ctx) => {
-      const target = await ctx.memberships.findOne({ userId })
-      if (!target) return { kind: 'not_found' as const }
-
-      if (target.role === 'owner') {
-        const owners = await ctx.memberships.find({ role: 'owner' }).toArray()
-        if (owners.length <= 1) return { kind: 'last_owner' as const }
-      }
-
-      return { kind: 'ok' as const }
-    })
-
-    if (result.kind === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
-    if (result.kind === 'last_owner') {
-      return reply.code(409).send({ error: 'CANNOT_REMOVE_LAST_OWNER' })
-    }
-
-    // The actual delete happens outside the transaction above — TenantScope
-    // has no delete method (deliberately: it's the one write dataset/audit
-    // code never needs, so it was never added). Revoking sessions is
-    // best-effort, done in the same pass since both are unscoped writes.
-    await withoutTenant(async (db) => {
-      await db.memberships.deleteOne({ _id: `${tenantId}:${userId}` })
-      await db.refreshTokens.updateMany(
-        { userId, tenantId, revokedAt: null },
-        { $set: { revokedAt: new Date() } },
-      )
-    })
+    const result = await removeMember(request.auth!.tenantId!, userId)
+    if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_REMOVE_LAST_OWNER' })
     return reply.code(204).send()
   })
 }
