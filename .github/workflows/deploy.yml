@@ -1,0 +1,60 @@
+name: Deploy to heymueen.com
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ui: ${{ steps.filter.outputs.ui }}
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ui:
+              - 'timetable-ui/**'
+            server:
+              - 'server/**'
+
+  deploy-ui:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ui == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy timetable-ui
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/k12/timetable-ui
+            git fetch origin
+            git reset --hard origin/main
+            docker compose build --no-cache timetable-ui
+            docker compose up -d timetable-ui
+            docker image prune -f
+
+  deploy-server:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/k12/server
+            git fetch origin
+            git reset --hard origin/main
+            docker compose build --no-cache server
+            docker compose up -d server
+            docker image prune -f
