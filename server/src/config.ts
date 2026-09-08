@@ -38,6 +38,16 @@ export const config = {
   /** Largest accepted dataset document. A big school is well under this. */
   maxBodyBytes: Number(process.env.MAX_BODY_BYTES ?? 8 * 1024 * 1024),
   /**
+   * Set this when the app is reachable under a path, not its own
+   * subdomain — e.g. Hostinger's Node.js Selector mounting the app at
+   * `heymueen.com/api` rather than `api.heymueen.com`. Passenger (and
+   * similar) forward the full path *including* that prefix to the app; it
+   * doesn't get stripped, so every route needs to expect it. Leave unset
+   * for a dedicated subdomain or bare host:port, where there's no prefix
+   * to strip in the first place.
+   */
+  routePrefix: (process.env.ROUTE_PREFIX ?? '').replace(/\/+$/, ''),
+  /**
    * Where invite and password-reset links point — the frontend, not this API.
    * Defaults to the first configured CORS origin, since that's almost always
    * the intended frontend anyway.
