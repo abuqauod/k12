@@ -57,6 +57,12 @@ Node.js option at all). cPanel: **Setup Node.js App**.
 - Application startup file: `dist/server.js`
 - Node.js version: 20 LTS or newer (the app needs Node ≥ 20.6)
 - Application mode: Production
+- **Application URL** — this is the one choice that changes a later step:
+  giving it a **dedicated subdomain** (`api.your-domain.com`) is simplest,
+  and needs nothing extra. Pointing it at a **path on your main domain**
+  instead (`your-domain.com/api`) works too, but the panel's proxy forwards
+  that path *including* the `/api` prefix rather than stripping it — set
+  `ROUTE_PREFIX=/api` in step 5 to match, or every route 404s.
 
 **5. Set environment variables.** Either in the panel's "Environment
 Variables" section for the app, or in a `.env` file next to `package.json`
@@ -111,6 +117,12 @@ returns `{"ok":true}`.
 - **CORS errors in the browser** — `CORS_ORIGINS` must exactly match the
   frontend's origin(s), comma-separated, including the scheme
   (`https://...`).
+- **`{"message":"Route ... not found"}` at every path** — that JSON shape is
+  this app's own 404, not a hosting-panel error page, so the request *is*
+  reaching the app; it's just at a path it doesn't recognize. This is what
+  it looks like when the app is mounted under a subpath (`your-domain.com/api`)
+  without `ROUTE_PREFIX` set to match — see the note on `ROUTE_PREFIX` in
+  `.env.example` and step 4 above.
 
 ## Deploying with Docker (a VPS with root access — Hostinger VPS included)
 

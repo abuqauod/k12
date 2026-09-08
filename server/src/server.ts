@@ -44,29 +44,38 @@ export function buildServer() {
     }
   })
 
-  app.get('/health', async () => {
-    await ping()
-    return { ok: true }
-  })
+  // Wrapped in one plugin so config.routePrefix applies to every route at
+  // once — see the comment on routePrefix in config.ts for why this exists
+  // (a host that mounts the app at a path like heymueen.com/api rather than
+  // a subdomain, and forwards that path prefix rather than stripping it).
+  app.register(
+    async (instance) => {
+      instance.get('/health', async () => {
+        await ping()
+        return { ok: true }
+      })
 
-  // The platform-admin console: a plain static page, no build step, no
-  // shared code with the school-facing frontend — it's just another client
-  // of the already-secured /admin/* API. Serving it from this same process
-  // avoids needing a second hosting slot/subdomain/certificate for
-  // something only the vendor ever loads.
-  const here = dirname(fileURLToPath(import.meta.url))
-  app.register(staticFiles, {
-    root: join(here, '..', 'public', 'console'),
-    prefix: '/console/',
-    index: ['index.html'],
-  })
+      // The platform-admin console: a plain static page, no build step, no
+      // shared code with the school-facing frontend — it's just another
+      // client of the already-secured /admin/* API. Serving it from this
+      // same process avoids needing a second hosting slot/subdomain/
+      // certificate for something only the vendor ever loads.
+      const here = dirname(fileURLToPath(import.meta.url))
+      instance.register(staticFiles, {
+        root: join(here, '..', 'public', 'console'),
+        prefix: '/console/',
+        index: ['index.html'],
+      })
 
-  registerAuthRoutes(app)
-  registerDatasetRoutes(app)
-  registerAdminRoutes(app)
-  registerMembershipRoutes(app)
-  registerApiKeyRoutes(app)
-  registerAuditLogRoutes(app)
+      registerAuthRoutes(instance)
+      registerDatasetRoutes(instance)
+      registerAdminRoutes(instance)
+      registerMembershipRoutes(instance)
+      registerApiKeyRoutes(instance)
+      registerAuditLogRoutes(instance)
+    },
+    { prefix: config.routePrefix },
+  )
 
   return app
 }
