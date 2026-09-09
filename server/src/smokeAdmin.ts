@@ -39,7 +39,7 @@ const login = (email: string, password: string) =>
 
 async function main() {
   console.log('\n== platform admin ==')
-  const adminLogin = await login('owner@vendor.test', 'vendor-pass-123')
+  const adminLogin = await login('ci@example.test', 'ci-only-password-123')
   check('platform admin logs in with no tenant', adminLogin.status === 200 && adminLogin.body.tenant === null, adminLogin.body)
   check('platform admin flag is set', adminLogin.body.platformAdmin === true)
   const adminToken = adminLogin.body.accessToken as string
