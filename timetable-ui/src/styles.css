@@ -1,30 +1,35 @@
 /* ------------------------------------------------------------------ tokens
- * Palette derived from the supplied LESS theme:
- *   @internal-theme-transition-border-border-gradient -> --brand-gradient
- *   @global-font-family: 'Poppins'                    -> --font-latin
- *   @global-background: #FFFFFF                       -> --paper
- *   @inverse-navbar-nav-item-color: #0D0A46           -> --ink / --nav-item
- *   @inverse-navbar-nav-item-hover-color: #44434A     -> --ink-2 / --nav-item-hover
+ * Palette: purple primary / orange secondary, per the supplied style guide
+ * (the guide's purple swatch was mislabeled #2DFF5B — that hex is bright
+ * green, not the purple actually pictured; #5B2DFF, the same digits
+ * reordered, is what the swatch shows, so that's what's used here).
+ *   @global-font-family: 'Poppins' -> --font-latin
+ *   @global-background: #FFFFFF    -> --paper
  * Cairo carries Arabic, which Poppins does not cover.
  */
 :root {
-  --brand-gradient: linear-gradient(40deg, #ff7300 0%, #fea864 0%, #fdcea9 100%);
+  --brand-gradient: linear-gradient(40deg, #5b2dff 0%, #8b6ef5 0%, #e4defc 100%);
   --font-latin: 'Poppins', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-arabic: 'Cairo', 'Segoe UI', Tahoma, system-ui, sans-serif;
 
   --paper: #ffffff;
   --surface: #ffffff;
   --surface-2: #f4f5fa;
-  --ink: #0d0a46;
+  --ink: #1d1d1d;
   --ink-2: #44434a;
   --muted: #7d7c8a;
   --line: #e8e9f1;
   --line-strong: #d3d4e0;
-  --accent: #ff7300;
-  /* Darkened for text on white, where #ff7300 alone is under AA. */
-  --accent-text: #c25400;
-  --accent-soft: #fff3e8;
-  --on-accent: #2b1400;
+  --accent: #5b2dff;
+  /* Darkened for text on white, where #5b2dff alone is under AA. */
+  --accent-text: #4419db;
+  --accent-soft: #efeaff;
+  --on-accent: #1c1030;
+  /* Secondary brand color from the style guide — orange, used for
+     secondary highlights rather than primary actions/links/focus. */
+  --accent-2: #ff8633;
+  --accent-2-text: #b85400;
+  --accent-2-soft: #fff3e8;
   --ok: #0f7a45;
   --ok-soft: #e8f6ee;
   --bad: #c0271c;
@@ -41,7 +46,7 @@
   --radius-lg: 20px;
   --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: var(--font-latin), var(--font-arabic);
-  --nav-item: #0d0a46;
+  --nav-item: #1d1d1d;
   --nav-item-hover: #44434a;
   color-scheme: light;
 }
@@ -61,10 +66,13 @@
     --muted: #8d8ba3;
     --line: #2a2750;
     --line-strong: #3d3a68;
-    --accent: #ff8c2b;
-    --accent-text: #ffab5e;
-    --accent-soft: #2e1b0c;
-    --on-accent: #2b1400;
+    --accent: #8b6ef5;
+    --accent-text: #c4b5fd;
+    --accent-soft: #241b42;
+    --on-accent: #1c1030;
+    --accent-2: #ff9c52;
+    --accent-2-text: #ffbd8a;
+    --accent-2-soft: #3a2313;
     --ok: #56d493;
     --ok-soft: #10281c;
     --bad: #ff8a7d;
@@ -87,10 +95,13 @@
   --muted: #8d8ba3;
   --line: #2a2750;
   --line-strong: #3d3a68;
-  --accent: #ff8c2b;
-  --accent-text: #ffab5e;
-  --accent-soft: #2e1b0c;
-  --on-accent: #2b1400;
+  --accent: #8b6ef5;
+  --accent-text: #c4b5fd;
+  --accent-soft: #241b42;
+  --on-accent: #1c1030;
+  --accent-2: #ff9c52;
+  --accent-2-text: #ffbd8a;
+  --accent-2-soft: #3a2313;
   --ok: #56d493;
   --ok-soft: #10281c;
   --bad: #ff8a7d;
@@ -239,7 +250,7 @@ select {
   cursor: not-allowed;
 }
 
-/* The theme gradient reads as a light peach, so it carries dark ink.
+/* The theme gradient reads as a light lavender, so it carries dark ink.
    Fully rounded — every primary action in the app (Sign in, Solve, Save)
    reads as "the one button that matters" the same way. */
 .btn--primary {
@@ -249,7 +260,7 @@ select {
   font-weight: 600;
   border-radius: 999px;
   padding-inline: 18px;
-  box-shadow: 0 1px 2px rgba(255, 115, 0, 0.28);
+  box-shadow: 0 1px 2px rgba(91, 45, 255, 0.28);
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -886,12 +897,12 @@ select {
 }
 
 :root[data-theme='dark'] .chip--on {
-  color: #17130f;
+  color: var(--on-accent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .chip--on {
-    color: #17130f;
+    color: var(--on-accent);
   }
 }
 

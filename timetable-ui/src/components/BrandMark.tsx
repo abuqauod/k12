@@ -2,8 +2,8 @@
  * K-12 shield mark.
  *
  * Vector rather than raster so it stays crisp at every size and follows the
- * theme: shield strokes use `currentColor` (navy `--ink` on light, near-white
- * on dark) while the four nodes keep the brand orange.
+ * theme: shield strokes use `currentColor` (`--ink` on light, near-white
+ * on dark) while the four nodes keep the brand purple.
  *
  * Proportions follow the artwork — shield roughly 0.8 wide to tall, hexagon
  * dead centre, nodes on a cross at 10% and 89% of the width. Below 40px the
@@ -27,8 +27,8 @@ export function BrandMark({ size = 30 }: { size?: number }) {
     >
       <defs>
         <linearGradient id={`${id}-node`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ff7300" />
-          <stop offset="100%" stopColor="#f9902f" />
+          <stop offset="0%" stopColor="#5b2dff" />
+          <stop offset="100%" stopColor="#8b6ef5" />
         </linearGradient>
       </defs>
 
