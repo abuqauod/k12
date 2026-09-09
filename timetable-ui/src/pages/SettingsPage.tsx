@@ -313,6 +313,7 @@ function ApiKeyManager({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [justCreated, setJustCreated] = useState<{ key: string; name: string } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const refresh = async () => {
     const token = await getAccessToken()
@@ -355,6 +356,14 @@ function ApiKeyManager({
     void refresh()
   }
 
+  const copyToClipboard = () => {
+    if (!justCreated) return
+    navigator.clipboard.writeText(justCreated.key).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
       <h3 className="card__subtitle" style={{ margin: '0 0 8px' }}>
@@ -368,6 +377,13 @@ function ApiKeyManager({
             {justCreated.key}
           </code>
           <div className="page__actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="btn btn--sm btn--primary"
+              onClick={copyToClipboard}
+            >
+              {copied ? '✓ Copied' : 'Copy'}
+            </button>
             <button
               type="button"
               className="btn btn--sm"
