@@ -3,6 +3,9 @@ name: Deploy to heymueen.com
 on:
   push:
     branches: [main]
+  # Lets you run this from the Actions tab without pushing a commit — useful
+  # for testing the workflow itself (e.g. after editing deploy paths/secrets).
+  workflow_dispatch: {}
 
 jobs:
   detect-changes:
@@ -15,33 +18,110 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # workflow_dispatch has no natural "before" commit to diff against
+          # (push does) — comparing against main's own previous state makes
+          # a manual run of an unchanged main deploy nothing, which is the
+          # safe default; push a real commit to actually change something.
+          base: main
           filters: |
             ui:
               - 'timetable-ui/**'
             server:
               - 'server/**'
 
+  # Gates both deploy jobs below — a commit that doesn't typecheck/build/pass
+  # the smoke suite never reaches production. Runs on every push regardless
+  # of which paths changed, since either package could break the other
+  # (e.g. a server response shape change the UI doesn't handle).
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Server — install, typecheck, build
+        working-directory: server
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: UI — install, typecheck, lint, build
+        working-directory: timetable-ui
+        run: |
+          npm ci
+          npx tsc -b
+          npx oxlint
+          npm run build
+
+      # `smoke`/`smoke-admin` use MongoDB transactions (withTenant, src/db.ts),
+      # which only work on a replica set — a plain `services:` container can't
+      # be started with --replSet, so this runs it directly instead. Same
+      # replica-set-activation pattern used throughout local development.
+      - name: Start a single-node MongoDB replica set
+        run: |
+          docker run -d --name mongo-ci -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            docker exec mongo-ci mongosh --quiet --eval 'db.adminCommand("ping")' && break
+            sleep 2
+          done
+          docker exec mongo-ci mongosh --quiet --eval \
+            'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+          for i in $(seq 1 15); do
+            docker exec mongo-ci mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true && break
+            sleep 2
+          done
+
+      - name: Server — smoke test against a real database
+        working-directory: server
+        env:
+          DATABASE_URL: 'mongodb://localhost:27017/timetable?directConnection=true'
+          JWT_SECRET: 'ci-only-secret-not-used-anywhere-real'
+          PORT: '4000'
+        run: |
+          node dist/migrate.js
+          node dist/seed.js
+          node dist/server.js &
+          SERVER_PID=$!
+          for i in $(seq 1 15); do curl -sf http://localhost:4000/health && break; sleep 1; done
+          SMOKE_BASE=http://localhost:4000 node dist/smoke.js
+          node dist/createAdmin.js ci@example.test 'ci-only-password-123'
+          SMOKE_BASE=http://localhost:4000 node dist/smokeAdmin.js
+          kill $SERVER_PID
+
   deploy-ui:
-    needs: detect-changes
+    needs: [detect-changes, test]
     if: needs.detect-changes.outputs.ui == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: SSH and deploy timetable-ui
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build
+        working-directory: timetable-ui
+        run: |
+          npm ci
+          npm run build
+
+      # TODO: confirm the real nginx docroot on the VPS and update this path
+      # (currently a placeholder — this step will fail until it's set).
+      - name: Copy build output to the server
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ~/k12/timetable-ui
-            git fetch origin
-            git reset --hard origin/main
-            docker compose build --no-cache timetable-ui
-            docker compose up -d timetable-ui
-            docker image prune -f
+          source: 'timetable-ui/dist/*'
+          target: '/var/www/heymueen.com'
+          strip_components: 2
+          rm: true
 
   deploy-server:
-    needs: detect-changes
+    needs: [detect-changes, test]
     if: needs.detect-changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -52,9 +132,10 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ~/k12/server
+            cd ~/k12
             git fetch origin
             git reset --hard origin/main
-            docker compose build --no-cache server
-            docker compose up -d server
+            cd server
+            docker compose build api
+            docker compose up -d api
             docker image prune -f

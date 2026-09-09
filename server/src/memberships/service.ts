@@ -14,6 +14,7 @@ export interface MemberSummary {
   email: string | null
   displayName: string | null
   active: boolean
+  emailVerified: boolean
 }
 
 export async function listMembers(tenantId: string): Promise<MemberSummary[]> {
@@ -30,6 +31,7 @@ export async function listMembers(tenantId: string): Promise<MemberSummary[]> {
       email: user?.email ?? null,
       displayName: user?.displayName ?? null,
       active: user?.active ?? false,
+      emailVerified: user?.emailVerified ?? false,
     }
   })
 }

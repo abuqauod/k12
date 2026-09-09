@@ -64,7 +64,7 @@ export interface PushResult {
 }
 
 /** The backend this build ships pointed at by default; still editable in Settings. */
-export const DEFAULT_BASE_URL = 'http://179.198.205.174:4000'
+export const DEFAULT_BASE_URL = 'https://heymueen.com/api'
 
 export const EMPTY_SYNC_SETTINGS: SyncSettings = { baseUrl: DEFAULT_BASE_URL, schoolId: 'default' }
 
@@ -200,6 +200,88 @@ export async function pushDataset(
         updatedAt: body.updatedAt,
         serverProblem: body.problem,
       }
+    }
+    if (!response.ok) return { kind: 'error', message: `HTTP ${response.status}` }
+    const body = (await response.json()) as { revision: number; updatedAt: string }
+    return { kind: 'pushed', revision: body.revision, updatedAt: body.updatedAt }
+  } catch (error) {
+    return { kind: 'error', message: describe(error) }
+  }
+}
+
+// ------------------------------------------------------------- generic doc --
+// `pullDataset`/`pushDataset` above are the original, Problem-specific pair,
+// kept as-is so nothing calling them has to change. These do the same thing
+// for any other JSON-serializable document under a *fixed* key — e.g. a
+// school's bus fleet at `fleet`, its roster at `students` — reusing the same
+// `/datasets/:key` endpoint and revision/conflict model rather than standing
+// up a separate API for each. The backend stores a document as an opaque
+// blob regardless of key (see server/src/datasets/routes.ts), so this needs
+// no server-side change beyond that.
+
+export interface DocPullResult<T> {
+  kind: 'pulled' | 'empty' | 'error'
+  data?: T
+  revision?: number
+  updatedAt?: string
+  message?: string
+}
+
+export interface DocPushResult<T> {
+  kind: 'pushed' | 'conflict' | 'error'
+  revision?: number
+  updatedAt?: string
+  /** Present on a conflict: what the server currently holds. */
+  serverData?: T
+  message?: string
+}
+
+function documentEndpoint(settings: SyncSettings, key: string): string {
+  const base = settings.baseUrl.trim().replace(/\/+$/, '')
+  return `${base}/datasets/${encodeURIComponent(key)}`
+}
+
+export async function pullDocument<T>(
+  settings: SyncSettings,
+  key: string,
+  getToken: TokenGetter,
+): Promise<DocPullResult<T>> {
+  if (!isConfigured(settings)) return { kind: 'error', message: 'NOT_CONFIGURED' }
+  try {
+    const response = await authorizedRequest(documentEndpoint(settings, key), { method: 'GET' }, getToken, settings)
+    if (response.status === 404) return { kind: 'empty' }
+    if (response.status === 401) {
+      return { kind: 'error', message: settings.apiKey ? 'API_KEY_INVALID' : 'SESSION_EXPIRED' }
+    }
+    if (!response.ok) return { kind: 'error', message: `HTTP ${response.status}` }
+    const body = (await response.json()) as { revision: number; updatedAt: string; problem: T }
+    return { kind: 'pulled', data: body.problem, revision: body.revision, updatedAt: body.updatedAt }
+  } catch (error) {
+    return { kind: 'error', message: describe(error) }
+  }
+}
+
+export async function pushDocument<T>(
+  settings: SyncSettings,
+  key: string,
+  data: T,
+  baseRevision: number,
+  getToken: TokenGetter,
+): Promise<DocPushResult<T>> {
+  if (!isConfigured(settings)) return { kind: 'error', message: 'NOT_CONFIGURED' }
+  try {
+    const response = await authorizedRequest(
+      documentEndpoint(settings, key),
+      { method: 'PUT', body: JSON.stringify({ baseRevision, problem: data }) },
+      getToken,
+      settings,
+    )
+    if (response.status === 401) {
+      return { kind: 'error', message: settings.apiKey ? 'API_KEY_INVALID' : 'SESSION_EXPIRED' }
+    }
+    if (response.status === 409) {
+      const body = (await response.json()) as { revision: number; updatedAt: string; problem: T }
+      return { kind: 'conflict', revision: body.revision, updatedAt: body.updatedAt, serverData: body.problem }
     }
     if (!response.ok) return { kind: 'error', message: `HTTP ${response.status}` }
     const body = (await response.json()) as { revision: number; updatedAt: string }

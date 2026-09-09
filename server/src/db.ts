@@ -86,6 +86,15 @@ export interface UserDoc extends Document {
   displayNameAr: string | null
   active: boolean
   /**
+   * Proven by clicking a real emailed link — accepting an invite or
+   * resetting a password, both of which require receiving mail at this
+   * address. False for a user created directly (seed, create-admin) until
+   * they do one of those; not otherwise gated on anywhere yet, but recorded
+   * so a future feature (or a support conversation) can tell a real invite
+   * flow apart from a typo'd address that never got read.
+   */
+  emailVerified: boolean
+  /**
    * The vendor's own operator flag — not a tenant role. Grants access to
    * `/admin/*` (creating tenants, etc.), which by definition happens outside
    * any one school's context. Set only via `npm run create-admin`; there is

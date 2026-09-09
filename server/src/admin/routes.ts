@@ -5,7 +5,7 @@ import { withoutTenant } from '../db.js'
 import { authenticate, requirePlatformAdmin } from '../auth/guard.js'
 import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from '../memberships/invite.js'
-import { changeMemberRole, removeMember } from '../memberships/service.js'
+import { changeMemberRole, listMembers, removeMember } from '../memberships/service.js'
 import { createApiKey, listApiKeys, revokeApiKey } from '../apikeys/service.js'
 
 /**
@@ -89,23 +89,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const tenant = await withoutTenant((db) => db.tenants.findOne({ _id: id }))
     if (!tenant) return reply.code(404).send({ error: 'NOT_FOUND' })
 
-    const members = await withoutTenant(async (db) => {
-      const memberships = await db.memberships.find({ tenantId: id }).toArray()
-      const users = await db.users
-        .find({ _id: { $in: memberships.map((m) => m.userId) } })
-        .toArray()
-      const byId = new Map(users.map((u) => [u._id, u]))
-      return memberships.map((m) => {
-        const user = byId.get(m.userId)
-        return {
-          userId: m.userId,
-          role: m.role,
-          email: user?.email ?? null,
-          displayName: user?.displayName ?? null,
-          active: user?.active ?? false,
-        }
-      })
-    })
+    const members = await listMembers(id)
 
     return reply.send({
       id: tenant._id,

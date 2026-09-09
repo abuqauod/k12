@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { withoutTenant } from '../db.js'
 import type { MembershipDoc } from '../db.js'
 import { createActionToken, INVITE_TTL_MS } from '../auth/actionTokens.js'
-import { sendInviteEmail } from '../email.js'
+import { sendAccessGrantedEmail, sendInviteEmail } from '../email.js'
 
 export type InviteOutcome = 'invited' | 'added' | 'already_member'
 
@@ -41,6 +41,9 @@ export async function inviteUserToTenant(params: {
         displayNameAr: null,
         active: false,
         platformAdmin: false,
+        // Not proven yet — flips true when they accept this invite (or, if
+        // they never do, on any future password reset for this address).
+        emailVerified: false,
         createdAt: new Date(),
         lastLoginAt: null,
       })
@@ -61,6 +64,16 @@ export async function inviteUserToTenant(params: {
         role: params.role,
         createdAt: new Date(),
       })
+      // Best-effort: they're in either way (the membership above is what
+      // matters), this is just so it isn't a silent surprise the next time
+      // they see an unfamiliar school in a tenant picker.
+      try {
+        await sendAccessGrantedEmail({ to: email, tenantName: params.tenantName, inviterName: params.inviterName })
+      } catch {
+        // SMTP not configured, or the send failed — not worth failing the
+        // whole request over, unlike the 'invited' path below where the
+        // email is the only way in at all.
+      }
       return { userId: user._id, outcome: 'added' }
     }
 
