@@ -1,6 +1,13 @@
 # This directory holds several unrelated projects; this repo is only the
-# K-12 backend and frontend. Ignore everything at the top level except them.
+# K-12 backend and frontend (plus CI). Ignore everything at the top level
+# except those.
 /*
 !/server
 !/timetable-ui
 !/.gitignore
+
+# .github holds other tools' data too (e.g. prompts/) — only workflows/ is
+# actually part of this repo.
+!/.github
+/.github/*
+!/.github/workflows

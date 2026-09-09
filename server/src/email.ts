@@ -61,6 +61,22 @@ export async function sendInviteEmail(params: {
   )
 }
 
+export async function sendAccessGrantedEmail(params: {
+  to: string
+  tenantName: string
+  inviterName: string
+}): Promise<void> {
+  await send(
+    params.to,
+    `You now have access to ${params.tenantName}`,
+    layout(
+      `You're in at ${params.tenantName}`,
+      `<p>${params.inviterName} added your existing account to <b>${params.tenantName}</b> on K-12 Timetable Studio.</p>` +
+        `<p>Sign in as usual — if you belong to more than one school, you'll get to pick which one.</p>`,
+    ),
+  )
+}
+
 export async function sendPasswordResetEmail(params: { to: string; token: string }): Promise<void> {
   const link = `${config.appUrl}/reset-password?token=${encodeURIComponent(params.token)}`
   await send(

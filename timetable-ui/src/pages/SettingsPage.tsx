@@ -8,6 +8,8 @@ import type { TranslationKey } from '../i18n/translations'
 import { download, toProblemPayload } from '../lib/api'
 import { createApiKey, listApiKeys, revokeApiKey } from '../lib/apiKeys'
 import type { ApiKeyRole, ApiKeySummary } from '../lib/apiKeys'
+import { changeMemberRole, inviteMember, listMembers, removeMember } from '../lib/memberships'
+import type { Member, MemberRole } from '../lib/memberships'
 import { SchoolWeekFields } from '../components/SchoolWeekFields'
 import { ConstraintWeightsEditor } from '../components/ConstraintWeights'
 import { RoutingRulesEditor } from '../components/RoutingRules'
@@ -16,9 +18,9 @@ import { JsonDialog } from '../components/JsonDialog'
 
 const THEMES: Theme[] = ['auto', 'light', 'dark']
 
-type SettingsTab = 'account' | 'calendar' | 'transport' | 'tuning'
+type SettingsTab = 'account' | 'calendar' | 'transport' | 'tuning' | 'team'
 
-const TABS: Array<{ id: SettingsTab; key: TranslationKey }> = [
+const BASE_TABS: Array<{ id: SettingsTab; key: TranslationKey }> = [
   { id: 'account', key: 'settings.tab.account' },
   { id: 'calendar', key: 'settings.tab.calendar' },
   { id: 'transport', key: 'fleet.rules' },
@@ -27,7 +29,14 @@ const TABS: Array<{ id: SettingsTab; key: TranslationKey }> = [
 
 export function SettingsPage() {
   const { t } = useI18n()
+  const { user } = useAuth()
   const [tab, setTab] = useState<SettingsTab>('account')
+  // Staff management is an admin+ concern — a scheduler/viewer has no use
+  // for it and the API would refuse them anyway (requireRole('admin')).
+  const canManageTeam = user?.role === 'owner' || user?.role === 'admin'
+  const tabs = canManageTeam
+    ? [...BASE_TABS, { id: 'team' as const, key: 'settings.tab.team' as TranslationKey }]
+    : BASE_TABS
 
   return (
     <div className="page">
@@ -39,7 +48,7 @@ export function SettingsPage() {
       </header>
 
       <div className="page-tabs" role="tablist">
-        {TABS.map((entry) => (
+        {tabs.map((entry) => (
           <button
             key={entry.id}
             type="button"
@@ -56,6 +65,7 @@ export function SettingsPage() {
       {tab === 'calendar' && <CalendarSettingsTab />}
       {tab === 'transport' && <TransportSettingsTab />}
       {tab === 'tuning' && <TuningSettingsTab />}
+      {tab === 'team' && canManageTeam && <TeamSettingsTab />}
     </div>
   )
 }
@@ -481,6 +491,194 @@ function CalendarSettingsTab() {
       <section className="card">
         <h2 className="card__title">{t('calendar.breaks')}</h2>
         <BreaksEditor />
+      </section>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------- team */
+
+const MEMBER_ROLES: MemberRole[] = ['owner', 'admin', 'scheduler', 'viewer']
+
+function TeamSettingsTab() {
+  const { t } = useI18n()
+  const { user, getAccessToken } = useAuth()
+  const [members, setMembers] = useState<Member[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<MemberRole>('scheduler')
+  const [busy, setBusy] = useState(false)
+  const [inviteMsg, setInviteMsg] = useState<{ text: string; kind: 'success' | 'error' } | null>(null)
+  const [rowError, setRowError] = useState<{ userId: string; text: string } | null>(null)
+
+  const refresh = async () => {
+    const token = await getAccessToken()
+    if (!token) return
+    const result = await listMembers(token)
+    if (result.kind === 'ok') {
+      setMembers(result.data)
+      setLoadError(null)
+    } else {
+      setLoadError(result.error)
+    }
+  }
+
+  useEffect(() => {
+    void refresh()
+    // Load once when this tab mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const invite = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!email.trim()) return
+    setBusy(true)
+    setInviteMsg(null)
+    const token = await getAccessToken()
+    if (!token) {
+      setBusy(false)
+      return
+    }
+    const result = await inviteMember(token, email.trim(), role)
+    setBusy(false)
+    if (result.kind === 'ok') {
+      const outcome = result.data.outcome
+      const text =
+        outcome === 'invited'
+          ? t('team.outcomeInvited')
+          : outcome === 'added'
+            ? t('team.outcomeAdded')
+            : t('team.outcomeAlready')
+      setInviteMsg({ text, kind: outcome === 'already_member' ? 'error' : 'success' })
+      setEmail('')
+      void refresh()
+      return
+    }
+    const key: TranslationKey =
+      result.error === 'FORBIDDEN'
+        ? 'team.errorForbidden'
+        : result.error === 'EMAIL_NOT_CONFIGURED'
+          ? 'team.errorEmailNotConfigured'
+          : result.error === 'EMAIL_SEND_FAILED'
+            ? 'team.errorEmailSendFailed'
+            : 'login.errorNetwork'
+    setInviteMsg({ text: t(key), kind: 'error' })
+  }
+
+  const setRoleFor = async (member: Member, nextRole: MemberRole) => {
+    setRowError(null)
+    const token = await getAccessToken()
+    if (!token) return
+    const result = await changeMemberRole(token, member.userId, nextRole)
+    if (result.kind === 'ok') {
+      void refresh()
+      return
+    }
+    const text =
+      result.error === 'CANNOT_DEMOTE_LAST_OWNER'
+        ? t('team.errorLastOwner')
+        : result.error === 'FORBIDDEN'
+          ? t('team.errorForbidden')
+          : t('login.errorNetwork')
+    setRowError({ userId: member.userId, text })
+  }
+
+  const remove = async (member: Member) => {
+    if (!window.confirm(t('team.confirmRemove', { name: member.displayName ?? member.email ?? '' }))) return
+    setRowError(null)
+    const token = await getAccessToken()
+    if (!token) return
+    const result = await removeMember(token, member.userId)
+    if (result.kind === 'ok') {
+      void refresh()
+      return
+    }
+    const text = result.error === 'CANNOT_REMOVE_LAST_OWNER' ? t('team.errorLastOwner') : t('login.errorNetwork')
+    setRowError({ userId: member.userId, text })
+  }
+
+  return (
+    <div className="card-row">
+      <section className="card" style={{ gridColumn: '1 / -1' }}>
+        <h2 className="card__title">{t('team.title')}</h2>
+        <p className="card__hint">{t('team.hint')}</p>
+
+        {loadError && <p className="login__error">{loadError}</p>}
+
+        {members && members.length > 0 && (
+          <table className="table" style={{ marginBottom: 14 }}>
+            <thead>
+              <tr>
+                <th>{t('team.email')}</th>
+                <th>{t('team.name')}</th>
+                <th>{t('team.role')}</th>
+                <th>{t('team.status')}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((member) => {
+                const isSelf = member.userId === user?.id
+                return (
+                  <tr key={member.userId}>
+                    <td>{member.email ?? '—'}</td>
+                    <td>{member.displayName ?? '—'}</td>
+                    <td>
+                      <select
+                        className="select"
+                        value={member.role}
+                        disabled={isSelf}
+                        onChange={(event) => void setRoleFor(member, event.target.value as MemberRole)}
+                      >
+                        {MEMBER_ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {t(`settings.role.${r}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>{member.active ? t('team.active') : t('team.invitedPending')}</td>
+                    <td className="row-actions">
+                      {!isSelf && (
+                        <button type="button" className="icon-btn" onClick={() => void remove(member)}>
+                          {t('team.remove')}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+        {rowError && <p className="login__error">{rowError.text}</p>}
+
+        <h3 className="card__subtitle">{t('team.inviteTitle')}</h3>
+        <form className="break-card__row" onSubmit={invite}>
+          <input
+            className="input"
+            style={{ flex: 1, minWidth: 160 }}
+            type="email"
+            placeholder="teacher@school.test"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <select className="select" value={role} onChange={(event) => setRole(event.target.value as MemberRole)}>
+            {MEMBER_ROLES.filter((r) => r !== 'owner' || user?.role === 'owner').map((r) => (
+              <option key={r} value={r}>
+                {t(`settings.role.${r}`)}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="btn btn--sm btn--primary" disabled={busy || !email.trim()}>
+            {busy ? t('team.inviting') : t('team.invite')}
+          </button>
+        </form>
+        {inviteMsg && (
+          <p className={inviteMsg.kind === 'success' ? 'login__success' : 'login__error'} style={{ marginTop: 8 }}>
+            {inviteMsg.text}
+          </p>
+        )}
       </section>
     </div>
   )

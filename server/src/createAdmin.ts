@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   if (existing) {
     await users.updateOne(
       { _id: existing._id },
-      { $set: { passwordHash, platformAdmin: true, active: true } },
+      { $set: { passwordHash, platformAdmin: true, active: true, emailVerified: true } },
     )
     console.log(`Promoted existing user ${normalizedEmail} to platform admin.`)
   } else {
@@ -46,6 +46,9 @@ async function main(): Promise<void> {
       displayNameAr: null,
       active: true,
       platformAdmin: true,
+      // A script run by whoever controls the server, not an emailed link —
+      // trusted the same way, no separate proof needed.
+      emailVerified: true,
       createdAt: new Date(),
       lastLoginAt: null,
     })

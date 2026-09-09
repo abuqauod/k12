@@ -299,7 +299,9 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
     const passwordHash = await hashPassword(parsed.data.password)
     await withoutTenant(async (db) => {
-      await db.users.updateOne({ _id: result.userId }, { $set: { passwordHash } })
+      // Completing a reset proves control of the mailbox, same as accepting
+      // an invite does — mark it verified if it wasn't already.
+      await db.users.updateOne({ _id: result.userId }, { $set: { passwordHash, emailVerified: true } })
       // A reset means the old password may have leaked — end every session,
       // not just issue a new password alongside the old sessions.
       await db.refreshTokens.updateMany(
@@ -322,7 +324,9 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     await withoutTenant(async (db) => {
       await db.users.updateOne(
         { _id: result.userId },
-        { $set: { passwordHash, active: true } },
+        // Accepting the invite is the proof: they received mail at this
+        // address and clicked a real link in it.
+        { $set: { passwordHash, active: true, emailVerified: true } },
       )
       if (result.grant) {
         const { tenantId, role } = result.grant

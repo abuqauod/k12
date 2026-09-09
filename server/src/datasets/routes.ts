@@ -6,15 +6,21 @@ import type { TenantContext } from '../db.js'
 import { authenticate, requireActiveSubscription, requireRole } from '../auth/guard.js'
 
 /**
- * Shape check only — the timetable document itself is the client's domain model
- * and is stored as an opaque blob. The server deliberately does not validate
- * every lesson: the solver owns those rules, and a server that half-understood
- * them would need redeploying for every domain change.
+ * Shape check only — the document itself is the client's domain model and is
+ * stored as an opaque blob. The server deliberately does not validate a
+ * lesson or a bus stop: the client owns those rules, and a server that
+ * half-understood them would need redeploying for every domain change.
+ *
+ * `:key` is what lets one tenant hold more than one kind of document (the
+ * timetable at `default`, a school's roster at `students`, its bus routes at
+ * `fleet` — see `timetable-ui/src/lib/sync.ts`'s `pushDocument`/`pullDocument`),
+ * so this only checks "is it a JSON object", not any one document's shape —
+ * `lessons`/`timeslots`, if present, must at least be arrays.
  */
 const problemSchema = z
   .object({
-    lessons: z.array(z.unknown()),
-    timeslots: z.array(z.unknown()),
+    lessons: z.array(z.unknown()).optional(),
+    timeslots: z.array(z.unknown()).optional(),
   })
   .passthrough()
 
