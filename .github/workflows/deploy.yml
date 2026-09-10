@@ -83,6 +83,7 @@ jobs:
         run: |
           node dist/migrate.js
           node dist/seed.js
+          node dist/migrate.js   # picks up northgate/riverside, creates their "Main" branch
           node dist/server.js &
           SERVER_PID=$!
           for i in $(seq 1 15); do curl -sf http://localhost:4000/health && break; sleep 1; done
