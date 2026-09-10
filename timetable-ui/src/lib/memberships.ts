@@ -15,6 +15,8 @@ export interface Member {
   email: string | null
   displayName: string | null
   active: boolean
+  /** null = every branch (the owner/admin default). */
+  branchIds: string[] | null
 }
 
 export type InviteOutcome = 'invited' | 'added' | 'already_member'
@@ -83,6 +85,23 @@ export async function changeMemberRole(
     const response = await call(
       `/memberships/${encodeURIComponent(userId)}`,
       { method: 'PATCH', body: JSON.stringify({ role }) },
+      accessToken,
+    )
+    return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function setMemberBranches(
+  accessToken: string,
+  userId: string,
+  branchIds: string[] | null,
+): Promise<MembershipsResult<{ ok: true; branchIds: string[] | null }>> {
+  try {
+    const response = await call(
+      `/memberships/${encodeURIComponent(userId)}/branches`,
+      { method: 'PATCH', body: JSON.stringify({ branchIds }) },
       accessToken,
     )
     return parse(response)

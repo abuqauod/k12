@@ -4,7 +4,7 @@ import { withoutTenant } from '../db.js'
 import { authenticate, requireRole } from '../auth/guard.js'
 import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from './invite.js'
-import { changeMemberRole, listMembers, removeMember } from './service.js'
+import { changeMemberRole, listMembers, removeMember, setMemberBranches } from './service.js'
 
 /**
  * A school managing its own staff — distinct from `/admin/*`, which is the
@@ -22,6 +22,11 @@ const inviteBody = z.object({
 })
 
 const roleBody = z.object({ role: z.enum(['owner', 'admin', 'scheduler', 'viewer']) })
+
+/** `null` (or an empty array, normalised to null) means every branch. */
+const branchesBody = z.object({
+  branchIds: z.array(z.string().min(1)).nullable(),
+})
 
 export function registerMembershipRoutes(app: FastifyInstance): void {
   const guarded = { preHandler: [authenticate, requireRole('admin')] }
@@ -77,6 +82,24 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
     if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
     if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_DEMOTE_LAST_OWNER' })
     return reply.send({ ok: true })
+  })
+
+  app.patch('/memberships/:userId/branches', guarded, async (request, reply) => {
+    const { userId } = request.params as { userId: string }
+    const parsed = branchesBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+
+    const branchIds = parsed.data.branchIds && parsed.data.branchIds.length > 0 ? parsed.data.branchIds : null
+    if (branchIds) {
+      const known = await withoutTenant((db) =>
+        db.branches.find({ tenantId: request.auth!.tenantId!, _id: { $in: branchIds } }).toArray(),
+      )
+      if (known.length !== branchIds.length) return reply.code(400).send({ error: 'UNKNOWN_BRANCH' })
+    }
+
+    const result = await setMemberBranches(request.auth!.tenantId!, userId, branchIds)
+    if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
+    return reply.send({ ok: true, branchIds })
   })
 
   app.delete('/memberships/:userId', guarded, async (request, reply) => {

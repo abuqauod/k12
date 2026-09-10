@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AttendanceStatus, RegisterRow } from '../lib/attendanceApi'
 import { getRegister, markAttendance } from '../lib/attendanceApi'
+import { listClasses } from '../lib/classesApi'
+import type { SchoolClass } from '../domain/classes'
+import { runAbsenceNotifications } from '../lib/notificationsApi'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
-import { naturalCompare, unique } from '../lib/view'
 import type { TranslationKey } from '../i18n/translations'
 
 const STATUSES: AttendanceStatus[] = ['present', 'absent', 'late', 'excused']
@@ -20,28 +22,43 @@ type Edit = { status: AttendanceStatus | null; note: string }
 
 export function AttendancePage() {
   const { t } = useI18n()
-  const { students } = useApp()
+  const { activeBranchId } = useApp()
   const { getAccessToken } = useAuth()
 
-  const groups = useMemo(
-    () => unique(students.map((s) => s.studentGroup).filter(Boolean)).sort(naturalCompare),
-    [students],
-  )
+  const [classes, setClasses] = useState<SchoolClass[]>([])
+  const [classChoice, setClassChoice] = useState('')
+  const classId = classChoice || classes[0]?.id || ''
+  const [branchIdOfRegister, setBranchIdOfRegister] = useState<string | null>(null)
 
-  const [studentGroupChoice, setStudentGroupChoice] = useState('')
-  // Defaults to the first class once the roster loads, without a render
-  // dedicated to just picking it.
-  const studentGroup = studentGroupChoice || groups[0] || ''
   const [date, setDate] = useState(today)
   const [rows, setRows] = useState<RegisterRow[]>([])
   const [edits, setEdits] = useState<Record<string, Edit>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [notifying, setNotifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [notifyMsg, setNotifyMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!studentGroup) {
+    if (!activeBranchId) {
+      setClasses([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const token = await getAccessToken()
+      if (!token) return
+      const result = await listClasses(token, { branchId: activeBranchId })
+      if (!cancelled && result.kind === 'ok') setClasses(result.data)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeBranchId, getAccessToken])
+
+  useEffect(() => {
+    if (!classId) {
       setRows([])
       setEdits({})
       return
@@ -50,20 +67,25 @@ export function AttendancePage() {
     setLoading(true)
     setError(null)
     setSavedAt(null)
+    setNotifyMsg(null)
     void (async () => {
       const token = await getAccessToken()
       if (!token) {
         if (!cancelled) setLoading(false)
         return
       }
-      const result = await getRegister(token, date, studentGroup)
+      const result = await getRegister(token, date, classId)
       if (cancelled) return
       setLoading(false)
       if (result.kind === 'ok') {
-        setRows(result.data)
+        setRows(result.data.students)
+        setBranchIdOfRegister(result.data.branchId)
         setEdits(
           Object.fromEntries(
-            result.data.map((row) => [row.studentId, { status: row.status, note: row.note ?? '' }]),
+            result.data.students.map((row) => [
+              row.studentId,
+              { status: row.status, note: row.note ?? '' },
+            ]),
           ),
         )
       } else {
@@ -73,13 +95,19 @@ export function AttendancePage() {
     return () => {
       cancelled = true
     }
-  }, [studentGroup, date, getAccessToken, t])
+  }, [classId, date, getAccessToken, t])
 
   const setStatus = (studentId: string, status: AttendanceStatus) =>
-    setEdits((current) => ({ ...current, [studentId]: { ...current[studentId], status, note: current[studentId]?.note ?? '' } }))
+    setEdits((current) => ({
+      ...current,
+      [studentId]: { status, note: current[studentId]?.note ?? '' },
+    }))
 
   const setNote = (studentId: string, note: string) =>
-    setEdits((current) => ({ ...current, [studentId]: { status: current[studentId]?.status ?? null, note } }))
+    setEdits((current) => ({
+      ...current,
+      [studentId]: { status: current[studentId]?.status ?? null, note },
+    }))
 
   const markAllPresent = () =>
     setEdits((current) => {
@@ -108,7 +136,10 @@ export function AttendancePage() {
     }
     const records = rows
       .map((row) => ({ studentId: row.studentId, edit: edits[row.studentId] }))
-      .filter((r): r is { studentId: string; edit: Edit & { status: AttendanceStatus } } => r.edit?.status != null)
+      .filter(
+        (r): r is { studentId: string; edit: Edit & { status: AttendanceStatus } } =>
+          r.edit?.status != null,
+      )
       .map(({ studentId, edit }) => ({ studentId, status: edit.status, note: edit.note.trim() || null }))
     if (records.length === 0) {
       setSaving(false)
@@ -118,6 +149,30 @@ export function AttendancePage() {
     setSaving(false)
     if (result.kind === 'ok') setSavedAt(Date.now())
     else setError(t('attendance.saveError'))
+  }
+
+  const notify = async (studentId?: string) => {
+    const branchId = branchIdOfRegister ?? activeBranchId
+    if (!branchId) return
+    setNotifying(true)
+    setNotifyMsg(null)
+    const token = await getAccessToken()
+    if (!token) {
+      setNotifying(false)
+      return
+    }
+    const result = await runAbsenceNotifications(token, { branchId, date, studentId })
+    setNotifying(false)
+    if (result.kind === 'ok') {
+      const { sent, failed, skipped } = result.data
+      setNotifyMsg(
+        sent + failed + skipped === 0
+          ? t('attendance.notifyNothing')
+          : t('attendance.notifySent', { sent, failed, skipped }),
+      )
+    } else {
+      setError(result.error)
+    }
   }
 
   return (
@@ -130,6 +185,14 @@ export function AttendancePage() {
         <div className="page__actions">
           <button type="button" className="btn" onClick={markAllPresent} disabled={rows.length === 0}>
             {t('attendance.markAll')}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void notify()}
+            disabled={notifying || rows.length === 0}
+          >
+            {t('attendance.notifyAll')}
           </button>
           <button
             type="button"
@@ -146,11 +209,15 @@ export function AttendancePage() {
         <div className="page__actions" style={{ marginBlockEnd: 12 }}>
           <label className="field">
             <span>{t('attendance.pickGroup')}</span>
-            <select className="input" value={studentGroup} onChange={(event) => setStudentGroupChoice(event.target.value)}>
-              {groups.length === 0 && <option value="">{t('attendance.pickGroup.empty')}</option>}
-              {groups.map((group) => (
-                <option key={group} value={group}>
-                  {group}
+            <select
+              className="input"
+              value={classId}
+              onChange={(event) => setClassChoice(event.target.value)}
+            >
+              {classes.length === 0 && <option value="">{t('attendance.pickGroup.empty')}</option>}
+              {classes.map((klass) => (
+                <option key={klass.id} value={klass.id}>
+                  {klass.label}
                 </option>
               ))}
             </select>
@@ -167,8 +234,8 @@ export function AttendancePage() {
           </label>
         </div>
 
-        {!studentGroup && <div className="empty-state">{t('attendance.noGroup')}</div>}
-        {studentGroup && loading && <div className="empty-state">{t('attendance.loading')}</div>}
+        {!classId && <div className="empty-state">{t('attendance.noGroup')}</div>}
+        {classId && loading && <div className="empty-state">{t('attendance.loading')}</div>}
         {error && (
           <p className="card__hint" style={{ color: 'var(--bad)' }}>
             {error}
@@ -179,28 +246,31 @@ export function AttendancePage() {
             {t('attendance.saved')}
           </p>
         )}
+        {notifyMsg && <p className="card__hint">{notifyMsg}</p>}
 
-        {studentGroup && !loading && rows.length === 0 && !error && (
+        {classId && !loading && rows.length === 0 && !error && (
           <div className="empty-state">{t('attendance.none')}</div>
         )}
 
-        {studentGroup && !loading && rows.length > 0 && (
+        {classId && !loading && rows.length > 0 && (
           <>
             <p className="card__hint" style={{ marginBottom: 12 }}>
               {t('attendance.summary', summary)}
             </p>
             <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ minWidth: 760 }}>
+              <table className="table" style={{ minWidth: 820 }}>
                 <thead>
                   <tr>
                     <th>{t('students.name')}</th>
-                    <th style={{ width: 440 }}>{t('students.mode')}</th>
+                    <th style={{ width: 420 }}>{t('students.mode')}</th>
                     <th>{t('attendance.note')}</th>
+                    <th style={{ width: 130 }} />
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => {
                     const edit = edits[row.studentId]
+                    const canNotify = !edit?.status || edit.status === 'absent'
                     return (
                       <tr key={row.studentId}>
                         <td>
@@ -227,6 +297,18 @@ export function AttendancePage() {
                             value={edit?.note ?? ''}
                             onChange={(event) => setNote(row.studentId, event.target.value)}
                           />
+                        </td>
+                        <td>
+                          {canNotify && (
+                            <button
+                              type="button"
+                              className="btn btn--sm"
+                              disabled={notifying}
+                              onClick={() => void notify(row.studentId)}
+                            >
+                              {t('attendance.notify')}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )

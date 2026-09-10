@@ -35,7 +35,10 @@ const studentBody = z.object({
   familyNameAr: z.string().max(100).nullable().default(null),
   dob: z.string().date().nullable().default(null),
   gender: z.enum(['male', 'female']).nullable().default(null),
-  studentGroup: z.string().min(1).max(100),
+  /** The homeroom this student sits in. `branchId` and the `studentGroup`
+   * label are both derived from it server-side, never taken from the client,
+   * so the three can't drift apart. */
+  classId: z.string().min(1),
   status: z.enum(['enrolled', 'graduated', 'withdrawn', 'inquiry']).default('enrolled'),
   admissionDate: z.string().date().nullable().default(null),
   address: z.string().max(500).nullable().default(null),
@@ -53,6 +56,8 @@ const studentBody = z.object({
 const updateStudentBody = studentBody.partial()
 
 const listQuery = z.object({
+  branchId: z.string().optional(),
+  classId: z.string().optional(),
   studentGroup: z.string().optional(),
   status: z.enum(['enrolled', 'graduated', 'withdrawn', 'inquiry']).optional(),
   search: z.string().max(200).optional(),
@@ -72,6 +77,8 @@ function toResponse(doc: StudentDoc) {
     familyNameAr: doc.familyNameAr,
     dob: doc.dob,
     gender: doc.gender,
+    branchId: doc.branchId,
+    classId: doc.classId,
     studentGroup: doc.studentGroup,
     status: doc.status,
     admissionDate: doc.admissionDate,
@@ -94,9 +101,11 @@ export function registerStudentRoutes(app: FastifyInstance): void {
   app.get('/students', readGuard, async (request, reply) => {
     const parsed = listQuery.safeParse(request.query)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_QUERY' })
-    const { studentGroup, status, search } = parsed.data
+    const { branchId, classId, studentGroup, status, search } = parsed.data
 
     const filter: Filter<StudentDoc> = {}
+    if (branchId) filter.branchId = branchId
+    if (classId) filter.classId = classId
     if (studentGroup) filter.studentGroup = studentGroup
     if (status) filter.status = status
     if (search) {
@@ -128,13 +137,24 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     const now = new Date()
     try {
       const result = await withTenant(tenantId, async (ctx) => {
+        const klass = await ctx.classes.findOne({ _id: parsed.data.classId })
+        if (!klass) return 'unknown_class' as const
         const existing = await ctx.students.findOne({ studentNumber: parsed.data.studentNumber })
-        if (existing) return null
+        if (existing) return 'number_taken' as const
         const _id = randomUUID()
-        await ctx.students.insertOne({ _id, ...parsed.data, createdAt: now, updatedAt: now })
+        // branchId and the studentGroup label come from the class, never the client.
+        await ctx.students.insertOne({
+          _id,
+          ...parsed.data,
+          branchId: klass.branchId,
+          studentGroup: `${klass.gradeLevel} ${klass.name}`.trim(),
+          createdAt: now,
+          updatedAt: now,
+        })
         return _id
       })
-      if (!result) return reply.code(409).send({ error: 'STUDENT_NUMBER_TAKEN' })
+      if (result === 'unknown_class') return reply.code(404).send({ error: 'UNKNOWN_CLASS' })
+      if (result === 'number_taken') return reply.code(409).send({ error: 'STUDENT_NUMBER_TAKEN' })
       return reply.code(201).send({ id: result })
     } catch (error) {
       request.log.error(error, 'failed to create student')
@@ -152,13 +172,21 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
 
     const tenantId = request.auth!.tenantId!
-    const result = await withTenant(tenantId, (ctx) =>
-      ctx.students.findOneAndUpdate(
+    const result = await withTenant(tenantId, async (ctx) => {
+      // Moving a student to another class re-derives branch + label with them.
+      let derived: { branchId: string; studentGroup: string } | null = null
+      if (parsed.data.classId) {
+        const klass = await ctx.classes.findOne({ _id: parsed.data.classId })
+        if (!klass) return 'unknown_class' as const
+        derived = { branchId: klass.branchId, studentGroup: `${klass.gradeLevel} ${klass.name}`.trim() }
+      }
+      return ctx.students.findOneAndUpdate(
         { _id: id },
-        { $set: { ...parsed.data, updatedAt: new Date() } },
+        { $set: { ...parsed.data, ...(derived ?? {}), updatedAt: new Date() } },
         { returnDocument: 'after' },
-      ),
-    )
+      )
+    })
+    if (result === 'unknown_class') return reply.code(404).send({ error: 'UNKNOWN_CLASS' })
     if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
     return reply.send(toResponse(result))
   })

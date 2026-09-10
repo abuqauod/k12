@@ -46,19 +46,26 @@ async function parse<T>(response: Response): Promise<AttendanceResult<T>> {
   return { kind: 'ok', data: body as T }
 }
 
+export interface Register {
+  date: string
+  classId: string
+  branchId: string
+  label: string
+  students: RegisterRow[]
+}
+
 export async function getRegister(
   accessToken: string,
   date: string,
-  studentGroup: string,
-): Promise<AttendanceResult<RegisterRow[]>> {
+  classId: string,
+): Promise<AttendanceResult<Register>> {
   try {
     const response = await call(
-      `/attendance?date=${encodeURIComponent(date)}&studentGroup=${encodeURIComponent(studentGroup)}`,
+      `/attendance?date=${encodeURIComponent(date)}&classId=${encodeURIComponent(classId)}`,
       { method: 'GET' },
       accessToken,
     )
-    const result = await parse<{ students: RegisterRow[] }>(response)
-    return result.kind === 'ok' ? { kind: 'ok', data: result.data.students } : result
+    return parse<Register>(response)
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }

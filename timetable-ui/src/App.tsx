@@ -11,6 +11,8 @@ import { TimetablePage } from './pages/TimetablePage'
 import { RoutesPage } from './pages/RoutesPage'
 import { StudentsPage } from './pages/StudentsPage'
 import { AttendancePage } from './pages/AttendancePage'
+import { ClassesPage } from './pages/ClassesPage'
+import { LogsPage } from './pages/LogsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth()
@@ -38,7 +40,9 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/timetable" element={<TimetablePage />} />
         <Route path="/students" element={<StudentsPage />} />
+        <Route path="/classes" element={<ClassesPage />} />
         <Route path="/attendance" element={<AttendancePage />} />
+        <Route path="/logs" element={<LogsPage />} />
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

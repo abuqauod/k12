@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useApp } from '../state/AppContext'
 import { useI18n } from '../i18n/I18nContext'
 import { BrandMark } from '../components/BrandMark'
 import { LanguageToggle } from '../components/LanguageToggle'
@@ -12,14 +13,19 @@ interface NavEntry {
   icon: string
 }
 
+// The first five are the day-to-day "plan" group; the rest sit under
+// "account". Keep the split index (5) in step with this list.
 const NAV: NavEntry[] = [
   { to: '/dashboard', key: 'nav.dashboard', icon: '▤' },
   { to: '/timetable', key: 'nav.timetable', icon: '▦' },
   { to: '/students', key: 'nav.students', icon: '☺' },
+  { to: '/classes', key: 'nav.classes', icon: '▣' },
   { to: '/attendance', key: 'nav.attendance', icon: '✓' },
   { to: '/routes', key: 'nav.routes', icon: '⌖' },
+  { to: '/logs', key: 'nav.logs', icon: '☰' },
   { to: '/settings', key: 'nav.settings', icon: '⚙' },
 ]
+const NAV_SPLIT = 5
 
 const COLLAPSE_KEY = 'timetable.sidebar'
 
@@ -34,6 +40,7 @@ function readCollapsed(): boolean {
 export function AppShell() {
   const { t, lang } = useI18n()
   const { user, signOut } = useAuth()
+  const { branches, activeBranchId, setActiveBranchId } = useApp()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
@@ -116,9 +123,9 @@ export function AppShell() {
 
         <nav className="sidebar__nav" aria-label={t('nav.menu')}>
           <p className="sidebar__section">{t('nav.section.plan')}</p>
-          {NAV.slice(0, 4).map(renderLink)}
+          {NAV.slice(0, NAV_SPLIT).map(renderLink)}
           <p className="sidebar__section">{t('nav.section.account')}</p>
-          {NAV.slice(4).map(renderLink)}
+          {NAV.slice(NAV_SPLIT).map(renderLink)}
         </nav>
 
         <div className="sidebar__foot">
@@ -161,6 +168,24 @@ export function AppShell() {
         >
           ☰
         </button>
+        {branches.length > 1 && (
+          <div className="shell__bar">
+            <label className="shell__branch">
+              <span className="shell__branch-label">{t('nav.branch')}</span>
+              <select
+                className="input input--sm"
+                value={activeBranchId ?? ''}
+                onChange={(event) => setActiveBranchId(event.target.value)}
+              >
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
         <Outlet />
       </div>
     </div>

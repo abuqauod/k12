@@ -111,6 +111,13 @@ export interface MembershipDoc extends Document {
   tenantId: string
   userId: string
   role: 'owner' | 'admin' | 'scheduler' | 'viewer'
+  /**
+   * Which branches this person can see and act in. `null` (or absent, for
+   * memberships created before branches existed) means every branch — the
+   * tenant-wide default an owner/admin normally wants. A non-empty array
+   * confines them: a homeroom teacher assigned to one campus.
+   */
+  branchIds: string[] | null
   createdAt: Date
 }
 
@@ -299,6 +306,10 @@ export interface AttendanceRecordDoc extends Document {
   _id: string
   tenantId: string
   studentId: string
+  /** Denormalized from the student so a day's/branch's register and the
+   * absence sweep don't each need a second lookup. Kept in step on write. */
+  branchId: string
+  classId: string
   /** ISO yyyy-mm-dd — a day, not a timestamp; there is no time zone to get
    * wrong when the whole record is "this calendar day". */
   date: string
@@ -306,6 +317,107 @@ export interface AttendanceRecordDoc extends Document {
   note: string | null
   markedBy: string
   markedAt: Date
+}
+
+// ------------------------------------------------------------- branches --
+// A tenant is one school *organisation*; a branch is one campus of it.
+// Every tenant has at least one (a "Main" branch is backfilled for schools
+// that predate the concept — see migrate.ts), so a single-campus school
+// never has to think about branches. Classes, students and attendance all
+// carry a branchId so finance and certificates can join on it later.
+
+export interface BranchDoc extends Document {
+  _id: string
+  tenantId: string
+  name: string
+  /** Short, url-safe, unique within the tenant — used in the (cosmetic)
+   * per-branch login path and anywhere a compact label is wanted. */
+  code: string
+  address: string | null
+  /** IANA zone (e.g. "Asia/Amman"). The absence sweep reads "now" and the
+   * cutoff time in this zone, so a 10:00 cutoff means 10:00 local. */
+  timezone: string
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+/**
+ * A homeroom / form class — the group a student belongs to for the daily
+ * register, distinct from a timetable "room" (a physical space) and from
+ * `Lesson.studentGroup` (a free-text label the solver uses). `studentGroup`
+ * on a student is kept equal to `${gradeLevel} ${name}` so the two models
+ * stay legible to each other.
+ */
+export interface SchoolClassDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  /** "KG1", "Grade 1" — the year; classes sharing one sit together in the UI. */
+  gradeLevel: string
+  /** "Stars", "A" — the section within the grade. */
+  name: string
+  /** Seats. Enrolment past this is allowed but flagged. */
+  capacity: number
+  /** A membership userId, or null if not assigned yet. */
+  homeroomTeacherId: string | null
+  academicYearId: string | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+// -------------------------------------------------------- notifications --
+// Per-branch settings for the unexplained-absence follow-up, plus a log row
+// for every message the system sends (or tries to). The log doubles as the
+// idempotency record: a student with a 'sent' row for a date is not
+// contacted again for that date.
+
+export type NotifyChannel = 'email' | 'sms'
+
+export interface NotificationSettingsDoc extends Document {
+  /** `${tenantId}:${branchId}` — one per branch. */
+  _id: string
+  tenantId: string
+  branchId: string
+  absenceNotifyEnabled: boolean
+  /** "HH:mm" in the branch timezone. The sweep runs at or after this. */
+  cutoffTime: string
+  /** Channels to attempt, in order. SMS is accepted here but not yet wired
+   * to a provider — see notifications/channels.ts. */
+  channels: NotifyChannel[]
+  /** When true, a student with no record at all counts as absent for the
+   * purpose of notifying; when false, only an explicit 'absent' does. */
+  notifyOnUnmarked: boolean
+  /** 0 = Sunday … 6 = Saturday. Days the sweep runs. */
+  schoolDays: number[]
+  emailSubject: string
+  emailBody: string
+  smsBody: string
+  /** ISO date the automatic sweep last ran for this branch — stops it
+   * firing twice in one day. */
+  lastSweptDate: string | null
+  updatedAt: Date
+}
+
+export interface NotificationLogDoc extends Document {
+  /** `${tenantId}:${branchId}:${studentId}:${date}:${channel}` — idempotent
+   * per student per day per channel. */
+  _id: string
+  tenantId: string
+  branchId: string
+  studentId: string
+  date: string
+  channel: NotifyChannel
+  /** The address or number actually used. */
+  to: string
+  guardianName: string
+  status: 'sent' | 'failed' | 'skipped'
+  error: string | null
+  /** 'auto' = the scheduled sweep; 'manual' = someone pressed the button. */
+  trigger: 'auto' | 'manual'
+  actorId: string | null
+  createdAt: Date
 }
 
 // ---------------------------------------------------------- tenant scoping --
@@ -354,6 +466,16 @@ export class TenantScope<T extends Document> {
       session: this.session,
     })
   }
+
+  /**
+   * Scoped delete. Added late and used sparingly — most "removals" here are a
+   * status flip, not an erase — but a few things (an empty class, a mis-typed
+   * branch) genuinely have no reason to linger. The tenant filter is forced
+   * in exactly as it is for reads, so this can't reach another tenant's row.
+   */
+  deleteOne(filter: Filter<T>) {
+    return this.col.deleteOne(this.scope(filter), { session: this.session })
+  }
 }
 
 export interface TenantContext {
@@ -367,6 +489,10 @@ export interface TenantContext {
   students: TenantScope<StudentDoc>
   academicYears: TenantScope<AcademicYearDoc>
   attendance: TenantScope<AttendanceRecordDoc>
+  branches: TenantScope<BranchDoc>
+  classes: TenantScope<SchoolClassDoc>
+  notificationSettings: TenantScope<NotificationSettingsDoc>
+  notificationLog: TenantScope<NotificationLogDoc>
 }
 
 /**
@@ -397,6 +523,18 @@ export async function withTenant<T>(
         students: new TenantScope(db.collection<StudentDoc>('students'), tenantId, session),
         academicYears: new TenantScope(db.collection<AcademicYearDoc>('academicYears'), tenantId, session),
         attendance: new TenantScope(db.collection<AttendanceRecordDoc>('attendance'), tenantId, session),
+        branches: new TenantScope(db.collection<BranchDoc>('branches'), tenantId, session),
+        classes: new TenantScope(db.collection<SchoolClassDoc>('classes'), tenantId, session),
+        notificationSettings: new TenantScope(
+          db.collection<NotificationSettingsDoc>('notificationSettings'),
+          tenantId,
+          session,
+        ),
+        notificationLog: new TenantScope(
+          db.collection<NotificationLogDoc>('notificationLog'),
+          tenantId,
+          session,
+        ),
       })
     })
     return result as T
@@ -414,6 +552,15 @@ export interface UnscopedDb {
   apiKeys: Collection<ApiKeyDoc>
   actionTokens: Collection<ActionTokenDoc>
   loginAttempts: Collection<LoginAttemptDoc>
+  /**
+   * The absence-notification sweep is a vendor-level cron: it has to ask
+   * "which branches, across every tenant, are due a sweep right now?" before
+   * any one tenant's context exists — the same cross-tenant shape as
+   * `/admin/*`. It reads these two here, then does the per-branch work
+   * (students, attendance, log writes) back inside `withTenant`.
+   */
+  branches: Collection<BranchDoc>
+  notificationSettings: Collection<NotificationSettingsDoc>
 }
 
 /**
@@ -435,5 +582,7 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     apiKeys: database.collection<ApiKeyDoc>('apiKeys'),
     actionTokens: database.collection<ActionTokenDoc>('actionTokens'),
     loginAttempts: database.collection<LoginAttemptDoc>('loginAttempts'),
+    branches: database.collection<BranchDoc>('branches'),
+    notificationSettings: database.collection<NotificationSettingsDoc>('notificationSettings'),
   })
 }

@@ -172,6 +172,58 @@ async function main() {
   )
   check('scheduler may write', schedulerWrite.status === 200, schedulerWrite.body)
 
+  console.log('\n== branches, classes, students, attendance ==')
+  const branches = await call('/branches', {}, northToken)
+  check('every tenant has at least one branch (backfilled)', branches.status === 200 && ((branches.body.branches as unknown[]) ?? []).length >= 1, branches.body)
+  const branchId = ((branches.body.branches as Array<{ id: string }>) ?? [])[0]?.id
+
+  const newClass = await call(
+    '/classes',
+    { method: 'POST', body: JSON.stringify({ branchId, gradeLevel: `G${KEY}`, name: 'A', capacity: 20 }) },
+    northToken,
+  )
+  check('admin creates a class', newClass.status === 201, newClass.body)
+  const classId = newClass.body.id as string
+
+  const student = await call(
+    '/students',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        studentNumber: `SN-${KEY}`,
+        givenName: 'Smoke',
+        familyName: 'Test',
+        classId,
+        guardians: [
+          { name: 'Parent', relationship: 'mother', phone: '+962790000000', email: 'p@example.test', isPrimary: true },
+        ],
+      }),
+    },
+    northToken,
+  )
+  check('admin creates a student in that class', student.status === 201, student.body)
+  const studentId = student.body.id as string
+
+  const day = new Date().toISOString().slice(0, 10)
+  const register = await call(`/attendance?date=${day}&classId=${classId}`, {}, northToken)
+  const registerRows = (register.body.students as Array<{ studentId: string; status: string | null }>) ?? []
+  check(
+    'the register lists the enrolled student as not-yet-marked',
+    register.status === 200 && registerRows.some((r) => r.studentId === studentId && r.status === null),
+    register.body,
+  )
+
+  const mark = await call(
+    '/attendance',
+    { method: 'PUT', body: JSON.stringify({ date: day, records: [{ studentId, status: 'present' }] }) },
+    northToken,
+  )
+  check('marking the register succeeds', mark.status === 200 && (mark.body.count as number) === 1, mark.body)
+
+  const crossClasses = await call('/classes', {}, riverToken)
+  const crossIds = ((crossClasses.body.classes as Array<{ id: string }>) ?? []).map((c) => c.id)
+  check('another tenant cannot see this class', !crossIds.includes(classId), { crossIds, classId })
+
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}\n`)
   process.exit(failures === 0 ? 0 : 1)
 }
