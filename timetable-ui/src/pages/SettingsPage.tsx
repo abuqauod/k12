@@ -6,8 +6,6 @@ import { useI18n } from '../i18n/I18nContext'
 import { LANGUAGES } from '../i18n/translations'
 import type { TranslationKey } from '../i18n/translations'
 import { download, toProblemPayload } from '../lib/api'
-import { createApiKey, listApiKeys, revokeApiKey } from '../lib/apiKeys'
-import type { ApiKeyRole, ApiKeySummary } from '../lib/apiKeys'
 import {
   changeMemberRole,
   inviteMember,
@@ -16,7 +14,6 @@ import {
   setMemberBranches,
 } from '../lib/memberships'
 import type { Member, MemberRole } from '../lib/memberships'
-import { createBranch, updateBranch } from '../lib/branchesApi'
 import {
   getNotificationSettings,
   getSchoolCalendar,
@@ -244,10 +241,8 @@ function AccountTab() {
 function SyncCard() {
   const { t } = useI18n()
   const { syncSettings, setSyncSettings } = useApp()
-  const { user, getAccessToken } = useAuth()
   const [revealKey, setRevealKey] = useState(false)
   const usingApiKey = Boolean(syncSettings.apiKey)
-  const canManageKeys = user?.role === 'owner' || user?.role === 'admin'
 
   return (
     <section className="card">
@@ -308,173 +303,10 @@ function SyncCard() {
       <p className="card__hint" style={{ margin: '10px 0 0' }}>
         {usingApiKey ? t('sync.usingApiKey') : t('sync.usingSession')}
       </p>
-
-      {canManageKeys && (
-        <ApiKeyManager
-          onUseKey={(key) => setSyncSettings({ ...syncSettings, apiKey: key })}
-          getAccessToken={getAccessToken}
-        />
-      )}
+      <p className="card__hint" style={{ margin: '6px 0 0' }}>
+        {t('sync.apiKeyConsoleNote')}
+      </p>
     </section>
-  )
-}
-
-function ApiKeyManager({
-  onUseKey,
-  getAccessToken,
-}: {
-  onUseKey: (key: string) => void
-  getAccessToken: (force?: boolean) => Promise<string | null>
-}) {
-  const { t } = useI18n()
-  const [keys, setKeys] = useState<ApiKeySummary[] | null>(null)
-  const [name, setName] = useState('')
-  const [role, setRole] = useState<ApiKeyRole>('scheduler')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [justCreated, setJustCreated] = useState<{ key: string; name: string } | null>(null)
-  const [copied, setCopied] = useState(false)
-
-  const refresh = async () => {
-    const token = await getAccessToken()
-    if (!token) return
-    const result = await listApiKeys(token)
-    if (result.kind === 'ok') setKeys(result.data)
-  }
-
-  useEffect(() => {
-    void refresh()
-    // Load once when this section mounts (only shown to admin+).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const create = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!name.trim()) return
-    setBusy(true)
-    setError(null)
-    const token = await getAccessToken()
-    if (!token) {
-      setBusy(false)
-      return
-    }
-    const result = await createApiKey(token, name.trim(), role)
-    setBusy(false)
-    if (result.kind === 'ok') {
-      setJustCreated({ key: result.data.key, name: name.trim() })
-      setName('')
-      void refresh()
-      return
-    }
-    setError(result.error)
-  }
-
-  const revoke = async (id: string) => {
-    const token = await getAccessToken()
-    if (!token) return
-    await revokeApiKey(token, id)
-    void refresh()
-  }
-
-  const copyToClipboard = () => {
-    if (!justCreated) return
-    navigator.clipboard.writeText(justCreated.key).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-      <h3 className="card__subtitle" style={{ margin: '0 0 8px' }}>
-        {t('sync.keysTitle')}
-      </h3>
-
-      {justCreated && (
-        <div className="login__success" style={{ marginBottom: 10 }}>
-          <p style={{ margin: '0 0 6px' }}>{t('sync.keyCreated', { name: justCreated.name })}</p>
-          <code className="mono" style={{ wordBreak: 'break-all' }}>
-            {justCreated.key}
-          </code>
-          <div className="page__actions" style={{ marginTop: 8 }}>
-            <button
-              type="button"
-              className="btn btn--sm btn--primary"
-              onClick={copyToClipboard}
-            >
-              {copied ? '✓ Copied' : 'Copy'}
-            </button>
-            <button
-              type="button"
-              className="btn btn--sm"
-              onClick={() => {
-                onUseKey(justCreated.key)
-                setJustCreated(null)
-              }}
-            >
-              {t('sync.useThisKey')}
-            </button>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setJustCreated(null)}>
-              {t('sync.dismiss')}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {keys && keys.length > 0 && (
-        <table className="table" style={{ marginBottom: 10 }}>
-          <thead>
-            <tr>
-              <th>{t('sync.keyName')}</th>
-              <th>{t('sync.keyPreview')}</th>
-              <th>{t('sync.keyRole')}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id}>
-                <td>{k.name}</td>
-                <td className="mono">{k.preview}</td>
-                <td>{t(`settings.role.${k.role}` as TranslationKey)}</td>
-                <td className="row-actions">
-                  {k.revoked ? (
-                    <span className="chip">{t('sync.keyRevoked')}</span>
-                  ) : (
-                    <button type="button" className="icon-btn" onClick={() => void revoke(k.id)}>
-                      {t('sync.revoke')}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      <form className="break-card__row" onSubmit={create} style={{ margin: 0 }}>
-        <input
-          className="input"
-          style={{ flex: 1, minWidth: 120 }}
-          placeholder={t('sync.keyNamePlaceholder')}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <select className="select" value={role} onChange={(event) => setRole(event.target.value as ApiKeyRole)}>
-          <option value="admin">{t('settings.role.admin')}</option>
-          <option value="scheduler">{t('settings.role.scheduler')}</option>
-          <option value="viewer">{t('settings.role.viewer')}</option>
-        </select>
-        <button type="submit" className="btn btn--sm btn--primary" disabled={busy || !name.trim()}>
-          {busy ? t('sync.creating') : t('sync.newKey')}
-        </button>
-      </form>
-      {error && (
-        <p className="login__error" style={{ marginTop: 8 }}>
-          {error}
-        </p>
-      )}
-    </div>
   )
 }
 
@@ -794,64 +626,25 @@ const WEEKDAY_KEYS: TranslationKey[] = [
 
 function BranchesSettingsTab() {
   const { t } = useI18n()
-  const { getAccessToken } = useAuth()
-  const { branches, activeBranchId, reloadBranches } = useApp()
-
-  const [name, setName] = useState('')
-  const [code, setCode] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { branches, activeBranchId } = useApp()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const branchId = selectedId ?? activeBranchId ?? branches[0]?.id ?? null
-
-  const addBranch = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!name.trim() || !code.trim()) return
-    setBusy(true)
-    setError(null)
-    const token = await getAccessToken()
-    if (!token) {
-      setBusy(false)
-      return
-    }
-    const result = await createBranch(token, {
-      name: name.trim(),
-      code: code.trim().toLowerCase(),
-      address: null,
-      timezone: 'Asia/Amman',
-    })
-    setBusy(false)
-    if (result.kind === 'ok') {
-      setName('')
-      setCode('')
-      void reloadBranches()
-    } else {
-      setError(t('branches.saveError'))
-    }
-  }
-
-  const patchBranch = async (id: string, changes: Parameters<typeof updateBranch>[2]) => {
-    const token = await getAccessToken()
-    if (!token) return
-    const result = await updateBranch(token, id, changes)
-    if (result.kind === 'ok') void reloadBranches()
-    else setError(t('branches.saveError'))
-  }
 
   return (
     <div className="card-row">
       <section className="card" style={{ gridColumn: '1 / -1' }}>
         <h2 className="card__title">{t('branches.title')}</h2>
         <p className="card__hint">{t('branches.subtitle')}</p>
-        {error && <p className="login__error">{error}</p>}
+        <p className="card__hint">{t('branches.readOnlyNote')}</p>
 
-        {branches.length > 0 && (
-          <table className="table" style={{ marginBottom: 14 }}>
+        {branches.length > 0 ? (
+          <table className="table" style={{ marginBottom: 4 }}>
             <thead>
               <tr>
                 <th>{t('branches.name')}</th>
                 <th>{t('branches.code')}</th>
+                <th>{t('branches.address')}</th>
                 <th>{t('branches.timezone')}</th>
                 <th>{t('branches.active')}</th>
               </tr>
@@ -859,62 +652,18 @@ function BranchesSettingsTab() {
             <tbody>
               {branches.map((branch) => (
                 <tr key={branch.id}>
-                  <td>
-                    <input
-                      className="cell-input"
-                      defaultValue={branch.name}
-                      onBlur={(event) => {
-                        const next = event.target.value.trim()
-                        if (next && next !== branch.name) void patchBranch(branch.id, { name: next })
-                      }}
-                    />
-                  </td>
+                  <td>{branch.name}</td>
                   <td className="mono">{branch.code}</td>
-                  <td>
-                    <input
-                      className="cell-input"
-                      defaultValue={branch.timezone}
-                      onBlur={(event) => {
-                        const next = event.target.value.trim()
-                        if (next && next !== branch.timezone) void patchBranch(branch.id, { timezone: next })
-                      }}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={branch.active}
-                      onChange={(event) => void patchBranch(branch.id, { active: event.target.checked })}
-                    />
-                  </td>
+                  <td>{branch.address ?? '—'}</td>
+                  <td className="mono">{branch.timezone}</td>
+                  <td>{branch.active ? t('branches.active') : t('classes.inactive')}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        ) : (
+          <p className="card__hint">{t('branches.none')}</p>
         )}
-        {branches.length === 0 && <p className="card__hint">{t('branches.none')}</p>}
-
-        <h3 className="card__subtitle">{t('branches.add')}</h3>
-        <form className="break-card__row" onSubmit={addBranch}>
-          <input
-            className="input"
-            style={{ flex: 1, minWidth: 140 }}
-            placeholder={t('branches.name')}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <input
-            className="input"
-            style={{ minWidth: 120 }}
-            placeholder={t('branches.code')}
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-          />
-          <button type="submit" className="btn btn--sm btn--primary" disabled={busy || !name.trim() || !code.trim()}>
-            {t('branches.add')}
-          </button>
-        </form>
-        <p className="card__hint">{t('branches.codeHint')}</p>
       </section>
 
       <section className="card" style={{ gridColumn: '1 / -1' }}>

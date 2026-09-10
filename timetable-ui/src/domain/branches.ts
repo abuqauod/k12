@@ -11,10 +11,3 @@ export interface Branch {
   timezone: string
   active: boolean
 }
-
-export interface NewBranch {
-  name: string
-  code: string
-  address: string | null
-  timezone: string
-}

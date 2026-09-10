@@ -3,6 +3,7 @@ import { MongoClient } from 'mongodb'
 import { config } from './config.js'
 import { ensureIndexes } from './schema.js'
 import { backfillBranchesAndClasses, backfillEnrollmentModel } from './backfill.js'
+import { createBranchForTenant, listBranchesForTenant } from './branches/service.js'
 import { hashPassword } from './auth/routes.js'
 import type { MembershipDoc, TenantDoc, UserDoc } from './db.js'
 
@@ -103,6 +104,23 @@ async function main(): Promise<void> {
   console.log('  backfilling structural baseline...')
   await backfillBranchesAndClasses(db)
   await backfillEnrollmentModel(db)
+
+  // Northgate is a two-campus school, so the demo exercises branches for
+  // real. Branch identity is console-provisioned now — this is the seed
+  // equivalent of the vendor adding it.
+  const northgate = await db.collection<TenantDoc>('tenants').findOne({ slug: 'northgate' })
+  if (northgate) {
+    const branches = await listBranchesForTenant(northgate._id)
+    if (!branches.some((b) => b.code === 'west')) {
+      await createBranchForTenant(northgate._id, {
+        name: 'West Campus',
+        code: 'west',
+        address: null,
+        timezone: 'Asia/Amman',
+      })
+      console.log('  northgate: added West Campus branch')
+    }
+  }
 
   await client.close()
   console.log('seed complete')

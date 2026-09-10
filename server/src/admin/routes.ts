@@ -7,6 +7,12 @@ import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from '../memberships/invite.js'
 import { changeMemberRole, listMembers, removeMember } from '../memberships/service.js'
 import { createApiKey, listApiKeys, revokeApiKey } from '../apikeys/service.js'
+import {
+  branchToResponse,
+  createBranchForTenant,
+  listBranchesForTenant,
+  updateBranchForTenant,
+} from '../branches/service.js'
 
 /**
  * The vendor's own console: onboarding a school, recording an offline
@@ -55,6 +61,28 @@ const createKeyBody = z.object({
   name: z.string().min(1).max(100),
   role: z.enum(['admin', 'scheduler', 'viewer']),
 })
+
+const branchCode = z
+  .string()
+  .min(2)
+  .max(32)
+  .regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes only')
+
+const createBranchBody = z.object({
+  name: z.string().min(1).max(120),
+  code: branchCode,
+  address: z.string().max(500).nullable().default(null),
+  timezone: z.string().min(1).max(64).default('Asia/Amman'),
+})
+
+const updateBranchBody = z
+  .object({
+    name: z.string().min(1).max(120),
+    address: z.string().max(500).nullable(),
+    timezone: z.string().min(1).max(64),
+    active: z.boolean(),
+  })
+  .partial()
 
 export function registerAdminRoutes(app: FastifyInstance): void {
   const guarded = { preHandler: [authenticate, requirePlatformAdmin] }
@@ -253,5 +281,43 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const found = await revokeApiKey(id, keyId)
     if (!found) return reply.code(404).send({ error: 'NOT_FOUND' })
     return reply.code(204).send()
+  })
+
+  // ------------------------------------------------------------- branches --
+  // A branch's identity/location is vendor-provisioned. The tenant reads
+  // its branches (`GET /branches`) and runs the operational side (calendar,
+  // notification settings); it cannot create, rename, relocate or
+  // deactivate one.
+
+  app.get('/admin/tenants/:id/branches', guarded, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const tenant = await withoutTenant((db) => db.tenants.findOne({ _id: id }))
+    if (!tenant) return reply.code(404).send({ error: 'NOT_FOUND' })
+    const branches = await listBranchesForTenant(id)
+    return reply.send({ branches: branches.map(branchToResponse) })
+  })
+
+  app.post('/admin/tenants/:id/branches', guarded, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = createBranchBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+
+    const tenant = await withoutTenant((db) => db.tenants.findOne({ _id: id }))
+    if (!tenant) return reply.code(404).send({ error: 'NOT_FOUND' })
+
+    const result = await createBranchForTenant(id, parsed.data)
+    if (!result.ok) return reply.code(409).send({ error: result.error })
+    return reply.code(201).send(branchToResponse(result.branch))
+  })
+
+  app.patch('/admin/tenants/:id/branches/:branchId', guarded, async (request, reply) => {
+    const { id, branchId } = request.params as { id: string; branchId: string }
+    const parsed = updateBranchBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
+
+    const updated = await updateBranchForTenant(id, branchId, parsed.data)
+    if (!updated) return reply.code(404).send({ error: 'NOT_FOUND' })
+    return reply.send(branchToResponse(updated))
   })
 }
