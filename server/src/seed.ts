@@ -88,7 +88,7 @@ async function main(): Promise<void> {
         { _id: `${tenantId}:${userId}` },
         {
           $set: { tenantId, userId, role: user.role },
-          $setOnInsert: { createdAt: now },
+          $setOnInsert: { createdAt: now, branchIds: null },
         },
         { upsert: true },
       )

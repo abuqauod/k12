@@ -8,6 +8,8 @@ import type { FleetProblem } from '../domain/fleet'
 import { sampleFleet } from '../domain/fleet'
 import type { Student } from '../domain/students'
 import { sampleStudents } from '../domain/students'
+import type { Branch } from '../domain/branches'
+import { listBranches } from '../lib/branchesApi'
 import { useSolver } from '../lib/useSolver'
 import type { SolverProgress } from '../lib/useSolver'
 import { clearDataset, loadDataset, saveDataset } from '../lib/storage'
@@ -48,6 +50,14 @@ interface AppValue {
   setFleet: (next: FleetProblem) => void
   students: Student[]
   setStudents: (next: Student[]) => void
+  /** The school's campuses. Empty until loaded (or if the server is
+   * unreachable); a single-branch school still has one entry. */
+  branches: Branch[]
+  /** The campus the UI is currently scoped to — classes, the register and
+   * absence notifications all read this. Null before branches load. */
+  activeBranchId: string | null
+  setActiveBranchId: (id: string) => void
+  reloadBranches: () => Promise<void>
   /** ISO timestamp of the last local autosave. */
   savedAt: string | null
   syncSettings: SyncSettings
@@ -115,9 +125,11 @@ function readTheme(): Theme {
   return 'auto'
 }
 
+const ACTIVE_BRANCH_KEY = 'timetable.activeBranch'
+
 export function AppProvider({ children }: { children: ReactNode }) {
   // Sync authenticates as the signed-in user — no separate token setting.
-  const { getAccessToken } = useAuth()
+  const { getAccessToken, user } = useAuth()
 
   // Restore the saved dataset; only fall back to the sample on a fresh install.
   const restored = useRef(loadDataset()).current
@@ -146,6 +158,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readJson(STUDENTS_KEY, sampleStudents, (v) => Array.isArray(v)),
   )
   const [fleetRevision, setFleetRevision] = useState(() => readRevision(FLEET_REVISION_KEY))
+
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [activeBranchId, setActiveBranchIdState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(ACTIVE_BRANCH_KEY)
+    } catch {
+      return null
+    }
+  })
+
+  const setActiveBranchId = useCallback((id: string) => {
+    setActiveBranchIdState(id)
+    try {
+      localStorage.setItem(ACTIVE_BRANCH_KEY, id)
+    } catch {
+      // Preference simply will not persist.
+    }
+  }, [])
+
+  const reloadBranches = useCallback(async () => {
+    const token = await getAccessToken()
+    if (!token) return
+    const result = await listBranches(token)
+    if (result.kind !== 'ok') return
+    setBranches(result.data)
+    // Keep the active branch valid: fall back to the first one the caller
+    // can actually see.
+    setActiveBranchIdState((current) => {
+      const stillValid = current && result.data.some((b) => b.id === current)
+      const next = stillValid ? current : (result.data[0]?.id ?? null)
+      try {
+        if (next) localStorage.setItem(ACTIVE_BRANCH_KEY, next)
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }, [getAccessToken])
+
+  useEffect(() => {
+    if (user) void reloadBranches()
+    else setBranches([])
+  }, [user, reloadBranches])
 
   useEffect(() => {
     try {
@@ -384,6 +439,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFleet: setFleetState,
       students,
       setStudents: setStudentsState,
+      branches,
+      activeBranchId,
+      setActiveBranchId,
+      reloadBranches,
       savedAt,
       syncSettings,
       setSyncSettings,
@@ -410,6 +469,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTheme,
       fleet,
       students,
+      branches,
+      activeBranchId,
+      setActiveBranchId,
+      reloadBranches,
       savedAt,
       syncSettings,
       setSyncSettings,

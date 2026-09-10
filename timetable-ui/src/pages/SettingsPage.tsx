@@ -8,8 +8,21 @@ import type { TranslationKey } from '../i18n/translations'
 import { download, toProblemPayload } from '../lib/api'
 import { createApiKey, listApiKeys, revokeApiKey } from '../lib/apiKeys'
 import type { ApiKeyRole, ApiKeySummary } from '../lib/apiKeys'
-import { changeMemberRole, inviteMember, listMembers, removeMember } from '../lib/memberships'
+import {
+  changeMemberRole,
+  inviteMember,
+  listMembers,
+  removeMember,
+  setMemberBranches,
+} from '../lib/memberships'
 import type { Member, MemberRole } from '../lib/memberships'
+import { createBranch, updateBranch } from '../lib/branchesApi'
+import {
+  getNotificationSettings,
+  putNotificationSettings,
+  runAbsenceNotifications,
+} from '../lib/notificationsApi'
+import type { NotificationSettings } from '../lib/notificationsApi'
 import { SchoolWeekFields } from '../components/SchoolWeekFields'
 import { ConstraintWeightsEditor } from '../components/ConstraintWeights'
 import { RoutingRulesEditor } from '../components/RoutingRules'
@@ -18,7 +31,7 @@ import { JsonDialog } from '../components/JsonDialog'
 
 const THEMES: Theme[] = ['auto', 'light', 'dark']
 
-type SettingsTab = 'account' | 'calendar' | 'transport' | 'tuning' | 'team'
+type SettingsTab = 'account' | 'calendar' | 'transport' | 'tuning' | 'team' | 'branches'
 
 const BASE_TABS: Array<{ id: SettingsTab; key: TranslationKey }> = [
   { id: 'account', key: 'settings.tab.account' },
@@ -35,7 +48,11 @@ export function SettingsPage() {
   // for it and the API would refuse them anyway (requireRole('admin')).
   const canManageTeam = user?.role === 'owner' || user?.role === 'admin'
   const tabs = canManageTeam
-    ? [...BASE_TABS, { id: 'team' as const, key: 'settings.tab.team' as TranslationKey }]
+    ? [
+        ...BASE_TABS,
+        { id: 'branches' as const, key: 'branches.title' as TranslationKey },
+        { id: 'team' as const, key: 'settings.tab.team' as TranslationKey },
+      ]
     : BASE_TABS
 
   return (
@@ -65,6 +82,7 @@ export function SettingsPage() {
       {tab === 'calendar' && <CalendarSettingsTab />}
       {tab === 'transport' && <TransportSettingsTab />}
       {tab === 'tuning' && <TuningSettingsTab />}
+      {tab === 'branches' && canManageTeam && <BranchesSettingsTab />}
       {tab === 'team' && canManageTeam && <TeamSettingsTab />}
     </div>
   )
@@ -519,6 +537,7 @@ const MEMBER_ROLES: MemberRole[] = ['owner', 'admin', 'scheduler', 'viewer']
 function TeamSettingsTab() {
   const { t } = useI18n()
   const { user, getAccessToken } = useAuth()
+  const { branches } = useApp()
   const [members, setMembers] = useState<Member[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [email, setEmail] = useState('')
@@ -599,6 +618,18 @@ function TeamSettingsTab() {
     setRowError({ userId: member.userId, text })
   }
 
+  const setBranchesFor = async (member: Member, branchIds: string[] | null) => {
+    setRowError(null)
+    setMembers((current) =>
+      (current ?? []).map((m) => (m.userId === member.userId ? { ...m, branchIds } : m)),
+    )
+    const token = await getAccessToken()
+    if (!token) return
+    const result = await setMemberBranches(token, member.userId, branchIds)
+    if (result.kind === 'ok') void refresh()
+    else setRowError({ userId: member.userId, text: t('login.errorNetwork') })
+  }
+
   const remove = async (member: Member) => {
     if (!window.confirm(t('team.confirmRemove', { name: member.displayName ?? member.email ?? '' }))) return
     setRowError(null)
@@ -628,6 +659,7 @@ function TeamSettingsTab() {
                 <th>{t('team.email')}</th>
                 <th>{t('team.name')}</th>
                 <th>{t('team.role')}</th>
+                {branches.length > 1 && <th>{t('nav.branch')}</th>}
                 <th>{t('team.status')}</th>
                 <th />
               </tr>
@@ -653,6 +685,52 @@ function TeamSettingsTab() {
                         ))}
                       </select>
                     </td>
+                    {branches.length > 1 && (
+                      <td>
+                        <details>
+                          <summary style={{ cursor: 'pointer' }}>
+                            {member.branchIds === null
+                              ? t('team.allBranches')
+                              : t('team.someBranches', { n: member.branchIds.length })}
+                          </summary>
+                          <label className="inline-field" style={{ display: 'flex' }}>
+                            <input
+                              type="checkbox"
+                              checked={member.branchIds === null}
+                              onChange={(event) =>
+                                void setBranchesFor(member, event.target.checked ? null : [])
+                              }
+                            />
+                            {t('team.allBranches')}
+                          </label>
+                          {branches.map((branch) => {
+                            const checked =
+                              member.branchIds === null || member.branchIds.includes(branch.id)
+                            return (
+                              <label
+                                key={branch.id}
+                                className="inline-field"
+                                style={{ display: 'flex' }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={member.branchIds === null}
+                                  onChange={(event) => {
+                                    const base = member.branchIds ?? []
+                                    const next = event.target.checked
+                                      ? [...base, branch.id]
+                                      : base.filter((id) => id !== branch.id)
+                                    void setBranchesFor(member, next.length === 0 ? [] : next)
+                                  }}
+                                />
+                                {branch.name}
+                              </label>
+                            )
+                          })}
+                        </details>
+                      </td>
+                    )}
                     <td>{member.active ? t('team.active') : t('team.invitedPending')}</td>
                     <td className="row-actions">
                       {!isSelf && (
@@ -696,6 +774,379 @@ function TeamSettingsTab() {
           </p>
         )}
       </section>
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------- branches */
+
+const WEEKDAY_KEYS: TranslationKey[] = [
+  'dayShort.SUNDAY',
+  'dayShort.MONDAY',
+  'dayShort.TUESDAY',
+  'dayShort.WEDNESDAY',
+  'dayShort.THURSDAY',
+  'dayShort.FRIDAY',
+  'dayShort.SATURDAY',
+]
+
+function BranchesSettingsTab() {
+  const { t } = useI18n()
+  const { getAccessToken } = useAuth()
+  const { branches, activeBranchId, reloadBranches } = useApp()
+
+  const [name, setName] = useState('')
+  const [code, setCode] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const branchId = selectedId ?? activeBranchId ?? branches[0]?.id ?? null
+
+  const addBranch = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!name.trim() || !code.trim()) return
+    setBusy(true)
+    setError(null)
+    const token = await getAccessToken()
+    if (!token) {
+      setBusy(false)
+      return
+    }
+    const result = await createBranch(token, {
+      name: name.trim(),
+      code: code.trim().toLowerCase(),
+      address: null,
+      timezone: 'Asia/Amman',
+    })
+    setBusy(false)
+    if (result.kind === 'ok') {
+      setName('')
+      setCode('')
+      void reloadBranches()
+    } else {
+      setError(t('branches.saveError'))
+    }
+  }
+
+  const patchBranch = async (id: string, changes: Parameters<typeof updateBranch>[2]) => {
+    const token = await getAccessToken()
+    if (!token) return
+    const result = await updateBranch(token, id, changes)
+    if (result.kind === 'ok') void reloadBranches()
+    else setError(t('branches.saveError'))
+  }
+
+  return (
+    <div className="card-row">
+      <section className="card" style={{ gridColumn: '1 / -1' }}>
+        <h2 className="card__title">{t('branches.title')}</h2>
+        <p className="card__hint">{t('branches.subtitle')}</p>
+        {error && <p className="login__error">{error}</p>}
+
+        {branches.length > 0 && (
+          <table className="table" style={{ marginBottom: 14 }}>
+            <thead>
+              <tr>
+                <th>{t('branches.name')}</th>
+                <th>{t('branches.code')}</th>
+                <th>{t('branches.timezone')}</th>
+                <th>{t('branches.active')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {branches.map((branch) => (
+                <tr key={branch.id}>
+                  <td>
+                    <input
+                      className="cell-input"
+                      defaultValue={branch.name}
+                      onBlur={(event) => {
+                        const next = event.target.value.trim()
+                        if (next && next !== branch.name) void patchBranch(branch.id, { name: next })
+                      }}
+                    />
+                  </td>
+                  <td className="mono">{branch.code}</td>
+                  <td>
+                    <input
+                      className="cell-input"
+                      defaultValue={branch.timezone}
+                      onBlur={(event) => {
+                        const next = event.target.value.trim()
+                        if (next && next !== branch.timezone) void patchBranch(branch.id, { timezone: next })
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={branch.active}
+                      onChange={(event) => void patchBranch(branch.id, { active: event.target.checked })}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {branches.length === 0 && <p className="card__hint">{t('branches.none')}</p>}
+
+        <h3 className="card__subtitle">{t('branches.add')}</h3>
+        <form className="break-card__row" onSubmit={addBranch}>
+          <input
+            className="input"
+            style={{ flex: 1, minWidth: 140 }}
+            placeholder={t('branches.name')}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <input
+            className="input"
+            style={{ minWidth: 120 }}
+            placeholder={t('branches.code')}
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+          />
+          <button type="submit" className="btn btn--sm btn--primary" disabled={busy || !name.trim() || !code.trim()}>
+            {t('branches.add')}
+          </button>
+        </form>
+        <p className="card__hint">{t('branches.codeHint')}</p>
+      </section>
+
+      <section className="card" style={{ gridColumn: '1 / -1' }}>
+        <h2 className="card__title">{t('notify.title')}</h2>
+        <p className="card__hint">{t('notify.subtitle')}</p>
+        {!branchId && <p className="card__hint">{t('notify.noBranch')}</p>}
+        {branchId && (
+          <>
+            {branches.length > 1 && (
+              <label className="field" style={{ maxWidth: 260 }}>
+                <span>{t('nav.branch')}</span>
+                <select
+                  className="input"
+                  value={branchId}
+                  onChange={(event) => setSelectedId(event.target.value)}
+                >
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <NotificationSettingsForm key={branchId} branchId={branchId} />
+          </>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function NotificationSettingsForm({ branchId }: { branchId: string }) {
+  const { t } = useI18n()
+  const { getAccessToken } = useAuth()
+  const [settings, setSettings] = useState<NotificationSettings | null>(null)
+  const [msg, setMsg] = useState<{ text: string; kind: 'success' | 'error' } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const token = await getAccessToken()
+      if (!token) return
+      const result = await getNotificationSettings(token, branchId)
+      if (!cancelled && result.kind === 'ok') setSettings(result.data)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [branchId, getAccessToken])
+
+  if (!settings) return <p className="card__hint">…</p>
+
+  const set = <K extends keyof NotificationSettings>(key: K, value: NotificationSettings[K]) =>
+    setSettings((current) => (current ? { ...current, [key]: value } : current))
+
+  const toggleDay = (day: number) =>
+    set(
+      'schoolDays',
+      settings.schoolDays.includes(day)
+        ? settings.schoolDays.filter((d) => d !== day)
+        : [...settings.schoolDays, day].sort((a, b) => a - b),
+    )
+
+  const save = async () => {
+    setBusy(true)
+    setMsg(null)
+    const token = await getAccessToken()
+    if (!token) {
+      setBusy(false)
+      return
+    }
+    const { lastSweptDate: _drop, ...body } = settings
+    const result = await putNotificationSettings(token, branchId, body)
+    setBusy(false)
+    setMsg(
+      result.kind === 'ok'
+        ? { text: t('notify.saved'), kind: 'success' }
+        : { text: t('notify.saveError'), kind: 'error' },
+    )
+  }
+
+  const runNow = async () => {
+    setBusy(true)
+    setMsg(null)
+    const token = await getAccessToken()
+    if (!token) {
+      setBusy(false)
+      return
+    }
+    const result = await runAbsenceNotifications(token, { branchId })
+    setBusy(false)
+    if (result.kind === 'ok') {
+      const { sent, failed, skipped } = result.data
+      setMsg({
+        text: t('attendance.notifySent', { sent, failed, skipped }),
+        kind: failed > 0 ? 'error' : 'success',
+      })
+    } else {
+      setMsg({ text: result.error, kind: 'error' })
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12, maxWidth: 620 }}>
+      <label className="inline-field" style={{ display: 'flex' }}>
+        <input
+          type="checkbox"
+          checked={settings.absenceNotifyEnabled}
+          onChange={(event) => set('absenceNotifyEnabled', event.target.checked)}
+        />
+        {t('notify.enabled')}
+      </label>
+
+      <label className="field" style={{ maxWidth: 200 }}>
+        <span>{t('notify.cutoff')}</span>
+        <input
+          type="time"
+          className="input"
+          value={settings.cutoffTime}
+          onChange={(event) => set('cutoffTime', event.target.value)}
+        />
+      </label>
+
+      <label className="inline-field" style={{ display: 'flex' }}>
+        <input
+          type="checkbox"
+          checked={settings.notifyOnUnmarked}
+          onChange={(event) => set('notifyOnUnmarked', event.target.checked)}
+        />
+        {t('notify.unmarked')}
+      </label>
+
+      <div>
+        <span className="field__label" style={{ fontSize: 12, color: 'var(--muted)' }}>
+          {t('notify.schoolDays')}
+        </span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+          {WEEKDAY_KEYS.map((dayKey, day) => (
+            <label key={day} className="inline-field">
+              <input
+                type="checkbox"
+                checked={settings.schoolDays.includes(day)}
+                onChange={() => toggleDay(day)}
+              />
+              {t(dayKey)}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <span className="field__label" style={{ fontSize: 12, color: 'var(--muted)' }}>
+          {t('notify.channelEmail')}
+        </span>
+        <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+          <label className="inline-field">
+            <input
+              type="checkbox"
+              checked={settings.channels.includes('email')}
+              onChange={(event) =>
+                set(
+                  'channels',
+                  event.target.checked
+                    ? [...new Set([...settings.channels, 'email' as const])]
+                    : settings.channels.filter((c) => c !== 'email'),
+                )
+              }
+            />
+            {t('notify.channelEmail')}
+          </label>
+          <label className="inline-field" style={{ opacity: 0.6 }}>
+            <input
+              type="checkbox"
+              checked={settings.channels.includes('sms')}
+              onChange={(event) =>
+                set(
+                  'channels',
+                  event.target.checked
+                    ? [...new Set([...settings.channels, 'sms' as const])]
+                    : settings.channels.filter((c) => c !== 'sms'),
+                )
+              }
+            />
+            {t('notify.channelSms')}
+          </label>
+        </div>
+      </div>
+
+      <label className="field">
+        <span>{t('notify.emailSubject')}</span>
+        <input
+          className="input"
+          value={settings.emailSubject}
+          onChange={(event) => set('emailSubject', event.target.value)}
+        />
+      </label>
+      <label className="field">
+        <span>{t('notify.emailBody')}</span>
+        <textarea
+          className="input"
+          rows={6}
+          value={settings.emailBody}
+          onChange={(event) => set('emailBody', event.target.value)}
+        />
+      </label>
+      <label className="field">
+        <span>{t('notify.smsBody')}</span>
+        <textarea
+          className="input"
+          rows={2}
+          value={settings.smsBody}
+          onChange={(event) => set('smsBody', event.target.value)}
+        />
+      </label>
+      <p className="card__hint">{t('notify.tokens')}</p>
+      <p className="card__hint">
+        {settings.lastSweptDate
+          ? t('notify.lastSwept', { date: settings.lastSweptDate })
+          : t('notify.lastSwept.never')}
+      </p>
+
+      <div className="break-card__row">
+        <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>
+          {t('notify.save')}
+        </button>
+        <button type="button" className="btn btn--sm" disabled={busy} onClick={() => void runNow()}>
+          {t('notify.runNow')}
+        </button>
+      </div>
+      {msg && (
+        <p className={msg.kind === 'success' ? 'login__success' : 'login__error'}>{msg.text}</p>
+      )}
     </div>
   )
 }

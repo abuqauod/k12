@@ -332,7 +332,10 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         const { tenantId, role } = result.grant
         await db.memberships.updateOne(
           { _id: `${tenantId}:${result.userId}` },
-          { $set: { tenantId, userId: result.userId, role }, $setOnInsert: { createdAt: new Date() } },
+          {
+            $set: { tenantId, userId: result.userId, role },
+            $setOnInsert: { createdAt: new Date(), branchIds: null },
+          },
           { upsert: true },
         )
       }

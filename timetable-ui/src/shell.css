@@ -1062,3 +1062,34 @@ body.is-resizing .sidebar__link {
   grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
+
+/* Top bar of the main pane — currently just the branch switcher, shown only
+   when the school actually has more than one campus. */
+.shell__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-block-end: 1px solid var(--line);
+  background: var(--surface);
+}
+.shell__branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+.shell__branch-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.input--sm {
+  padding: 4px 8px;
+  font-size: 13px;
+  width: auto;
+}
+@media (max-width: 1000px) {
+  .shell__bar {
+    padding-inline-start: 56px;
+  }
+}

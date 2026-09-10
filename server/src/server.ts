@@ -14,6 +14,10 @@ import { registerAuditLogRoutes } from './auditlog/routes.js'
 import { registerStudentRoutes } from './students/routes.js'
 import { registerAcademicYearRoutes } from './academicYears/routes.js'
 import { registerAttendanceRoutes } from './attendance/routes.js'
+import { registerBranchRoutes } from './branches/routes.js'
+import { registerClassRoutes } from './classes/routes.js'
+import { registerNotificationRoutes } from './notifications/routes.js'
+import { startAbsenceSweeper } from './notifications/sweep.js'
 
 export function buildServer() {
   const app = Fastify({
@@ -79,6 +83,9 @@ export function buildServer() {
       registerStudentRoutes(instance)
       registerAcademicYearRoutes(instance)
       registerAttendanceRoutes(instance)
+      registerBranchRoutes(instance)
+      registerClassRoutes(instance)
+      registerNotificationRoutes(instance)
     },
     { prefix: config.routePrefix },
   )
@@ -91,7 +98,12 @@ if (entry.endsWith('server.ts') || entry.endsWith('server.js')) {
   const app = buildServer()
   app
     .listen({ port: config.port, host: config.host })
-    .then(() => console.log(`API listening on ${config.host}:${config.port}`))
+    .then(() => {
+      console.log(`API listening on ${config.host}:${config.port}`)
+      // The absence-notification cron. Lives with the API process rather than
+      // a separate worker — one small school-management server, not a fleet.
+      startAbsenceSweeper()
+    })
     .catch((error) => {
       console.error(error)
       process.exit(1)

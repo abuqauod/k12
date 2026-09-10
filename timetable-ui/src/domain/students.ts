@@ -29,8 +29,15 @@ export interface Student {
   familyName: string
   givenNameAr?: string
   familyNameAr?: string
-  /** Links to the timetable cohort, so the two modules share one roll. */
+  /** Links to the timetable cohort, so the two modules share one roll. On a
+   * server-backed record this is derived from the class and kept in step
+   * with it — `${gradeLevel} ${name}`. */
   studentGroup: string
+  /** The campus and homeroom this student belongs to. Optional only so the
+   * bundled sample (transport-only, pre-SIS) still parses; a record from the
+   * server always carries both. */
+  branchId?: string
+  classId?: string
   /** Where this student boards. Empty means not yet placed on a route. */
   stopId: string
   transportMode: TransportMode

@@ -15,6 +15,8 @@ export interface MemberSummary {
   displayName: string | null
   active: boolean
   emailVerified: boolean
+  /** null = every branch (the owner/admin default). */
+  branchIds: string[] | null
 }
 
 export async function listMembers(tenantId: string): Promise<MemberSummary[]> {
@@ -32,8 +34,25 @@ export async function listMembers(tenantId: string): Promise<MemberSummary[]> {
       displayName: user?.displayName ?? null,
       active: user?.active ?? false,
       emailVerified: user?.emailVerified ?? false,
+      branchIds: m.branchIds ?? null,
     }
   })
+}
+
+/**
+ * Confine a member to specific branches, or (null) give them every branch.
+ * A no-op-safe unscoped write with an explicit compound id, same pattern as
+ * `removeMember`.
+ */
+export async function setMemberBranches(
+  tenantId: string,
+  userId: string,
+  branchIds: string[] | null,
+): Promise<'ok' | 'not_found'> {
+  const result = await withoutTenant((db) =>
+    db.memberships.updateOne({ _id: `${tenantId}:${userId}` }, { $set: { branchIds } }),
+  )
+  return result.matchedCount === 0 ? 'not_found' : 'ok'
 }
 
 export type RoleChangeResult = 'ok' | 'not_found' | 'last_owner'

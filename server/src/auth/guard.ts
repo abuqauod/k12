@@ -48,6 +48,31 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   }
 }
 
+/**
+ * Which branches the caller may act in: `null` means all (an owner/admin, or
+ * any API key — a key is tenant-wide by design). A branch-scoped route calls
+ * this and then checks the branchId it was given against the result. Cheap
+ * enough to call per-request; the membership lookup is a single indexed hit.
+ */
+export async function callerBranchIds(request: FastifyRequest): Promise<string[] | null> {
+  const auth = request.auth
+  if (!auth?.tenantId) return null
+  if (auth.sub.startsWith('apikey:')) return null
+  const membership = await withoutTenant((db) =>
+    db.memberships.findOne({ _id: `${auth.tenantId}:${auth.sub}` }),
+  )
+  return membership?.branchIds ?? null
+}
+
+/** True when the caller may act in `branchId`. */
+export async function callerCanUseBranch(
+  request: FastifyRequest,
+  branchId: string,
+): Promise<boolean> {
+  const allowed = await callerBranchIds(request)
+  return allowed === null || allowed.includes(branchId)
+}
+
 const RANK: Record<Role, number> = { viewer: 0, scheduler: 1, admin: 2, owner: 3 }
 
 export function requireRole(minimum: Role) {

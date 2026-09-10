@@ -51,4 +51,20 @@ export async function ensureIndexes(db: Db): Promise<void> {
   // covers neither efficiently.
   await db.collection('attendance').createIndex({ tenantId: 1, date: 1 })
   await db.collection('attendance').createIndex({ tenantId: 1, studentId: 1, date: -1 })
+  await db.collection('attendance').createIndex({ tenantId: 1, classId: 1, date: 1 })
+
+  await db.collection('branches').createIndex({ tenantId: 1, code: 1 }, { unique: true })
+  await db.collection('branches').createIndex({ tenantId: 1 })
+
+  await db
+    .collection('classes')
+    .createIndex({ tenantId: 1, branchId: 1, gradeLevel: 1, name: 1 }, { unique: true })
+  await db.collection('classes').createIndex({ tenantId: 1, branchId: 1 })
+
+  await db.collection('students').createIndex({ tenantId: 1, branchId: 1, classId: 1 })
+
+  // The sweep scans this cross-tenant for "enabled and not yet swept today".
+  await db.collection('notificationSettings').createIndex({ absenceNotifyEnabled: 1 })
+  await db.collection('notificationLog').createIndex({ tenantId: 1, branchId: 1, date: -1 })
+  await db.collection('notificationLog').createIndex({ tenantId: 1, studentId: 1, date: -1 })
 }

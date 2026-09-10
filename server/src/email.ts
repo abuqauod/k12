@@ -90,3 +90,33 @@ export async function sendPasswordResetEmail(params: { to: string; token: string
     ),
   )
 }
+
+/** Escape the few characters that would let template text break out of the
+ * HTML body it's dropped into. The template is school-authored, not
+ * attacker-controlled, but it reaches a parent's inbox — belt and braces. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * A plain, school-composed message (currently the unexplained-absence
+ * notice). `body` is treated as text: newlines become paragraph breaks, and
+ * it's HTML-escaped before it goes into the same `layout` every other mail
+ * here uses. Throws `EmailNotConfiguredError` if SMTP isn't set up, same as
+ * the rest.
+ */
+export async function sendPlainEmail(params: {
+  to: string
+  subject: string
+  body: string
+}): Promise<void> {
+  const paragraphs = params.body
+    .split(/\n{2,}/)
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .join('\n')
+  await send(params.to, params.subject, layout(escapeHtml(params.subject), paragraphs))
+}

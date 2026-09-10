@@ -62,6 +62,9 @@ export async function inviteUserToTenant(params: {
         tenantId: params.tenantId,
         userId: user._id,
         role: params.role,
+        // Tenant-wide by default — an admin can confine them to a branch
+        // afterwards from the Team settings.
+        branchIds: null,
         createdAt: new Date(),
       })
       // Best-effort: they're in either way (the membership above is what

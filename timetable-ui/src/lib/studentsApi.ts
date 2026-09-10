@@ -50,10 +50,18 @@ function fromWire(w: WireStudent): Student {
 
 export async function listStudents(
   accessToken: string,
-  params: { studentGroup?: string; status?: StudentStatus; search?: string } = {},
+  params: {
+    branchId?: string
+    classId?: string
+    studentGroup?: string
+    status?: StudentStatus
+    search?: string
+  } = {},
 ): Promise<StudentsResult<Student[]>> {
   try {
     const query = new URLSearchParams()
+    if (params.branchId) query.set('branchId', params.branchId)
+    if (params.classId) query.set('classId', params.classId)
     if (params.studentGroup) query.set('studentGroup', params.studentGroup)
     if (params.status) query.set('status', params.status)
     if (params.search) query.set('search', params.search)
@@ -66,7 +74,11 @@ export async function listStudents(
   }
 }
 
-export type NewStudent = Omit<Student, 'id' | 'active'>
+/** What the create/update form supplies. `branchId` and the `studentGroup`
+ * label are derived from `classId` server-side, so they're not sent. */
+export type NewStudent = Omit<Student, 'id' | 'active' | 'branchId' | 'studentGroup' | 'classId'> & {
+  classId: string
+}
 
 export async function createStudent(
   accessToken: string,
