@@ -11,6 +11,9 @@ import { registerAdminRoutes } from './admin/routes.js'
 import { registerMembershipRoutes } from './memberships/routes.js'
 import { registerApiKeyRoutes } from './apikeys/routes.js'
 import { registerAuditLogRoutes } from './auditlog/routes.js'
+import { registerStudentRoutes } from './students/routes.js'
+import { registerAcademicYearRoutes } from './academicYears/routes.js'
+import { registerAttendanceRoutes } from './attendance/routes.js'
 
 export function buildServer() {
   const app = Fastify({
@@ -73,6 +76,9 @@ export function buildServer() {
       registerMembershipRoutes(instance)
       registerApiKeyRoutes(instance)
       registerAuditLogRoutes(instance)
+      registerStudentRoutes(instance)
+      registerAcademicYearRoutes(instance)
+      registerAttendanceRoutes(instance)
     },
     { prefix: config.routePrefix },
   )
