@@ -9,6 +9,19 @@ export type TransportMode = 'TWO_WAY' | 'MORNING' | 'EVENING' | 'NONE'
 
 export type RunDirection = 'MORNING' | 'EVENING'
 
+export type StudentStatus = 'enrolled' | 'graduated' | 'withdrawn' | 'inquiry'
+
+export interface Guardian {
+  name: string
+  relationship: string
+  phone: string
+  secondaryPhone: string | null
+  email: string | null
+  /** The contact a school calls first — at most one guardian should have
+   * this set (checked where a guardian list is edited, not here). */
+  isPrimary: boolean
+}
+
 export interface Student {
   id: string
   studentNumber: string
@@ -26,6 +39,16 @@ export interface Student {
   /** Required. A second contactable adult — one number is a single point of failure. */
   secondaryPhone: string
   active: boolean
+  // ---------------------------------------------------------------- SIS —
+  // Optional so the transport-only shape this type started as still parses;
+  // real records from the server always carry these.
+  dob?: string | null
+  gender?: 'male' | 'female' | null
+  status?: StudentStatus
+  admissionDate?: string | null
+  address?: string | null
+  medicalNotes?: string | null
+  guardians?: Guardian[]
 }
 
 /** Does this student ride on the given run? */

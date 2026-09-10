@@ -63,13 +63,16 @@ const THEME_KEY = 'timetable.theme'
 const FLEET_KEY = 'timetable.fleet'
 const STUDENTS_KEY = 'timetable.students'
 const FLEET_REVISION_KEY = 'timetable.fleet.revision'
-const STUDENTS_REVISION_KEY = 'timetable.students.revision'
-/** Fixed dataset keys — independent of the timetable's own (user-editable)
- * School ID, since the fleet and roster belong to the tenant, not to any one
- * timetable draft. See server/src/datasets/routes.ts for why `:key` can hold
- * any JSON shape. */
+/** Fixed dataset key — independent of the timetable's own (user-editable)
+ * School ID, since the fleet belongs to the tenant, not to any one timetable
+ * draft. See server/src/datasets/routes.ts for why `:key` can hold any JSON
+ * shape. The roster used to ride along under dataset key "students" too, but
+ * that generic blob sync is superseded by real per-record CRUD — see
+ * StudentsPage and server/src/students/routes.ts — so it's no longer pushed
+ * or pulled here. `students` state below now exists only to hand the roster
+ * to RoutesPage's demand calculation; StudentsPage populates it from the
+ * server directly. */
 const FLEET_DATASET_KEY = 'fleet'
-const STUDENTS_DATASET_KEY = 'students'
 
 function readRevision(key: string): number {
   try {
@@ -143,7 +146,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readJson(STUDENTS_KEY, sampleStudents, (v) => Array.isArray(v)),
   )
   const [fleetRevision, setFleetRevision] = useState(() => readRevision(FLEET_REVISION_KEY))
-  const [studentsRevision, setStudentsRevision] = useState(() => readRevision(STUDENTS_REVISION_KEY))
 
   useEffect(() => {
     try {
@@ -273,52 +275,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   /**
-   * The fleet and roster ride along with every "Sync now" / "Pull from
-   * server", under their own fixed dataset keys (`fleet`, `students`) rather
-   * than the timetable's own — a school has one fleet and one roster
-   * regardless of how many timetable drafts it keeps. Best-effort: a
-   * conflict or error here is folded into the main sync's status message
-   * rather than blocking it or opening a second conflict UI — the next pull
-   * picks up whatever didn't push.
+   * The fleet rides along with every "Sync now" / "Pull from server", under
+   * its own fixed dataset key (`fleet`) rather than the timetable's own — a
+   * school has one fleet regardless of how many timetable drafts it keeps.
+   * Best-effort: a conflict or error here is folded into the main sync's
+   * status message rather than blocking it or opening a second conflict UI —
+   * the next pull picks up whatever didn't push. The roster no longer rides
+   * along here — see the comment on FLEET_DATASET_KEY above.
    */
-  const pushFleetAndStudents = useCallback(async (): Promise<string | null> => {
-    const [fleetResult, studentsResult] = await Promise.all([
-      pushDocument(syncSettings, FLEET_DATASET_KEY, fleet, fleetRevision, getAccessToken),
-      pushDocument(syncSettings, STUDENTS_DATASET_KEY, { students }, studentsRevision, getAccessToken),
-    ])
-    const notes: string[] = []
+  const pushFleet = useCallback(async (): Promise<string | null> => {
+    const fleetResult = await pushDocument(syncSettings, FLEET_DATASET_KEY, fleet, fleetRevision, getAccessToken)
     if (fleetResult.kind === 'pushed' && fleetResult.revision) {
       setFleetRevision(fleetResult.revision)
       writeRevision(FLEET_REVISION_KEY, fleetResult.revision)
-    } else if (fleetResult.kind !== 'pushed') {
-      notes.push(`fleet: ${fleetResult.kind === 'conflict' ? 'SERVER_AHEAD' : (fleetResult.message ?? 'UNKNOWN')}`)
+      return null
     }
-    if (studentsResult.kind === 'pushed' && studentsResult.revision) {
-      setStudentsRevision(studentsResult.revision)
-      writeRevision(STUDENTS_REVISION_KEY, studentsResult.revision)
-    } else if (studentsResult.kind !== 'pushed') {
-      notes.push(
-        `students: ${studentsResult.kind === 'conflict' ? 'SERVER_AHEAD' : (studentsResult.message ?? 'UNKNOWN')}`,
-      )
+    if (fleetResult.kind !== 'pushed') {
+      return `fleet: ${fleetResult.kind === 'conflict' ? 'SERVER_AHEAD' : (fleetResult.message ?? 'UNKNOWN')}`
     }
-    return notes.length > 0 ? notes.join('; ') : null
-  }, [syncSettings, fleet, fleetRevision, students, studentsRevision, getAccessToken])
+    return null
+  }, [syncSettings, fleet, fleetRevision, getAccessToken])
 
-  const pullFleetAndStudents = useCallback(async (): Promise<void> => {
-    const [fleetResult, studentsResult] = await Promise.all([
-      pullDocument<FleetProblem>(syncSettings, FLEET_DATASET_KEY, getAccessToken),
-      pullDocument<{ students: Student[] }>(syncSettings, STUDENTS_DATASET_KEY, getAccessToken),
-    ])
+  const pullFleet = useCallback(async (): Promise<void> => {
+    const fleetResult = await pullDocument<FleetProblem>(syncSettings, FLEET_DATASET_KEY, getAccessToken)
     if (fleetResult.kind === 'pulled' && fleetResult.data) {
       const server = fleetResult.data
       setFleetState((base) => ({ ...base, ...server, settings: { ...base.settings, ...server.settings } }))
       setFleetRevision(fleetResult.revision ?? 1)
       writeRevision(FLEET_REVISION_KEY, fleetResult.revision ?? 1)
-    }
-    if (studentsResult.kind === 'pulled' && studentsResult.data) {
-      setStudentsState(Array.isArray(studentsResult.data.students) ? studentsResult.data.students : [])
-      setStudentsRevision(studentsResult.revision ?? 1)
-      writeRevision(STUDENTS_REVISION_KEY, studentsResult.revision ?? 1)
     }
   }, [syncSettings, getAccessToken])
 
@@ -331,7 +315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSyncStatus((c) => ({ ...c, state: 'syncing', message: null }))
     const [result, fleetStudentsNote] = await Promise.all([
       pushDataset(syncSettings, problem, revision, getAccessToken),
-      pushFleetAndStudents(),
+      pushFleet(),
     ])
     if (result.kind === 'pushed') {
       setSyncStatus({
@@ -350,7 +334,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setSyncStatus((c) => ({ ...c, state: 'error', message: result.message ?? 'UNKNOWN' }))
     }
-  }, [syncSettings, problem, revision, getAccessToken, pushFleetAndStudents])
+  }, [syncSettings, problem, revision, getAccessToken, pushFleet])
 
   /** Take the server copy, discarding local edits. */
   const pullFromServer = useCallback(async () => {
@@ -359,7 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
     setSyncStatus((c) => ({ ...c, state: 'syncing', message: null }))
-    const [result] = await Promise.all([pullDataset(syncSettings, getAccessToken), pullFleetAndStudents()])
+    const [result] = await Promise.all([pullDataset(syncSettings, getAccessToken), pullFleet()])
     if (result.kind === 'pulled' && result.problem) {
       setProblemState(result.problem)
       setRevision(result.revision ?? 1)
@@ -374,7 +358,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setSyncStatus((c) => ({ ...c, state: 'error', message: result.message ?? 'UNKNOWN' }))
     }
-  }, [syncSettings, getAccessToken, pullFleetAndStudents])
+  }, [syncSettings, getAccessToken, pullFleet])
 
   const value = useMemo<AppValue>(
     () => ({

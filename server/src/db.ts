@@ -210,6 +210,104 @@ export interface LoginAttemptDoc extends Document {
   expiresAt: Date
 }
 
+// --------------------------------------------------------------------- SIS --
+// Student records, academic years, and attendance. Deliberately real
+// collections with real CRUD, not another key under the generic
+// /datasets/:key blob sync that `fleet` and (the old) `students` used —
+// attendance alone can run to hundreds of thousands of rows a year
+// (252 students × ~180 school days), and needs per-day writes and
+// server-side filtering that a single JSON blob with one revision number
+// can't give: two teachers marking different classes the same morning would
+// otherwise conflict with each other over one document.
+
+export interface Guardian {
+  name: string
+  relationship: string
+  phone: string
+  secondaryPhone: string | null
+  email: string | null
+  /** The contact a school calls first. Exactly one guardian should have this
+   * set; enforced in application code (see students/routes.ts), not here. */
+  isPrimary: boolean
+}
+
+/**
+ * Field names deliberately match the existing client-side `Student` type
+ * (`timetable-ui/src/domain/students.ts`) — `givenName`/`studentGroup`/
+ * `studentNumber`/`stopId`/`transportMode`, not `firstName`/`cohort`/
+ * `admissionNumber`/nested `transport` — so the bus-routing solver and
+ * RoutesPage, which already depend on that vocabulary, don't need to learn
+ * a second one. This collection replaces the transport-only student roster
+ * that used to live under the generic /datasets/:key blob sync (key
+ * "students"); the new SIS fields (guardians, dob, ...) are additions to
+ * the same shape, not a rename of it.
+ */
+export interface StudentDoc extends Document {
+  _id: string
+  tenantId: string
+  /** School-assigned, human-facing — distinct from `_id`. Unique per tenant. */
+  studentNumber: string
+  givenName: string
+  familyName: string
+  givenNameAr: string | null
+  familyNameAr: string | null
+  dob: string | null
+  gender: 'male' | 'female' | null
+  /** Links to the timetable cohort, matching `Lesson.studentGroup`. */
+  studentGroup: string
+  status: 'enrolled' | 'graduated' | 'withdrawn' | 'inquiry'
+  admissionDate: string | null
+  address: string | null
+  medicalNotes: string | null
+  guardians: Guardian[]
+  /** Where this student boards. Empty means not yet placed on a route. */
+  stopId: string
+  transportMode: 'TWO_WAY' | 'MORNING' | 'EVENING' | 'NONE'
+  /** Required for an active student. The number called first if the bus is
+   * delayed — kept even though `guardians` also carries phones, since the
+   * bus-routing feature (RoutesPage, VRP solver) reads this flat pair
+   * directly and predates the guardians model. */
+  primaryPhone: string
+  secondaryPhone: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface AcademicTerm {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+}
+
+export interface AcademicYearDoc extends Document {
+  _id: string
+  tenantId: string
+  name: string
+  startDate: string
+  endDate: string
+  terms: AcademicTerm[]
+  /** At most one year per tenant should have this set — enforced in
+   * application code (see academicYears/routes.ts), not here. */
+  current: boolean
+  createdAt: Date
+}
+
+export interface AttendanceRecordDoc extends Document {
+  /** `${tenantId}:${studentId}:${date}` — one record per student per day,
+   * so re-marking the same day is an update, not a duplicate. */
+  _id: string
+  tenantId: string
+  studentId: string
+  /** ISO yyyy-mm-dd — a day, not a timestamp; there is no time zone to get
+   * wrong when the whole record is "this calendar day". */
+  date: string
+  status: 'present' | 'absent' | 'late' | 'excused'
+  note: string | null
+  markedBy: string
+  markedAt: Date
+}
+
 // ---------------------------------------------------------- tenant scoping --
 
 /**
@@ -266,6 +364,9 @@ export interface TenantContext {
   memberships: TenantScope<MembershipDoc>
   /** Scoped view for a signed-in admin managing their own school's API keys. */
   apiKeys: TenantScope<ApiKeyDoc>
+  students: TenantScope<StudentDoc>
+  academicYears: TenantScope<AcademicYearDoc>
+  attendance: TenantScope<AttendanceRecordDoc>
 }
 
 /**
@@ -293,6 +394,9 @@ export async function withTenant<T>(
         auditLog: new TenantScope(db.collection<AuditLogDoc>('auditLog'), tenantId, session),
         memberships: new TenantScope(db.collection<MembershipDoc>('memberships'), tenantId, session),
         apiKeys: new TenantScope(db.collection<ApiKeyDoc>('apiKeys'), tenantId, session),
+        students: new TenantScope(db.collection<StudentDoc>('students'), tenantId, session),
+        academicYears: new TenantScope(db.collection<AcademicYearDoc>('academicYears'), tenantId, session),
+        attendance: new TenantScope(db.collection<AttendanceRecordDoc>('attendance'), tenantId, session),
       })
     })
     return result as T

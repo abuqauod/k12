@@ -39,4 +39,16 @@ export async function ensureIndexes(db: Db): Promise<void> {
   // Rolling window for login rate limiting — expires whether or not the
   // account ever got locked, so a quiet account carries no history.
   await db.collection('loginAttempts').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+
+  await db.collection('students').createIndex({ tenantId: 1, studentNumber: 1 }, { unique: true })
+  await db.collection('students').createIndex({ tenantId: 1, studentGroup: 1 })
+  await db.collection('students').createIndex({ tenantId: 1, status: 1 })
+
+  await db.collection('academicYears').createIndex({ tenantId: 1, current: 1 })
+
+  // The two real query patterns: a class's whole register for one day, and
+  // one student's history over a range. _id (tenantId:studentId:date) alone
+  // covers neither efficiently.
+  await db.collection('attendance').createIndex({ tenantId: 1, date: 1 })
+  await db.collection('attendance').createIndex({ tenantId: 1, studentId: 1, date: -1 })
 }
