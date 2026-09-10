@@ -2,7 +2,15 @@ import { loadSyncSettings } from './sync'
 
 /** Client for the signed-in user's own `/attendance` — one school's daily register. */
 
-export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused'
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'early_departure'
+
+export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
+  'present',
+  'absent',
+  'late',
+  'excused',
+  'early_departure',
+]
 
 export interface RegisterRow {
   studentId: string
@@ -10,12 +18,26 @@ export interface RegisterRow {
   familyName: string
   status: AttendanceStatus | null
   note: string | null
+  /** Set when this mark has since been corrected. */
+  updatedAt: string | null
 }
 
 export interface HistoryRow {
   date: string
   status: AttendanceStatus
   note: string | null
+  classId?: string
+  academicYearId?: string
+}
+
+export interface CorrectionRow {
+  id: string
+  date: string
+  from: { status: AttendanceStatus; note: string | null }
+  to: { status: AttendanceStatus; note: string | null }
+  reason: string | null
+  changedBy: string
+  changedAt: string
 }
 
 export type AttendanceResult<T> = { kind: 'ok'; data: T } | { kind: 'error'; error: string }
@@ -71,18 +93,44 @@ export async function getRegister(
   }
 }
 
+export interface MarkOutcome {
+  ok: true
+  inserted: number
+  corrected: number
+  unchanged: number
+  count: number
+}
+
 export async function markAttendance(
   accessToken: string,
   date: string,
   records: Array<{ studentId: string; status: AttendanceStatus; note?: string | null }>,
-): Promise<AttendanceResult<{ count: number }>> {
+  reason?: string | null,
+): Promise<AttendanceResult<MarkOutcome>> {
   try {
     const response = await call(
       '/attendance',
-      { method: 'PUT', body: JSON.stringify({ date, records }) },
+      { method: 'PUT', body: JSON.stringify({ date, reason: reason ?? null, records }) },
       accessToken,
     )
     return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function getStudentCorrections(
+  accessToken: string,
+  studentId: string,
+): Promise<AttendanceResult<CorrectionRow[]>> {
+  try {
+    const response = await call(
+      `/attendance/student/${encodeURIComponent(studentId)}/corrections`,
+      { method: 'GET' },
+      accessToken,
+    )
+    const result = await parse<{ corrections: CorrectionRow[] }>(response)
+    return result.kind === 'ok' ? { kind: 'ok', data: result.data.corrections } : result
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }

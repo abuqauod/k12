@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { MongoClient } from 'mongodb'
 import { config } from './config.js'
 import { ensureIndexes } from './schema.js'
+import { backfillBranchesAndClasses, backfillEnrollmentModel } from './backfill.js'
 import { hashPassword } from './auth/routes.js'
 import type { MembershipDoc, TenantDoc, UserDoc } from './db.js'
 
@@ -95,6 +96,13 @@ async function main(): Promise<void> {
       console.log(`  ${tenant.slug}: ${user.email} (${user.role})`)
     }
   }
+
+  // Give the demo tenants the same baseline a real tenant gets from
+  // `migrate` — a Main branch, a current academic year, a calendar, an
+  // enrollment per student — so a fresh database is immediately usable.
+  console.log('  backfilling structural baseline...')
+  await backfillBranchesAndClasses(db)
+  await backfillEnrollmentModel(db)
 
   await client.close()
   console.log('seed complete')

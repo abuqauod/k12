@@ -46,12 +46,23 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('academicYears').createIndex({ tenantId: 1, current: 1 })
 
-  // The two real query patterns: a class's whole register for one day, and
-  // one student's history over a range. _id (tenantId:studentId:date) alone
-  // covers neither efficiently.
+  // The real query patterns: a class's whole register for one day, one
+  // student's history over a range, and the required
+  // tenant+branch+class+student+date access path. The unique index is
+  // belt-and-braces on top of the deterministic `_id` — a second daily row
+  // for a student is rejected by the database, not just by convention.
   await db.collection('attendance').createIndex({ tenantId: 1, date: 1 })
   await db.collection('attendance').createIndex({ tenantId: 1, studentId: 1, date: -1 })
   await db.collection('attendance').createIndex({ tenantId: 1, classId: 1, date: 1 })
+  await db
+    .collection('attendance')
+    .createIndex({ tenantId: 1, branchId: 1, classId: 1, studentId: 1, date: 1 })
+  await db
+    .collection('attendance')
+    .createIndex({ tenantId: 1, studentId: 1, date: 1 }, { unique: true })
+  await db.collection('attendance').createIndex({ tenantId: 1, academicYearId: 1, date: 1 })
+  await db.collection('attendanceCorrections').createIndex({ tenantId: 1, attendanceId: 1, changedAt: -1 })
+  await db.collection('attendanceCorrections').createIndex({ tenantId: 1, studentId: 1, changedAt: -1 })
 
   await db.collection('branches').createIndex({ tenantId: 1, code: 1 }, { unique: true })
   await db.collection('branches').createIndex({ tenantId: 1 })
@@ -63,8 +74,26 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('students').createIndex({ tenantId: 1, branchId: 1, classId: 1 })
 
+  // Enrollment: at most one ACTIVE row per (tenant, student) — a partial
+  // unique index makes a second concurrent transfer impossible rather than
+  // merely unlikely. Plus the history and roster read paths.
+  await db
+    .collection('enrollments')
+    .createIndex(
+      { tenantId: 1, studentId: 1 },
+      { unique: true, partialFilterExpression: { status: 'active' } },
+    )
+  await db.collection('enrollments').createIndex({ tenantId: 1, studentId: 1, startDate: -1 })
+  await db.collection('enrollments').createIndex({ tenantId: 1, classId: 1, status: 1 })
+  await db.collection('enrollments').createIndex({ tenantId: 1, branchId: 1, academicYearId: 1, status: 1 })
+
   // The sweep scans this cross-tenant for "enabled and not yet swept today".
   await db.collection('notificationSettings').createIndex({ absenceNotifyEnabled: 1 })
-  await db.collection('notificationLog').createIndex({ tenantId: 1, branchId: 1, date: -1 })
-  await db.collection('notificationLog').createIndex({ tenantId: 1, studentId: 1, date: -1 })
+  await db.collection('notificationJobs').createIndex({ tenantId: 1, branchId: 1, date: -1 })
+  await db.collection('notificationJobs').createIndex({ tenantId: 1, studentId: 1, date: -1 })
+  // The worker claims by this: due, not yet terminal, oldest first.
+  await db.collection('notificationJobs').createIndex({ status: 1, nextAttemptAt: 1 })
+  await db.collection('notificationAttempts').createIndex({ tenantId: 1, jobId: 1, attemptNo: 1 })
+  // Advisory locks self-heal: an abandoned row ages out on its own.
+  await db.collection('locks').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 }

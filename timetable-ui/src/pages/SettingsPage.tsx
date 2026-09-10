@@ -19,10 +19,12 @@ import type { Member, MemberRole } from '../lib/memberships'
 import { createBranch, updateBranch } from '../lib/branchesApi'
 import {
   getNotificationSettings,
+  getSchoolCalendar,
   putNotificationSettings,
+  putSchoolCalendar,
   runAbsenceNotifications,
 } from '../lib/notificationsApi'
-import type { NotificationSettings } from '../lib/notificationsApi'
+import type { NotificationSettings, SchoolCalendar } from '../lib/notificationsApi'
 import { SchoolWeekFields } from '../components/SchoolWeekFields'
 import { ConstraintWeightsEditor } from '../components/ConstraintWeights'
 import { RoutingRulesEditor } from '../components/RoutingRules'
@@ -937,10 +939,135 @@ function BranchesSettingsTab() {
                 </select>
               </label>
             )}
+            <SchoolCalendarForm key={`cal-${branchId}`} branchId={branchId} />
             <NotificationSettingsForm key={branchId} branchId={branchId} />
           </>
         )}
       </section>
+    </div>
+  )
+}
+
+function SchoolCalendarForm({ branchId }: { branchId: string }) {
+  const { t } = useI18n()
+  const { getAccessToken } = useAuth()
+  const [cal, setCal] = useState<SchoolCalendar | null>(null)
+  const [msg, setMsg] = useState<{ text: string; kind: 'success' | 'error' } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [holidayDate, setHolidayDate] = useState('')
+  const [holidayName, setHolidayName] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const token = await getAccessToken()
+      if (!token) return
+      const result = await getSchoolCalendar(token, branchId)
+      if (!cancelled && result.kind === 'ok') setCal(result.data)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [branchId, getAccessToken])
+
+  if (!cal) return null
+
+  const toggleDay = (day: number) =>
+    setCal((c) =>
+      c
+        ? {
+            ...c,
+            workingDays: c.workingDays.includes(day)
+              ? c.workingDays.filter((d) => d !== day)
+              : [...c.workingDays, day].sort((a, b) => a - b),
+          }
+        : c,
+    )
+
+  const addHoliday = () => {
+    if (!holidayDate || !holidayName.trim()) return
+    setCal((c) =>
+      c
+        ? {
+            ...c,
+            holidays: [...c.holidays.filter((h) => h.date !== holidayDate), { date: holidayDate, name: holidayName.trim() }].sort(
+              (a, b) => a.date.localeCompare(b.date),
+            ),
+          }
+        : c,
+    )
+    setHolidayDate('')
+    setHolidayName('')
+  }
+
+  const save = async () => {
+    setBusy(true)
+    setMsg(null)
+    const token = await getAccessToken()
+    if (!token) return setBusy(false)
+    const result = await putSchoolCalendar(token, branchId, cal)
+    setBusy(false)
+    setMsg(
+      result.kind === 'ok'
+        ? { text: t('notify.saved'), kind: 'success' }
+        : { text: t('notify.saveError'), kind: 'error' },
+    )
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 10, maxWidth: 620, marginBottom: 18, paddingBottom: 18, borderBottom: '1px solid var(--line)' }}>
+      <h3 className="card__subtitle" style={{ margin: 0 }}>{t('calendar.title')}</h3>
+      <p className="card__hint" style={{ margin: 0 }}>{t('calendar.hint')}</p>
+      <div>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('notify.schoolDays')}</span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+          {WEEKDAY_KEYS.map((dayKey, day) => (
+            <label key={day} className="inline-field">
+              <input type="checkbox" checked={cal.workingDays.includes(day)} onChange={() => toggleDay(day)} />
+              {t(dayKey)}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{t('calendar.holidays')}</span>
+        {cal.holidays.length > 0 && (
+          <ul style={{ margin: '4px 0', paddingInlineStart: 18 }}>
+            {cal.holidays.map((h) => (
+              <li key={h.date}>
+                {h.date} — {h.name}{' '}
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setCal((c) => (c ? { ...c, holidays: c.holidays.filter((x) => x.date !== h.date) } : c))}
+                  aria-label={`${t('classes.delete')} ${h.name}`}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="break-card__row" style={{ marginTop: 4 }}>
+          <input type="date" className="input input--sm" value={holidayDate} onChange={(e) => setHolidayDate(e.target.value)} />
+          <input
+            className="input input--sm"
+            style={{ minWidth: 160 }}
+            placeholder={t('calendar.holidayName')}
+            value={holidayName}
+            onChange={(e) => setHolidayName(e.target.value)}
+          />
+          <button type="button" className="btn btn--sm" onClick={addHoliday}>
+            {t('calendar.addHoliday')}
+          </button>
+        </div>
+      </div>
+      <div>
+        <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>
+          {t('calendar.save')}
+        </button>
+      </div>
+      {msg && <p className={msg.kind === 'success' ? 'login__success' : 'login__error'}>{msg.text}</p>}
     </div>
   )
 }
@@ -969,14 +1096,6 @@ function NotificationSettingsForm({ branchId }: { branchId: string }) {
 
   const set = <K extends keyof NotificationSettings>(key: K, value: NotificationSettings[K]) =>
     setSettings((current) => (current ? { ...current, [key]: value } : current))
-
-  const toggleDay = (day: number) =>
-    set(
-      'schoolDays',
-      settings.schoolDays.includes(day)
-        ? settings.schoolDays.filter((d) => d !== day)
-        : [...settings.schoolDays, day].sort((a, b) => a - b),
-    )
 
   const save = async () => {
     setBusy(true)
@@ -1007,10 +1126,10 @@ function NotificationSettingsForm({ branchId }: { branchId: string }) {
     const result = await runAbsenceNotifications(token, { branchId })
     setBusy(false)
     if (result.kind === 'ok') {
-      const { sent, failed, skipped } = result.data
+      const { delivered, dead, alreadyQueued } = result.data
       setMsg({
-        text: t('attendance.notifySent', { sent, failed, skipped }),
-        kind: failed > 0 ? 'error' : 'success',
+        text: t('attendance.notifySent', { sent: delivered, failed: dead, skipped: alreadyQueued }),
+        kind: dead > 0 ? 'error' : 'success',
       })
     } else {
       setMsg({ text: result.error, kind: 'error' })
@@ -1046,24 +1165,6 @@ function NotificationSettingsForm({ branchId }: { branchId: string }) {
         />
         {t('notify.unmarked')}
       </label>
-
-      <div>
-        <span className="field__label" style={{ fontSize: 12, color: 'var(--muted)' }}>
-          {t('notify.schoolDays')}
-        </span>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-          {WEEKDAY_KEYS.map((dayKey, day) => (
-            <label key={day} className="inline-field">
-              <input
-                type="checkbox"
-                checked={settings.schoolDays.includes(day)}
-                onChange={() => toggleDay(day)}
-              />
-              {t(dayKey)}
-            </label>
-          ))}
-        </div>
-      </div>
 
       <div>
         <span className="field__label" style={{ fontSize: 12, color: 'var(--muted)' }}>
@@ -1129,6 +1230,38 @@ function NotificationSettingsForm({ branchId }: { branchId: string }) {
           onChange={(event) => set('smsBody', event.target.value)}
         />
       </label>
+
+      <p className="card__hint" style={{ marginBottom: 0 }}>{t('notify.arHint')}</p>
+      <label className="field">
+        <span>{t('notify.emailSubjectAr')}</span>
+        <input
+          className="input"
+          dir="rtl"
+          value={settings.emailSubjectAr}
+          onChange={(event) => set('emailSubjectAr', event.target.value)}
+        />
+      </label>
+      <label className="field">
+        <span>{t('notify.emailBodyAr')}</span>
+        <textarea
+          className="input"
+          dir="rtl"
+          rows={6}
+          value={settings.emailBodyAr}
+          onChange={(event) => set('emailBodyAr', event.target.value)}
+        />
+      </label>
+      <label className="field">
+        <span>{t('notify.smsBodyAr')}</span>
+        <textarea
+          className="input"
+          dir="rtl"
+          rows={2}
+          value={settings.smsBodyAr}
+          onChange={(event) => set('smsBodyAr', event.target.value)}
+        />
+      </label>
+
       <p className="card__hint">{t('notify.tokens')}</p>
       <p className="card__hint">
         {settings.lastSweptDate

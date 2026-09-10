@@ -227,15 +227,31 @@ export interface LoginAttemptDoc extends Document {
 // can't give: two teachers marking different classes the same morning would
 // otherwise conflict with each other over one document.
 
+export type GuardianLanguage = 'en' | 'ar'
+
 export interface Guardian {
+  /** Stable id within the student's guardian list — so notification
+   * preferences, the send log and the audit trail can name one guardian
+   * without relying on array position. */
+  id: string
   name: string
   relationship: string
   phone: string
   secondaryPhone: string | null
   email: string | null
-  /** The contact a school calls first. Exactly one guardian should have this
-   * set; enforced in application code (see students/routes.ts), not here. */
+  /** The contact a school calls first — a display/ordering hint only. It is
+   * NOT how notification recipients are chosen (that is the per-channel
+   * opt-in flags below), so a student is never left uncontactable because
+   * the wrong box was ticked. At most one guardian should have this set;
+   * enforced in application code (see students/routes.ts), not here. */
   isPrimary: boolean
+  /** Which language this guardian's notifications are rendered in. */
+  preferredLanguage: GuardianLanguage
+  /** Per-channel opt-in. A guardian with neither set is never messaged. */
+  notifyByEmail: boolean
+  notifyBySms: boolean
+  /** A former guardian kept for history — excluded from every notification. */
+  active: boolean
 }
 
 /**
@@ -260,6 +276,18 @@ export interface StudentDoc extends Document {
   familyNameAr: string | null
   dob: string | null
   gender: 'male' | 'female' | null
+  /**
+   * `branchId` / `classId` / `academicYearId` / `studentGroup` are a
+   * denormalised cache of the student's *active* enrollment (see
+   * `EnrollmentDoc`). The enrollment is the source of truth for where a
+   * student is and their history; these fields are kept in step with it on
+   * every enrollment write (create / transfer / withdraw) so the common
+   * "who is in class X right now" lookup and the timetable solver don't each
+   * need a join. Never write them from a request body — always derive.
+   */
+  branchId: string
+  classId: string
+  academicYearId: string
   /** Links to the timetable cohort, matching `Lesson.studentGroup`. */
   studentGroup: string
   status: 'enrolled' | 'graduated' | 'withdrawn' | 'inquiry'
@@ -300,23 +328,121 @@ export interface AcademicYearDoc extends Document {
   createdAt: Date
 }
 
+export type AttendanceStatus =
+  | 'present'
+  | 'absent'
+  | 'late'
+  | 'excused'
+  | 'early_departure'
+// "unmarked" is not a stored value — it is the absence of a record for a
+// (student, date). The register renders it; nothing writes it.
+
 export interface AttendanceRecordDoc extends Document {
-  /** `${tenantId}:${studentId}:${date}` — one record per student per day,
-   * so re-marking the same day is an update, not a duplicate. */
+  /** `${tenantId}:${studentId}:${date}` — one record per student per day.
+   * A backing unique index on `{tenantId, studentId, date}` (schema.ts)
+   * makes a duplicate impossible even if a caller bypasses this id. */
   _id: string
   tenantId: string
   studentId: string
-  /** Denormalized from the student so a day's/branch's register and the
-   * absence sweep don't each need a second lookup. Kept in step on write. */
+  /** Denormalised from the student's active enrollment at mark time, so a
+   * day's / branch's register and the absence sweep are one indexed query,
+   * and so the record still says which branch/class/year it belonged to
+   * after the student moves. Kept as written — a later transfer does not
+   * rewrite past attendance. */
   branchId: string
   classId: string
+  academicYearId: string
+  enrollmentId: string
   /** ISO yyyy-mm-dd — a day, not a timestamp; there is no time zone to get
    * wrong when the whole record is "this calendar day". */
   date: string
-  status: 'present' | 'absent' | 'late' | 'excused'
+  status: AttendanceStatus
   note: string | null
+  /** First mark. */
   markedBy: string
   markedAt: Date
+  /** Last correction, if any — null on a record that was never changed. The
+   * full before/after trail is in `attendanceCorrections`. */
+  updatedBy: string | null
+  updatedAt: Date | null
+}
+
+/**
+ * One row per change to an existing attendance record — status or note. The
+ * record itself always holds the current value; this is the trail of how it
+ * got there, for the "who changed this and why" question a school will ask.
+ */
+export interface AttendanceCorrectionDoc extends Document {
+  _id: string
+  tenantId: string
+  attendanceId: string
+  studentId: string
+  branchId: string
+  date: string
+  from: { status: AttendanceStatus; note: string | null }
+  to: { status: AttendanceStatus; note: string | null }
+  reason: string | null
+  changedBy: string
+  changedAt: Date
+}
+
+// ------------------------------------------------------------ enrollment --
+// The record of a student being in one class, in one branch, for one
+// academic year, over a date range. This — not the cache fields on
+// `StudentDoc` — is the source of truth for where a student is and where
+// they have been. At most one enrollment per (tenant, student) is `active`
+// at a time (a partial unique index in schema.ts enforces it); a transfer
+// closes the old one and opens a new one in the same transaction, so the
+// history is continuous and nothing is lost when a student changes class or
+// the year rolls over.
+
+export type EnrollmentStatus = 'active' | 'withdrawn' | 'graduated' | 'transferred'
+
+export interface EnrollmentDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  branchId: string
+  classId: string
+  academicYearId: string
+  /** ISO yyyy-mm-dd. */
+  startDate: string
+  /** ISO yyyy-mm-dd, or null while still active. */
+  endDate: string | null
+  status: EnrollmentStatus
+  /** For a `transferred` row: the enrollment it was replaced by. */
+  supersededBy: string | null
+  /** Free text captured on withdraw / transfer. */
+  reason: string | null
+  createdAt: Date
+  createdBy: string | null
+  updatedAt: Date
+}
+
+// -------------------------------------------------------- school calendar --
+// Per-branch working week and holidays. The authority for "is `date` a
+// session day for this branch" — consulted by the absence sweep (no point
+// chasing absentees on a day off) and by enrollment date validation. One
+// document per branch; `notificationSettings.schoolDays` is migrated into
+// `workingDays` here and no longer read, so there is a single source of
+// truth for the working week.
+
+export interface SchoolHoliday {
+  /** ISO yyyy-mm-dd. */
+  date: string
+  name: string
+}
+
+export interface SchoolCalendarDoc extends Document {
+  /** `${tenantId}:${branchId}` — one per branch. */
+  _id: string
+  tenantId: string
+  branchId: string
+  /** 0 = Sunday … 6 = Saturday. A normal week's session days. */
+  workingDays: number[]
+  /** Specific non-session dates on top of the weekly pattern. */
+  holidays: SchoolHoliday[]
+  updatedAt: Date
 }
 
 // ------------------------------------------------------------- branches --
@@ -368,10 +494,17 @@ export interface SchoolClassDoc extends Document {
 }
 
 // -------------------------------------------------------- notifications --
-// Per-branch settings for the unexplained-absence follow-up, plus a log row
-// for every message the system sends (or tries to). The log doubles as the
-// idempotency record: a student with a 'sent' row for a date is not
-// contacted again for that date.
+// Delivery is a queue: an absence sweep (or the manual button) ENQUEUES one
+// `NotificationJobDoc` per (student, guardian, channel, date); a separate
+// worker drains the queue, recording a `NotificationAttemptDoc` per try and
+// backing off between retries. This keeps enqueue fast and independent of a
+// slow or failing provider, and lets several app instances process the
+// queue at once — each job is claimed atomically (pending -> processing).
+//
+//   NotificationJob ──< NotificationAttempt >── Provider (channels.ts)
+//
+// `NotifyChannel` is `email | sms` today; WhatsApp / push are a new case in
+// channels.ts plus a value here, not a schema change.
 
 export type NotifyChannel = 'email' | 'sms'
 
@@ -381,43 +514,104 @@ export interface NotificationSettingsDoc extends Document {
   tenantId: string
   branchId: string
   absenceNotifyEnabled: boolean
-  /** "HH:mm" in the branch timezone. The sweep runs at or after this. */
+  /** "HH:mm" in the branch timezone. The sweep enqueues at or after this. */
   cutoffTime: string
-  /** Channels to attempt, in order. SMS is accepted here but not yet wired
-   * to a provider — see notifications/channels.ts. */
+  /** Channels to attempt for each guardian who has opted into them. */
   channels: NotifyChannel[]
   /** When true, a student with no record at all counts as absent for the
    * purpose of notifying; when false, only an explicit 'absent' does. */
   notifyOnUnmarked: boolean
-  /** 0 = Sunday … 6 = Saturday. Days the sweep runs. */
-  schoolDays: number[]
+  /**
+   * @deprecated The working week now lives on `SchoolCalendarDoc.workingDays`
+   * (migrated across, single source of truth). Kept on the type only so old
+   * documents still parse; nothing reads it.
+   */
+  schoolDays?: number[]
+  /** English templates. `{studentName} {date} {schoolName} {branchName}`. */
   emailSubject: string
   emailBody: string
   smsBody: string
-  /** ISO date the automatic sweep last ran for this branch — stops it
-   * firing twice in one day. */
+  /** Arabic templates — used for a guardian whose `preferredLanguage` is
+   * 'ar'. Blank falls back to the English template above. */
+  emailSubjectAr: string
+  emailBodyAr: string
+  smsBodyAr: string
+  /** ISO date the automatic sweep last enqueued for this branch — stops it
+   * enqueueing twice in one day. */
   lastSweptDate: string | null
   updatedAt: Date
 }
 
-export interface NotificationLogDoc extends Document {
-  /** `${tenantId}:${branchId}:${studentId}:${date}:${channel}` — idempotent
-   * per student per day per channel. */
+export type NotificationJobStatus =
+  | 'pending'
+  | 'processing'
+  | 'sent'
+  | 'failed'
+  | 'dead'
+  | 'skipped'
+
+export interface NotificationJobDoc extends Document {
+  /**
+   * `${tenantId}:${branchId}:${studentId}:${date}:${channel}:${guardianId}`
+   * — deterministic, so re-running a sweep for the same day re-touches the
+   * same jobs instead of creating duplicates (`$setOnInsert`), and two app
+   * instances enqueueing at once converge on the same set.
+   */
   _id: string
   tenantId: string
   branchId: string
   studentId: string
+  guardianId: string
   date: string
   channel: NotifyChannel
-  /** The address or number actually used. */
+  /** Address or phone actually used. */
   to: string
   guardianName: string
-  status: 'sent' | 'failed' | 'skipped'
-  error: string | null
+  language: GuardianLanguage
+  subject: string
+  body: string
+  status: NotificationJobStatus
+  attempts: number
+  maxAttempts: number
+  /** When the worker may next try this job (backoff). Null once terminal. */
+  nextAttemptAt: Date | null
+  lastError: string | null
+  /** The provider's own id for the accepted message, when it returns one. */
+  providerMessageId: string | null
   /** 'auto' = the scheduled sweep; 'manual' = someone pressed the button. */
   trigger: 'auto' | 'manual'
   actorId: string | null
   createdAt: Date
+  updatedAt: Date
+}
+
+export interface NotificationAttemptDoc extends Document {
+  _id: string
+  tenantId: string
+  jobId: string
+  channel: NotifyChannel
+  attemptNo: number
+  status: 'sent' | 'failed'
+  providerMessageId: string | null
+  error: string | null
+  startedAt: Date
+  finishedAt: Date
+}
+
+/**
+ * A coarse advisory lock, so the periodic work a single-writer design
+ * assumed (the absence sweep deciding "enqueue today's jobs") stays
+ * single-writer when the app runs as several instances. Whoever holds an
+ * unexpired row owns the job; the row self-heals via `expiresAt` if the
+ * holder dies mid-run. Per-notification idempotency does NOT depend on this
+ * (the deterministic job `_id` does) — this only prevents duplicated work.
+ */
+export interface LockDoc extends Document {
+  /** The lock name, e.g. "absence-sweep". */
+  _id: string
+  holder: string
+  acquiredAt: Date
+  expiresAt: Date
 }
 
 // ---------------------------------------------------------- tenant scoping --
@@ -468,6 +662,19 @@ export class TenantScope<T extends Document> {
   }
 
   /**
+   * Scoped bulk update — for the "close every other active enrollment / unset
+   * `current` on every other year" shape, where a per-doc loop would be
+   * needless round-trips. Same forced tenant filter as everything else.
+   */
+  updateMany(filter: Filter<T>, update: UpdateFilter<T>) {
+    return this.col.updateMany(this.scope(filter), update, { session: this.session })
+  }
+
+  countDocuments(filter: Filter<T> = {} as Filter<T>) {
+    return this.col.countDocuments(this.scope(filter), { session: this.session })
+  }
+
+  /**
    * Scoped delete. Added late and used sparingly — most "removals" here are a
    * status flip, not an erase — but a few things (an empty class, a mis-typed
    * branch) genuinely have no reason to linger. The tenant filter is forced
@@ -489,10 +696,14 @@ export interface TenantContext {
   students: TenantScope<StudentDoc>
   academicYears: TenantScope<AcademicYearDoc>
   attendance: TenantScope<AttendanceRecordDoc>
+  attendanceCorrections: TenantScope<AttendanceCorrectionDoc>
+  enrollments: TenantScope<EnrollmentDoc>
   branches: TenantScope<BranchDoc>
   classes: TenantScope<SchoolClassDoc>
+  schoolCalendars: TenantScope<SchoolCalendarDoc>
   notificationSettings: TenantScope<NotificationSettingsDoc>
-  notificationLog: TenantScope<NotificationLogDoc>
+  notificationJobs: TenantScope<NotificationJobDoc>
+  notificationAttempts: TenantScope<NotificationAttemptDoc>
 }
 
 /**
@@ -523,15 +734,31 @@ export async function withTenant<T>(
         students: new TenantScope(db.collection<StudentDoc>('students'), tenantId, session),
         academicYears: new TenantScope(db.collection<AcademicYearDoc>('academicYears'), tenantId, session),
         attendance: new TenantScope(db.collection<AttendanceRecordDoc>('attendance'), tenantId, session),
+        attendanceCorrections: new TenantScope(
+          db.collection<AttendanceCorrectionDoc>('attendanceCorrections'),
+          tenantId,
+          session,
+        ),
+        enrollments: new TenantScope(db.collection<EnrollmentDoc>('enrollments'), tenantId, session),
         branches: new TenantScope(db.collection<BranchDoc>('branches'), tenantId, session),
         classes: new TenantScope(db.collection<SchoolClassDoc>('classes'), tenantId, session),
+        schoolCalendars: new TenantScope(
+          db.collection<SchoolCalendarDoc>('schoolCalendars'),
+          tenantId,
+          session,
+        ),
         notificationSettings: new TenantScope(
           db.collection<NotificationSettingsDoc>('notificationSettings'),
           tenantId,
           session,
         ),
-        notificationLog: new TenantScope(
-          db.collection<NotificationLogDoc>('notificationLog'),
+        notificationJobs: new TenantScope(
+          db.collection<NotificationJobDoc>('notificationJobs'),
+          tenantId,
+          session,
+        ),
+        notificationAttempts: new TenantScope(
+          db.collection<NotificationAttemptDoc>('notificationAttempts'),
           tenantId,
           session,
         ),
@@ -553,14 +780,21 @@ export interface UnscopedDb {
   actionTokens: Collection<ActionTokenDoc>
   loginAttempts: Collection<LoginAttemptDoc>
   /**
-   * The absence-notification sweep is a vendor-level cron: it has to ask
-   * "which branches, across every tenant, are due a sweep right now?" before
-   * any one tenant's context exists — the same cross-tenant shape as
-   * `/admin/*`. It reads these two here, then does the per-branch work
-   * (students, attendance, log writes) back inside `withTenant`.
+   * The absence-notification sweep is a vendor-level cron: it asks "which
+   * branches, across every tenant, are due right now?" before any one
+   * tenant's context exists — the same cross-tenant shape as `/admin/*`. It
+   * reads branches / settings / calendars here to decide, then does the
+   * per-branch enqueue work back inside `withTenant`. The queue worker
+   * likewise claims and delivers jobs across all tenants (each job carries
+   * its own `tenantId`), and takes the `absence-sweep` advisory lock so
+   * multiple instances don't each enqueue the same day.
    */
   branches: Collection<BranchDoc>
   notificationSettings: Collection<NotificationSettingsDoc>
+  schoolCalendars: Collection<SchoolCalendarDoc>
+  notificationJobs: Collection<NotificationJobDoc>
+  notificationAttempts: Collection<NotificationAttemptDoc>
+  locks: Collection<LockDoc>
 }
 
 /**
@@ -584,5 +818,9 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     loginAttempts: database.collection<LoginAttemptDoc>('loginAttempts'),
     branches: database.collection<BranchDoc>('branches'),
     notificationSettings: database.collection<NotificationSettingsDoc>('notificationSettings'),
+    schoolCalendars: database.collection<SchoolCalendarDoc>('schoolCalendars'),
+    notificationJobs: database.collection<NotificationJobDoc>('notificationJobs'),
+    notificationAttempts: database.collection<NotificationAttemptDoc>('notificationAttempts'),
+    locks: database.collection<LockDoc>('locks'),
   })
 }

@@ -11,15 +11,43 @@ export type RunDirection = 'MORNING' | 'EVENING'
 
 export type StudentStatus = 'enrolled' | 'graduated' | 'withdrawn' | 'inquiry'
 
+export type GuardianLanguage = 'en' | 'ar'
+
 export interface Guardian {
+  /** Stable id from the server; absent only on a guardian the form just
+   * added and hasn't saved yet. */
+  id?: string
   name: string
   relationship: string
   phone: string
   secondaryPhone: string | null
   email: string | null
-  /** The contact a school calls first — at most one guardian should have
-   * this set (checked where a guardian list is edited, not here). */
+  /** The contact a school calls first — a display hint, not how notification
+   * recipients are chosen. */
   isPrimary: boolean
+  /** Language this guardian's absence notifications are written in. */
+  preferredLanguage: GuardianLanguage
+  /** Per-channel opt-in — a guardian with neither is never messaged. */
+  notifyByEmail: boolean
+  notifyBySms: boolean
+  /** A former guardian kept for history; excluded from notifications. */
+  active: boolean
+}
+
+/** A blank guardian for the "add" button. */
+export function emptyGuardian(): Guardian {
+  return {
+    name: '',
+    relationship: 'guardian',
+    phone: '',
+    secondaryPhone: null,
+    email: null,
+    isPrimary: false,
+    preferredLanguage: 'en',
+    notifyByEmail: true,
+    notifyBySms: false,
+    active: true,
+  }
 }
 
 export interface Student {
@@ -38,6 +66,8 @@ export interface Student {
    * server always carries both. */
   branchId?: string
   classId?: string
+  /** The active enrollment's academic year — read-only, follows the class. */
+  academicYearId?: string
   /** Where this student boards. Empty means not yet placed on a route. */
   stopId: string
   transportMode: TransportMode
