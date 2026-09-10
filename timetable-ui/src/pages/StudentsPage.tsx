@@ -5,6 +5,7 @@ import type { NewStudent } from '../lib/studentsApi'
 import { createStudent, listStudents, updateStudent } from '../lib/studentsApi'
 import { listClasses } from '../lib/classesApi'
 import type { SchoolClass } from '../domain/classes'
+import { StudentDetailDialog } from '../components/StudentDetailDialog'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
@@ -40,6 +41,7 @@ export function StudentsPage() {
   const [loadError, setLoadError] = useState(false)
   const [pendingSaves, setPendingSaves] = useState(0)
   const [classes, setClasses] = useState<SchoolClass[]>([])
+  const [detailId, setDetailId] = useState<string | null>(null)
 
   const classLabel = useMemo(() => new Map(classes.map((c) => [c.id, c.label])), [classes])
 
@@ -317,25 +319,31 @@ export function StudentsPage() {
                       </div>
                     </td>
                     <td>
-                      <select
-                        className="cell-input"
-                        value={student.classId ?? ''}
-                        onChange={(event) =>
-                          patch(index, {
-                            classId: event.target.value,
-                            studentGroup: classLabel.get(event.target.value) ?? student.studentGroup,
-                          })
-                        }
-                      >
-                        {(!student.classId || !classLabel.has(student.classId)) && (
-                          <option value="">{student.studentGroup || '—'}</option>
-                        )}
-                        {classes.map((klass) => (
-                          <option key={klass.id} value={klass.id}>
-                            {klass.label}
-                          </option>
-                        ))}
-                      </select>
+                      {student.id.startsWith(NEW_PREFIX) ? (
+                        <select
+                          className="cell-input"
+                          value={student.classId ?? ''}
+                          onChange={(event) =>
+                            patch(index, {
+                              classId: event.target.value,
+                              studentGroup: classLabel.get(event.target.value) ?? student.studentGroup,
+                            })
+                          }
+                        >
+                          {(!student.classId || !classLabel.has(student.classId)) && (
+                            <option value="">{student.studentGroup || '—'}</option>
+                          )}
+                          {classes.map((klass) => (
+                            <option key={klass.id} value={klass.id}>
+                              {klass.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        // Class is set by an enrolment now — a change here is a
+                        // transfer, done from the details dialog.
+                        <span>{classLabel.get(student.classId ?? '') ?? (student.studentGroup || '—')}</span>
+                      )}
                     </td>
                     <td>
                       <select
@@ -387,6 +395,17 @@ export function StudentsPage() {
                     </td>
                     <td>
                       <div className="row-actions">
+                        {!student.id.startsWith(NEW_PREFIX) && (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => setDetailId(student.id)}
+                            aria-label={`${t('enroll.history')} ${student.studentNumber}`}
+                            title={t('enroll.history')}
+                          >
+                            ⋯
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="icon-btn"
@@ -409,6 +428,23 @@ export function StudentsPage() {
           {t('students.demandNote')}
         </p>
       </div>
+
+      {detailId &&
+        (() => {
+          const s = students.find((x) => x.id === detailId)
+          if (!s) return null
+          return (
+            <StudentDetailDialog
+              student={s}
+              classes={classes}
+              getAccessToken={getAccessToken}
+              onClose={() => setDetailId(null)}
+              onChanged={(updated) =>
+                setStudents(students.map((x) => (x.id === updated.id ? updated : x)))
+              }
+            />
+          )
+        })()}
     </div>
   )
 }

@@ -172,57 +172,121 @@ async function main() {
   )
   check('scheduler may write', schedulerWrite.status === 200, schedulerWrite.body)
 
-  console.log('\n== branches, classes, students, attendance ==')
+  const schedulerToken = viewerLogin.body.accessToken as string
+
+  console.log('\n== academic structure ==')
+  const years = await call('/academic-years', {}, northToken)
+  const currentYears = ((years.body.years as Array<{ current: boolean }>) ?? []).filter((y) => y.current)
+  check('migration left exactly one current academic year', years.status === 200 && currentYears.length === 1, years.body)
+
+  console.log('\n== branches & classes ==')
   const branches = await call('/branches', {}, northToken)
   check('every tenant has at least one branch (backfilled)', branches.status === 200 && ((branches.body.branches as unknown[]) ?? []).length >= 1, branches.body)
-  const branchId = ((branches.body.branches as Array<{ id: string }>) ?? [])[0]?.id
+  const branchA = ((branches.body.branches as Array<{ id: string }>) ?? [])[0]?.id
 
-  const newClass = await call(
-    '/classes',
-    { method: 'POST', body: JSON.stringify({ branchId, gradeLevel: `G${KEY}`, name: 'A', capacity: 20 }) },
-    northToken,
-  )
-  check('admin creates a class', newClass.status === 201, newClass.body)
-  const classId = newClass.body.id as string
+  const branchBRes = await call('/branches', { method: 'POST', body: JSON.stringify({ name: `West ${KEY}`, code: `west-${KEY.replace(/[^a-z0-9-]/gi, '').toLowerCase()}` }) }, northToken)
+  check('admin creates a second branch', branchBRes.status === 201, branchBRes.body)
+  const branchB = branchBRes.body.id as string
 
-  const student = await call(
-    '/students',
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        studentNumber: `SN-${KEY}`,
-        givenName: 'Smoke',
-        familyName: 'Test',
-        classId,
-        guardians: [
-          { name: 'Parent', relationship: 'mother', phone: '+962790000000', email: 'p@example.test', isPrimary: true },
-        ],
-      }),
-    },
-    northToken,
-  )
-  check('admin creates a student in that class', student.status === 201, student.body)
+  const classA = await call('/classes', { method: 'POST', body: JSON.stringify({ branchId: branchA, gradeLevel: `G${KEY}`, name: 'A', capacity: 20 }) }, northToken)
+  const classB = await call('/classes', { method: 'POST', body: JSON.stringify({ branchId: branchB, gradeLevel: `G${KEY}`, name: 'B', capacity: 20 }) }, northToken)
+  check('admin creates a class in each branch', classA.status === 201 && classB.status === 201, { a: classA.body, b: classB.body })
+  const classAId = classA.body.id as string
+  const classBId = classB.body.id as string
+
+  console.log('\n== enrollment, transfer, multiple guardians ==')
+  const student = await call('/students', {
+    method: 'POST',
+    body: JSON.stringify({
+      studentNumber: `SN-${KEY}`,
+      givenName: 'Smoke',
+      familyName: 'Test',
+      classId: classAId,
+      guardians: [
+        { name: 'Parent One', relationship: 'mother', phone: '+962790000001', email: 'p1@example.test', isPrimary: true, notifyByEmail: true, preferredLanguage: 'en' },
+        { name: 'Parent Two', relationship: 'father', phone: '+962790000002', email: 'p2@example.test', notifyByEmail: true, preferredLanguage: 'ar' },
+      ],
+    }),
+  }, northToken)
+  check('creating a student opens an enrollment', student.status === 201, student.body)
   const studentId = student.body.id as string
 
-  const day = new Date().toISOString().slice(0, 10)
-  const register = await call(`/attendance?date=${day}&classId=${classId}`, {}, northToken)
-  const registerRows = (register.body.students as Array<{ studentId: string; status: string | null }>) ?? []
-  check(
-    'the register lists the enrolled student as not-yet-marked',
-    register.status === 200 && registerRows.some((r) => r.studentId === studentId && r.status === null),
-    register.body,
-  )
+  const detail = await call(`/students/${studentId}`, {}, northToken)
+  const gs = (detail.body.guardians as Array<{ id?: string; preferredLanguage?: string }>) ?? []
+  check('both guardians are stored with ids and languages', gs.length === 2 && gs.every((g) => typeof g.id === 'string' && g.id.length > 0) && gs.some((g) => g.preferredLanguage === 'ar'), gs)
 
-  const mark = await call(
-    '/attendance',
-    { method: 'PUT', body: JSON.stringify({ date: day, records: [{ studentId, status: 'present' }] }) },
-    northToken,
-  )
-  check('marking the register succeeds', mark.status === 200 && (mark.body.count as number) === 1, mark.body)
+  const enr1 = await call(`/students/${studentId}/enrollments`, {}, northToken)
+  const rows1 = (enr1.body.enrollments as Array<{ status: string; academicYearId: string }>) ?? []
+  check('exactly one active enrollment, tied to the current year', rows1.filter((r) => r.status === 'active').length === 1 && Boolean(rows1[0]?.academicYearId), enr1.body)
+
+  const transfer = await call(`/students/${studentId}/transfer`, { method: 'POST', body: JSON.stringify({ toClassId: classBId, reason: 'smoke transfer' }) }, northToken)
+  const tBody = transfer.body as { from?: { status?: string }; to?: { status?: string } }
+  check('transfer closes the old enrollment and opens a new one', transfer.status === 200 && tBody.from?.status === 'transferred' && tBody.to?.status === 'active', transfer.body)
+
+  const enr2 = await call(`/students/${studentId}/enrollments`, {}, northToken)
+  const rows2 = (enr2.body.enrollments as Array<{ status: string; classId: string }>) ?? []
+  check('history has 2 rows, still only one active, now in branch B class', rows2.length === 2 && rows2.filter((r) => r.status === 'active').length === 1 && rows2.find((r) => r.status === 'active')?.classId === classBId, enr2.body)
+
+  const afterTransfer = await call(`/students/${studentId}`, {}, northToken)
+  check('the student cache followed the transfer', afterTransfer.body.branchId === branchB && afterTransfer.body.classId === classBId, { branchId: afterTransfer.body.branchId, classId: afterTransfer.body.classId })
+
+  console.log('\n== attendance states & corrections, duplicate prevention ==')
+  const day = new Date().toISOString().slice(0, 10)
+  const m1 = await call('/attendance', { method: 'PUT', body: JSON.stringify({ date: day, records: [{ studentId, status: 'early_departure', note: 'left at noon' }] }) }, northToken)
+  check('a new mark with the new "early_departure" state inserts', m1.status === 200 && (m1.body.inserted as number) === 1, m1.body)
+
+  const m2 = await call('/attendance', { method: 'PUT', body: JSON.stringify({ date: day, reason: 'was actually present', records: [{ studentId, status: 'present' }] }) }, northToken)
+  check('re-marking the same day is a correction, not a second row', m2.status === 200 && (m2.body.corrected as number) === 1 && (m2.body.inserted as number) === 0, m2.body)
+
+  const hist = await call(`/attendance/student/${studentId}?from=${day}&to=${day}`, {}, northToken)
+  check('the student has exactly one attendance record for that day', ((hist.body.records as unknown[]) ?? []).length === 1, hist.body)
+
+  const corr = await call(`/attendance/student/${studentId}/corrections`, {}, northToken)
+  const corrRows = (corr.body.corrections as Array<{ from: { status: string }; to: { status: string } }>) ?? []
+  check('the correction trail records the before and after', corrRows.length === 1 && corrRows[0]?.from.status === 'early_departure' && corrRows[0]?.to.status === 'present', corr.body)
+
+  console.log('\n== notification queue: idempotency & multi-instance ==')
+  await call(`/branches/${branchB}/notification-settings`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      absenceNotifyEnabled: true,
+      cutoffTime: '00:00',
+      channels: ['email'],
+      notifyOnUnmarked: false,
+      emailSubject: 'Absent: {studentName}',
+      emailBody: '{studentName} was absent on {date}.',
+      smsBody: '{studentName} absent {date}',
+    }),
+  }, northToken)
+  await call('/attendance', { method: 'PUT', body: JSON.stringify({ date: day, records: [{ studentId, status: 'absent' }] }) }, northToken)
+
+  // Two "instances" enqueue the same branch/day at once.
+  const [runA, runB] = await Promise.all([
+    call('/notifications/run', { method: 'POST', body: JSON.stringify({ branchId: branchB, date: day }) }, northToken),
+    call('/notifications/run', { method: 'POST', body: JSON.stringify({ branchId: branchB, date: day }) }, northToken),
+  ])
+  const totalEnqueued = (runA.body.enqueued as number ?? 0) + (runB.body.enqueued as number ?? 0)
+  check('concurrent runs enqueue each (student,guardian,channel) job exactly once', runA.status === 200 && runB.status === 200 && totalEnqueued === 2, { a: runA.body, b: runB.body })
+
+  const run3 = await call('/notifications/run', { method: 'POST', body: JSON.stringify({ branchId: branchB, date: day }) }, northToken)
+  check('a third run enqueues nothing new', (run3.body.enqueued as number) === 0 && (run3.body.alreadyQueued as number) === 2, run3.body)
+
+  const notifs = await call(`/notifications?branchId=${branchB}&date=${day}`, {}, northToken)
+  check('the log holds two jobs (two opted-in guardians, one channel)', ((notifs.body.entries as unknown[]) ?? []).length === 2, notifs.body)
+
+  console.log('\n== permission + branch authorization ==')
+  const schedBranch = await call('/branches', { method: 'POST', body: JSON.stringify({ name: 'Nope', code: `nope-${KEY.replace(/[^a-z0-9-]/gi, '').toLowerCase()}` }) }, schedulerToken)
+  check('a scheduler cannot create a branch (admin only)', schedBranch.status === 403, schedBranch.body)
+
+  const schedTransfer = await call(`/students/${studentId}/transfer`, { method: 'POST', body: JSON.stringify({ toClassId: classAId }) }, schedulerToken)
+  check('a scheduler cannot transfer a student (admin only)', schedTransfer.status === 403, schedTransfer.body)
 
   const crossClasses = await call('/classes', {}, riverToken)
   const crossIds = ((crossClasses.body.classes as Array<{ id: string }>) ?? []).map((c) => c.id)
-  check('another tenant cannot see this class', !crossIds.includes(classId), { crossIds, classId })
+  check('another tenant cannot see these classes', !crossIds.includes(classAId) && !crossIds.includes(classBId), { crossIds })
+
+  const crossEnr = await call(`/students/${studentId}/enrollments`, {}, riverToken)
+  check('another tenant cannot read this student\'s enrollments', ((crossEnr.body.enrollments as unknown[]) ?? []).length === 0, crossEnr.body)
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}\n`)
   process.exit(failures === 0 ? 0 : 1)

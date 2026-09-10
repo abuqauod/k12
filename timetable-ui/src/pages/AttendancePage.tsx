@@ -9,7 +9,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 
-const STATUSES: AttendanceStatus[] = ['present', 'absent', 'late', 'excused']
+const STATUSES: AttendanceStatus[] = ['present', 'absent', 'late', 'excused', 'early_departure']
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -117,7 +117,7 @@ export function AttendancePage() {
     })
 
   const summary = useMemo(() => {
-    const counts = { present: 0, absent: 0, late: 0, excused: 0, unmarked: 0 }
+    const counts = { present: 0, absent: 0, late: 0, excused: 0, early_departure: 0, unmarked: 0 }
     for (const row of rows) {
       const status = edits[row.studentId]?.status ?? null
       if (status) counts[status]++
@@ -164,11 +164,11 @@ export function AttendancePage() {
     const result = await runAbsenceNotifications(token, { branchId, date, studentId })
     setNotifying(false)
     if (result.kind === 'ok') {
-      const { sent, failed, skipped } = result.data
+      const { enqueued, alreadyQueued, delivered, dead } = result.data
       setNotifyMsg(
-        sent + failed + skipped === 0
+        enqueued + alreadyQueued === 0
           ? t('attendance.notifyNothing')
-          : t('attendance.notifySent', { sent, failed, skipped }),
+          : t('attendance.notifySent', { sent: delivered, failed: dead, skipped: alreadyQueued }),
       )
     } else {
       setError(result.error)

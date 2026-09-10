@@ -13,35 +13,52 @@ export interface NotificationSettings {
   cutoffTime: string
   channels: NotifyChannel[]
   notifyOnUnmarked: boolean
-  schoolDays: number[]
   emailSubject: string
   emailBody: string
   smsBody: string
+  emailSubjectAr: string
+  emailBodyAr: string
+  smsBodyAr: string
   lastSweptDate: string | null
 }
+
+export type NotificationJobStatus = 'pending' | 'processing' | 'sent' | 'failed' | 'dead' | 'skipped'
 
 export interface NotificationLogEntry {
   id: string
   branchId: string
   studentId: string
+  guardianId: string
   date: string
   channel: NotifyChannel
   to: string
   guardianName: string
-  status: 'sent' | 'failed' | 'skipped'
+  language: 'en' | 'ar'
+  status: NotificationJobStatus
+  attempts: number
   error: string | null
+  providerMessageId: string | null
   trigger: 'auto' | 'manual'
   actorId: string | null
   createdAt: string
+  updatedAt: string
 }
 
 export interface NotifyOutcome {
   branchId: string
   date: string
-  attempted: number
-  sent: number
-  failed: number
-  skipped: number
+  absentees: number
+  enqueued: number
+  alreadyQueued: number
+  noGuardian: number
+  delivered: number
+  retried: number
+  dead: number
+}
+
+export interface SchoolCalendar {
+  workingDays: number[]
+  holidays: Array<{ date: string; name: string }>
 }
 
 export type NotificationsResult<T> = { kind: 'ok'; data: T } | { kind: 'error'; error: string }
@@ -97,6 +114,39 @@ export async function putNotificationSettings(
     const response = await call(
       `/branches/${encodeURIComponent(branchId)}/notification-settings`,
       { method: 'PUT', body: JSON.stringify(settings) },
+      accessToken,
+    )
+    return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function getSchoolCalendar(
+  accessToken: string,
+  branchId: string,
+): Promise<NotificationsResult<SchoolCalendar>> {
+  try {
+    const response = await call(
+      `/branches/${encodeURIComponent(branchId)}/calendar`,
+      { method: 'GET' },
+      accessToken,
+    )
+    return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function putSchoolCalendar(
+  accessToken: string,
+  branchId: string,
+  calendar: SchoolCalendar,
+): Promise<NotificationsResult<{ ok: true }>> {
+  try {
+    const response = await call(
+      `/branches/${encodeURIComponent(branchId)}/calendar`,
+      { method: 'PUT', body: JSON.stringify(calendar) },
       accessToken,
     )
     return parse(response)
