@@ -155,13 +155,60 @@ async function main() {
   })
   check('forgot-password fails cleanly without SMTP configured', forgot.status === 501, forgot.body)
 
-  console.log('\n== API keys ("server key") ==')
-  const keyCreate = await call(
+  console.log('\n== branches are console-provisioned ==')
+  const northgate = (list.body.tenants as Array<{ id: string; slug: string }>).find((t) => t.slug === 'northgate')!
+  const ngId = northgate.id
+
+  const tenantBranchWrite = await call(
+    '/branches',
+    { method: 'POST', body: JSON.stringify({ name: 'X', code: 'x-nope' }) },
+    regularToken,
+  )
+  check('the tenant-facing POST /branches is gone (console-only)', tenantBranchWrite.status === 404, tenantBranchWrite.body)
+
+  const adminBranch = await call(
+    `/admin/tenants/${ngId}/branches`,
+    { method: 'POST', body: JSON.stringify({ name: 'North Annex', code: `annex-${Date.now().toString(36)}`, address: '12 School Rd' }) },
+    adminToken,
+  )
+  check('the platform admin can provision a branch for a tenant', adminBranch.status === 201 && typeof adminBranch.body.id === 'string', adminBranch.body)
+  const provisionedBranchId = adminBranch.body.id as string
+
+  const adminBranchPatch = await call(
+    `/admin/tenants/${ngId}/branches/${provisionedBranchId}`,
+    { method: 'PATCH', body: JSON.stringify({ address: '99 New Rd', active: false }) },
+    adminToken,
+  )
+  check('the platform admin can relocate / deactivate a branch', adminBranchPatch.body.address === '99 New Rd' && adminBranchPatch.body.active === false, adminBranchPatch.body)
+
+  const tenantSeesIt = await call('/branches', {}, regularToken)
+  check(
+    'the tenant can read the provisioned branch',
+    (tenantSeesIt.body.branches as Array<{ id: string }>).some((b) => b.id === provisionedBranchId),
+    tenantSeesIt.body,
+  )
+
+  const otherTenantBranches = await call(`/admin/tenants/${tenantId}/branches`, {}, adminToken)
+  check(
+    'branch provisioning is per-tenant (the other tenant does not get it)',
+    !(otherTenantBranches.body.branches as Array<{ id: string }>).some((b) => b.id === provisionedBranchId),
+    otherTenantBranches.body,
+  )
+
+  console.log('\n== API keys (console-only "server key") ==')
+  const tenantKeyWrite = await call(
     '/api-keys',
     { method: 'POST', body: JSON.stringify({ name: 'CI script', role: 'scheduler' }) },
     regularToken,
   )
-  check('an admin can create an API key', keyCreate.status === 201 && typeof keyCreate.body.key === 'string', keyCreate.body)
+  check('the tenant-facing /api-keys surface is gone (console-only)', tenantKeyWrite.status === 404, tenantKeyWrite.body)
+
+  const keyCreate = await call(
+    `/admin/tenants/${ngId}/api-keys`,
+    { method: 'POST', body: JSON.stringify({ name: 'CI script', role: 'scheduler' }) },
+    adminToken,
+  )
+  check('the platform admin can mint an API key for a tenant', keyCreate.status === 201 && typeof keyCreate.body.key === 'string', keyCreate.body)
   const apiKey = keyCreate.body.key as string
   const keyId = keyCreate.body.id as string
 
@@ -170,16 +217,16 @@ async function main() {
     headers: { 'X-Api-Key': apiKey },
     body: JSON.stringify({ baseRevision: 0, problem: { lessons: ['VIA-KEY'], timeslots: [] } }),
   })
-  check('the API key can push a dataset with no user login at all', keyDataset.status === 201 || keyDataset.status === 200, keyDataset.body)
+  check('the minted key can push a dataset with no user login at all', keyDataset.status === 201 || keyDataset.status === 200, keyDataset.body)
 
-  const keyList = await call('/api-keys', {}, regularToken)
+  const keyList = await call(`/admin/tenants/${ngId}/api-keys`, {}, adminToken)
   check(
     'the key never appears in a listing, only its preview',
     (keyList.body.keys as Array<{ preview: string }>).every((k) => !k.preview.includes(apiKey)),
   )
 
-  const revoke = await call(`/api-keys/${keyId}`, { method: 'DELETE' }, regularToken)
-  check('an admin can revoke a key', revoke.status === 204, revoke.body)
+  const revoke = await call(`/admin/tenants/${ngId}/api-keys/${keyId}`, { method: 'DELETE' }, adminToken)
+  check('the platform admin can revoke a key', revoke.status === 204, revoke.body)
 
   const afterRevoke = await call(`/datasets/api-key-test`, {
     headers: { 'X-Api-Key': apiKey },

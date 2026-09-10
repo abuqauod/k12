@@ -189,6 +189,23 @@
       </div>
 
       <div class="card">
+        <h2>Branches</h2>
+        <p class="muted">Campuses of this school. Identity and location are vendor-managed here — the school's own users can only read this list and run each branch's calendar / absence alerts.</p>
+        <div id="branch-msg"></div>
+        <table>
+          <thead><tr><th>Name</th><th>Code</th><th>Address</th><th>Time zone</th><th>Active</th></tr></thead>
+          <tbody id="branches-body"></tbody>
+        </table>
+        <div class="row" style="margin-top:10px;">
+          <label>Name <input id="b-name" placeholder="West Campus" /></label>
+          <label>Code <input id="b-code" placeholder="west" /></label>
+          <label>Address <input id="b-address" placeholder="optional" /></label>
+          <label>Time zone <input id="b-timezone" value="Asia/Amman" /></label>
+          <button id="create-branch-btn">Add branch</button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Invite someone directly</h2>
         <p class="muted">Support path — a school's own admins normally do this themselves from within the app.</p>
         <div id="invite-msg"></div>
@@ -208,7 +225,7 @@
 
       <div class="card">
         <h2>API keys</h2>
-        <p class="muted">Machine-to-machine access for this school's sync — pasted into that school's Settings &rarr; Server sync instead of signing in.</p>
+        <p class="muted">Machine-to-machine access for this school's sync. Minted and revoked only here; hand the key to the school to paste into Settings &rarr; Server sync. The school's own admins can no longer create or list keys.</p>
         <div id="key-msg"></div>
         <table>
           <thead><tr><th>Name</th><th>Key</th><th>Role</th><th></th></tr></thead>
@@ -415,6 +432,7 @@
       renderMembers(t.members);
     }).catch(function (e) { alert('Failed to load school: ' + e.message); });
     loadKeys();
+    loadBranches();
   }
 
   function renderMembers(members) {
@@ -470,6 +488,86 @@
     var original = btn.textContent;
     btn.textContent = 'Copied';
     setTimeout(function () { btn.textContent = original; }, 1200);
+  });
+
+  // --- branches ---
+  function patchBranch(branchId, body, revert) {
+    api('/admin/tenants/' + currentTenantId + '/branches/' + branchId, {
+      method: 'PATCH', body: JSON.stringify(body),
+    }).then(function () {
+      showMsg(el('branch-msg'), 'Branch updated.', 'success');
+    }).catch(function (e) {
+      if (revert) revert();
+      showMsg(el('branch-msg'), e.message, 'error');
+    });
+  }
+
+  function loadBranches() {
+    api('/admin/tenants/' + currentTenantId + '/branches').then(function (data) {
+      var body = el('branches-body');
+      body.innerHTML = '';
+      data.branches.forEach(function (b) {
+        var tr = document.createElement('tr');
+
+        var nameInput = document.createElement('input');
+        nameInput.value = b.name;
+        nameInput.addEventListener('change', function () {
+          var next = nameInput.value.trim();
+          if (!next || next === b.name) { nameInput.value = b.name; return; }
+          patchBranch(b.id, { name: next }, function () { nameInput.value = b.name; });
+        });
+
+        var addrInput = document.createElement('input');
+        addrInput.value = b.address || '';
+        addrInput.placeholder = '—';
+        addrInput.addEventListener('change', function () {
+          var next = addrInput.value.trim();
+          patchBranch(b.id, { address: next || null }, function () { addrInput.value = b.address || ''; });
+        });
+
+        var tzInput = document.createElement('input');
+        tzInput.value = b.timezone;
+        tzInput.addEventListener('change', function () {
+          var next = tzInput.value.trim();
+          if (!next || next === b.timezone) { tzInput.value = b.timezone; return; }
+          patchBranch(b.id, { timezone: next }, function () { tzInput.value = b.timezone; });
+        });
+
+        var activeBox = document.createElement('input');
+        activeBox.type = 'checkbox';
+        activeBox.checked = b.active;
+        activeBox.addEventListener('change', function () {
+          patchBranch(b.id, { active: activeBox.checked }, function () { activeBox.checked = b.active; });
+        });
+
+        var tdName = document.createElement('td'); tdName.appendChild(nameInput);
+        var tdCode = document.createElement('td'); tdCode.innerHTML = '<code>' + escapeHtml(b.code) + '</code>';
+        var tdAddr = document.createElement('td'); tdAddr.appendChild(addrInput);
+        var tdTz = document.createElement('td'); tdTz.appendChild(tzInput);
+        var tdActive = document.createElement('td'); tdActive.appendChild(activeBox);
+        tr.appendChild(tdName); tr.appendChild(tdCode); tr.appendChild(tdAddr); tr.appendChild(tdTz); tr.appendChild(tdActive);
+        body.appendChild(tr);
+      });
+    }).catch(function (e) { showMsg(el('branch-msg'), e.message, 'error'); });
+  }
+
+  el('create-branch-btn').addEventListener('click', function () {
+    var msg = el('branch-msg');
+    var name = el('b-name').value.trim();
+    var code = el('b-code').value.trim().toLowerCase();
+    if (!name || !code) { showMsg(msg, 'Name and code are required.', 'error'); return; }
+    api('/admin/tenants/' + currentTenantId + '/branches', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: name, code: code,
+        address: el('b-address').value.trim() || null,
+        timezone: el('b-timezone').value.trim() || 'Asia/Amman',
+      }),
+    }).then(function () {
+      showMsg(msg, 'Branch added.', 'success');
+      el('b-name').value = ''; el('b-code').value = ''; el('b-address').value = '';
+      loadBranches();
+    }).catch(function (e) { showMsg(msg, e.message, 'error'); });
   });
 
   // --- api keys ---

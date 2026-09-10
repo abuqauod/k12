@@ -179,14 +179,15 @@ async function main() {
   const currentYears = ((years.body.years as Array<{ current: boolean }>) ?? []).filter((y) => y.current)
   check('migration left exactly one current academic year', years.status === 200 && currentYears.length === 1, years.body)
 
-  console.log('\n== branches & classes ==')
+  console.log('\n== branches (read-only for tenants) & classes ==')
   const branches = await call('/branches', {}, northToken)
-  check('every tenant has at least one branch (backfilled)', branches.status === 200 && ((branches.body.branches as unknown[]) ?? []).length >= 1, branches.body)
-  const branchA = ((branches.body.branches as Array<{ id: string }>) ?? [])[0]?.id
+  const branchList = (branches.body.branches as Array<{ id: string; code: string }>) ?? []
+  check('the tenant can read its branches (Main + West, seeded)', branches.status === 200 && branchList.length >= 2, branches.body)
+  const branchA = branchList[0]?.id
+  const branchB = (branchList.find((b) => b.code === 'west') ?? branchList[1])?.id as string
 
-  const branchBRes = await call('/branches', { method: 'POST', body: JSON.stringify({ name: `West ${KEY}`, code: `west-${KEY.replace(/[^a-z0-9-]/gi, '').toLowerCase()}` }) }, northToken)
-  check('admin creates a second branch', branchBRes.status === 201, branchBRes.body)
-  const branchB = branchBRes.body.id as string
+  const tenantCreateBranch = await call('/branches', { method: 'POST', body: JSON.stringify({ name: 'Nope', code: `nope-${KEY.replace(/[^a-z0-9]/gi, '').toLowerCase()}` }) }, northToken)
+  check('a tenant admin cannot create a branch (console-only now)', tenantCreateBranch.status === 404, tenantCreateBranch.body)
 
   const classA = await call('/classes', { method: 'POST', body: JSON.stringify({ branchId: branchA, gradeLevel: `G${KEY}`, name: 'A', capacity: 20 }) }, northToken)
   const classB = await call('/classes', { method: 'POST', body: JSON.stringify({ branchId: branchB, gradeLevel: `G${KEY}`, name: 'B', capacity: 20 }) }, northToken)
@@ -275,9 +276,6 @@ async function main() {
   check('the log holds two jobs (two opted-in guardians, one channel)', ((notifs.body.entries as unknown[]) ?? []).length === 2, notifs.body)
 
   console.log('\n== permission + branch authorization ==')
-  const schedBranch = await call('/branches', { method: 'POST', body: JSON.stringify({ name: 'Nope', code: `nope-${KEY.replace(/[^a-z0-9-]/gi, '').toLowerCase()}` }) }, schedulerToken)
-  check('a scheduler cannot create a branch (admin only)', schedBranch.status === 403, schedBranch.body)
-
   const schedTransfer = await call(`/students/${studentId}/transfer`, { method: 'POST', body: JSON.stringify({ toClassId: classAId }) }, schedulerToken)
   check('a scheduler cannot transfer a student (admin only)', schedTransfer.status === 403, schedTransfer.body)
 

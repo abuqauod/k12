@@ -9,7 +9,6 @@ import { registerAuthRoutes } from './auth/routes.js'
 import { registerDatasetRoutes } from './datasets/routes.js'
 import { registerAdminRoutes } from './admin/routes.js'
 import { registerMembershipRoutes } from './memberships/routes.js'
-import { registerApiKeyRoutes } from './apikeys/routes.js'
 import { registerAuditLogRoutes } from './auditlog/routes.js'
 import { registerStudentRoutes } from './students/routes.js'
 import { registerEnrollmentRoutes } from './enrollments/routes.js'
@@ -79,7 +78,6 @@ export function buildServer() {
       registerDatasetRoutes(instance)
       registerAdminRoutes(instance)
       registerMembershipRoutes(instance)
-      registerApiKeyRoutes(instance)
       registerAuditLogRoutes(instance)
       registerStudentRoutes(instance)
       registerEnrollmentRoutes(instance)

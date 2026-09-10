@@ -177,14 +177,14 @@ const en = {
 
   'branches.title': 'Branches',
   'branches.subtitle': 'Campuses of this school',
-  'branches.add': '+ Branch',
+  'branches.readOnlyNote':
+    'Campuses are set up by your provider. Contact them to add, rename, relocate or archive one. You manage each campus’s calendar and absence alerts below.',
   'branches.name': 'Name',
   'branches.code': 'Code',
   'branches.codeHint': 'lowercase, letters, digits and dashes',
   'branches.address': 'Address',
   'branches.timezone': 'Time zone',
   'branches.active': 'Active',
-  'branches.saveError': 'Could not save — the code may already be in use.',
   'branches.none': 'No branches yet.',
 
   'fleet.direction': 'Run',
@@ -437,8 +437,10 @@ const en = {
   'sync.usingApiKey': 'Requests are authenticated with the API key below, not your signed-in account.',
   'sync.apiKeySection': 'Sync without signing in',
   'sync.apiKeyHint':
-    'Optional — for a script or scheduled task with no one logged in. Leave blank to keep using your own session; create one below if you need one.',
+    'Optional — for a script or scheduled task with no one logged in. Leave blank to keep using your own session.',
   'sync.apiKey': 'API key',
+  'sync.apiKeyConsoleNote':
+    'API keys are issued by your provider. Ask them for one if a script or integration needs it.',
   'sync.keysTitle': 'Manage keys',
   'sync.keyCreated': 'Created "{name}". Copy it now — it will not be shown again.',
   'sync.useThisKey': 'Use this key above',
@@ -813,14 +815,14 @@ const ar: Record<TranslationKey, string> = {
 
   'branches.title': 'الفروع',
   'branches.subtitle': 'حَرَم هذه المدرسة',
-  'branches.add': '+ فرع',
+  'branches.readOnlyNote':
+    'يتم إعداد الفروع من قِبل المزوّد. تواصل معه لإضافة فرع أو إعادة تسميته أو نقله أو أرشفته. أنت تدير تقويم كل فرع وتنبيهات الغياب أدناه.',
   'branches.name': 'الاسم',
   'branches.code': 'الرمز',
   'branches.codeHint': 'أحرف صغيرة وأرقام وشرطات',
   'branches.address': 'العنوان',
   'branches.timezone': 'المنطقة الزمنية',
   'branches.active': 'نشط',
-  'branches.saveError': 'تعذّر الحفظ — قد يكون الرمز مستخدمًا.',
   'branches.none': 'لا توجد فروع بعد.',
 
   'fleet.direction': 'الرحلة',
@@ -1072,8 +1074,10 @@ const ar: Record<TranslationKey, string> = {
   'sync.usingApiKey': 'تتم المصادقة على الطلبات بمفتاح API أدناه، وليس بحسابك المسجّل.',
   'sync.apiKeySection': 'مزامنة بدون تسجيل الدخول',
   'sync.apiKeyHint':
-    'اختياري — لسكربت أو مهمة مجدولة بدون تسجيل دخول أحد. اتركه فارغاً للاستمرار باستخدام جلستك؛ أنشئ مفتاحاً أدناه إذا احتجت واحداً.',
+    'اختياري — لسكربت أو مهمة مجدولة بدون تسجيل دخول أحد. اتركه فارغاً للاستمرار باستخدام جلستك.',
   'sync.apiKey': 'مفتاح API',
+  'sync.apiKeyConsoleNote':
+    'مفاتيح API يُصدرها المزوّد. اطلب واحداً منه إذا احتاجه سكربت أو تكامل.',
   'sync.keysTitle': 'إدارة المفاتيح',
   'sync.keyCreated': 'تم إنشاء "{name}". انسخه الآن — لن يظهر مرة أخرى.',
   'sync.useThisKey': 'استخدام هذا المفتاح أعلاه',
