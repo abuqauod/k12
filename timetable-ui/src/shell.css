@@ -570,14 +570,15 @@
   overflow: hidden;
 }
 
-/* Faint grid, echoing the timetable the product produces. */
+/* Faint grid, echoing the timetable the product produces. Light lines now
+   that the panel itself is dark (see --brand-gradient). */
 .login__aside::after {
   content: '';
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(28, 16, 48, 0.09) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(28, 16, 48, 0.09) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
   background-size: 58px 44px;
   mask-image: radial-gradient(circle at 30% 40%, #000 0%, transparent 72%);
   pointer-events: none;
@@ -591,7 +592,7 @@
   z-index: 1;
 }
 
-/* On the purple panel the shield inverts to the same deep ink as the mark. */
+/* On the dark panel the shield inverts to white. */
 .login__brand .brand__mark {
   color: var(--on-accent);
 }
@@ -618,7 +619,7 @@
 .lockup__tagline {
   font-size: 13.5px;
   letter-spacing: 0.01em;
-  color: rgba(28, 16, 48, 0.72);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .login__brand .brand__title,
@@ -645,7 +646,7 @@
   display: grid;
   gap: 4px;
   padding-inline-start: 16px;
-  border-inline-start: 2px solid rgba(43, 20, 0, 0.28);
+  border-inline-start: 2px solid rgba(255, 255, 255, 0.28);
 }
 
 .login__points strong {
