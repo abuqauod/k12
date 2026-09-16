@@ -1,6 +1,6 @@
-# This directory holds several unrelated projects; this repo is only the
-# K-12 backend and frontend (plus CI). Ignore everything at the top level
-# except those.
+# This directory holds several unrelated projects; this repo is only
+# ArrangeMySchool's backend and frontend (plus CI). Ignore everything at the
+# top level except those.
 /*
 !/server
 !/timetable-ui

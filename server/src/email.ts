@@ -33,7 +33,7 @@ function layout(title: string, bodyHtml: string): string {
 <html><body style="font-family: sans-serif; color: #1a1a1a; max-width: 480px; margin: 0 auto; padding: 24px;">
   <h2 style="margin: 0 0 16px;">${title}</h2>
   ${bodyHtml}
-  <p style="margin-top: 32px; color: #888; font-size: 12px;">K-12 Timetable Studio</p>
+  <p style="margin-top: 32px; color: #888; font-size: 12px;">ArrangeMySchool</p>
 </body></html>`
 }
 
@@ -54,7 +54,7 @@ export async function sendInviteEmail(params: {
     `You've been invited to ${params.tenantName}`,
     layout(
       `Join ${params.tenantName}`,
-      `<p>${params.inviterName} invited you to join <b>${params.tenantName}</b> on K-12 Timetable Studio.</p>` +
+      `<p>${params.inviterName} invited you to join <b>${params.tenantName}</b> on ArrangeMySchool.</p>` +
         button(link, 'Accept invite & set your password') +
         `<p>This link expires in 7 days.</p>`,
     ),
@@ -71,7 +71,7 @@ export async function sendAccessGrantedEmail(params: {
     `You now have access to ${params.tenantName}`,
     layout(
       `You're in at ${params.tenantName}`,
-      `<p>${params.inviterName} added your existing account to <b>${params.tenantName}</b> on K-12 Timetable Studio.</p>` +
+      `<p>${params.inviterName} added your existing account to <b>${params.tenantName}</b> on ArrangeMySchool.</p>` +
         `<p>Sign in as usual — if you belong to more than one school, you'll get to pick which one.</p>`,
     ),
   )

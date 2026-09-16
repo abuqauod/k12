@@ -164,7 +164,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         tenantId: _id,
         tenantName: body.name,
         role: 'owner',
-        inviterName: 'K-12 Timetable Studio',
+        inviterName: 'ArrangeMySchool',
         displayName: body.ownerName,
       })
       return reply.code(201).send({ id: _id, slug: body.slug, ownerInvite: invite.outcome })
@@ -221,7 +221,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         tenantId: id,
         tenantName: tenant.name,
         role: parsed.data.role,
-        inviterName: 'K-12 Timetable Studio',
+        inviterName: 'ArrangeMySchool',
         displayName: parsed.data.displayName,
       })
       return reply.send({ outcome: invite.outcome })

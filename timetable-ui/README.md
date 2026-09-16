@@ -1,6 +1,7 @@
-# Timetable Studio
+# ArrangeMySchool
 
-A TypeScript web UI for K-12 school timetabling. It models the same domain as the
+A TypeScript web UI for K-12 school management — timetabling, attendance,
+enrollment and more. It models the timetable domain the same way as the
 Apache KIE Optaplanner "School Timetabling" example — `Timeslot` and `Room` as
 planning values, `Lesson` as the planning entity — and solves it client-side in a
 Web Worker.

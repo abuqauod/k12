@@ -1,5 +1,5 @@
 /**
- * K-12 shield mark.
+ * ArrangeMySchool shield mark.
  *
  * Vector rather than raster so it stays crisp at every size and follows the
  * theme: shield strokes use `currentColor` (`--ink` on light, near-white
@@ -12,7 +12,7 @@
  */
 export function BrandMark({ size = 30 }: { size?: number }) {
   const detailed = size >= 40
-  const id = detailed ? 'k12-lg' : 'k12-sm'
+  const id = detailed ? 'ams-lg' : 'ams-sm'
   const stroke = detailed ? 2.6 : 5
 
   return (
@@ -27,8 +27,8 @@ export function BrandMark({ size = 30 }: { size?: number }) {
     >
       <defs>
         <linearGradient id={`${id}-node`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#5b2dff" />
-          <stop offset="100%" stopColor="#8b6ef5" />
+          <stop offset="0%" stopColor="#673de6" />
+          <stop offset="100%" stopColor="#9b7cf0" />
         </linearGradient>
       </defs>
 
@@ -80,13 +80,13 @@ export function BrandMark({ size = 30 }: { size?: number }) {
   )
 }
 
-/** Full lockup: shield beside the K-12 wordmark, for the login screen. */
+/** Full lockup: shield beside the wordmark, for the login screen. */
 export function BrandLockup({ tagline }: { tagline: string }) {
   return (
     <div className="lockup">
       <BrandMark size={116} />
       <div className="lockup__text">
-        <span className="lockup__word">K-12</span>
+        <span className="lockup__word">ArrangeMySchool</span>
         <span className="lockup__tagline">{tagline}</span>
       </div>
     </div>
