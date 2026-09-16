@@ -1,7 +1,7 @@
-# K-12 Server
+# ArrangeMySchool Server
 
-Multi-tenant backend for the timetable sync, built so the rest of a school ERP
-can grow on the same foundation. Fastify + Node.js + MongoDB.
+Multi-tenant backend for ArrangeMySchool — timetabling, attendance, enrollment
+and school-management data. Fastify + Node.js + MongoDB.
 
 ```bash
 cp .env.example .env          # then change every secret

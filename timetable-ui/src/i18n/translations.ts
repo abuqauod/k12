@@ -10,7 +10,7 @@ export const LANGUAGES: Array<{ code: Lang; label: string; native: string; dir: 
  * are shown exactly as they were entered, in either language.
  */
 const en = {
-  'app.name': 'K-12',
+  'app.name': 'ArrangeMySchool',
   'app.tagline': 'School Management Solution',
   'app.module.timetable': 'Timetable · KG1 through Grade 12',
 
@@ -648,7 +648,7 @@ const en = {
 export type TranslationKey = keyof typeof en
 
 const ar: Record<TranslationKey, string> = {
-  'app.name': 'K-12',
+  'app.name': 'ArrangeMySchool',
   'app.tagline': 'نظام إدارة المدارس',
   'app.module.timetable': 'الجدول الدراسي · من الروضة حتى الثاني عشر',
 
