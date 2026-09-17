@@ -8,30 +8,8 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      ui: ${{ steps.filter.outputs.ui }}
-      server: ${{ steps.filter.outputs.server }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          # workflow_dispatch has no natural "before" commit to diff against
-          # (push does) — comparing against main's own previous state makes
-          # a manual run of an unchanged main deploy nothing, which is the
-          # safe default; push a real commit to actually change something.
-          base: main
-          filters: |
-            ui:
-              - 'timetable-ui/**'
-            server:
-              - 'server/**'
-
+  # Always run on every push to main / manual dispatch — no path filtering.
   deploy-ui:
-    needs: [detect-changes]
-    if: needs.detect-changes.outputs.ui == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,8 +37,6 @@ jobs:
           rm: true
 
   deploy-server:
-    needs: [detect-changes]
-    if: needs.detect-changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: SSH and deploy server
