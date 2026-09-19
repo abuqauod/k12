@@ -51,6 +51,8 @@ const studentBody = z.object({
   guardians: z.array(guardianSchema).max(10).default([]),
   stopId: z.string().default(''),
   transportMode: z.enum(['TWO_WAY', 'MORNING', 'EVENING', 'NONE']).default('NONE'),
+  lat: z.number().min(-90).max(90).nullable().default(null),
+  lng: z.number().min(-180).max(180).nullable().default(null),
   primaryPhone: z.string().max(30).default(''),
   secondaryPhone: z.string().max(30).default(''),
 })
@@ -99,6 +101,8 @@ function toResponse(doc: StudentDoc) {
     guardians: doc.guardians,
     stopId: doc.stopId,
     transportMode: doc.transportMode,
+    lat: doc.lat,
+    lng: doc.lng,
     primaryPhone: doc.primaryPhone,
     secondaryPhone: doc.secondaryPhone,
     createdAt: doc.createdAt.toISOString(),

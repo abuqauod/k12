@@ -22,6 +22,11 @@ export interface BusStop {
   lng: number
   /** Students boarding here. Drives the capacity constraint. */
   studentCount: number
+  /** Manually pinned to one bus — the solver treats this as a hard
+   * constraint and never reassigns the stop to a different bus, only
+   * optimising its position within that bus's route. Unset means the solver
+   * picks the bus freely. */
+  pinnedBusId?: string | null
 }
 
 export interface Bus {

@@ -13,6 +13,9 @@ import { useApp } from '../state/AppContext'
 
 const BUDGETS = [3000, 8000, 20000]
 
+let busCounter = 0
+let stopCounter = 0
+
 export function RoutesPage() {
   const { t, n } = useI18n()
   const { fleet, setFleet, students } = useApp()
@@ -22,6 +25,7 @@ export function RoutesPage() {
   const [focusBusId, setFocusBusId] = useState<string | null>(null)
   const [direction, setDirection] = useState<RunDirection>('MORNING')
   const [matrix, setMatrix] = useState<TravelMatrix | null>(null)
+  const [lineStyle, setLineStyle] = useState<'straight' | 'route'>('straight')
 
   /** Riders for the selected run only — two-way plus that direction's one-ways. */
   const demand = useMemo(() => {
@@ -73,6 +77,53 @@ export function RoutesPage() {
   const totalStudents = students.filter((s) => s.active && s.transportMode !== 'NONE').length
   const totalSeats = fleet.buses.reduce((sum, bus) => sum + bus.seats, 0)
 
+  const addBus = () => {
+    busCounter += 1
+    const id = `BUS-NEW-${Date.now().toString(36)}-${busCounter}`
+    setFleet({ ...fleet, buses: [...fleet.buses, { id, name: t('fleet.newBus'), seats: 30 }] })
+  }
+
+  const removeBus = (busId: string) => {
+    setFleet({
+      ...fleet,
+      buses: fleet.buses.filter((b) => b.id !== busId),
+      // A stop pinned to the bus being removed would otherwise point at a
+      // bus that no longer exists — fall back to auto-assign.
+      stops: fleet.stops.map((s) => (s.pinnedBusId === busId ? { ...s, pinnedBusId: null } : s)),
+    })
+    if (focusBusId === busId) setFocusBusId(null)
+  }
+
+  const addStop = () => {
+    stopCounter += 1
+    const id = `ST-NEW-${Date.now().toString(36)}-${stopCounter}`
+    setFleet({
+      ...fleet,
+      stops: [
+        ...fleet.stops,
+        {
+          id,
+          name: t('fleet.newStop'),
+          lat: fleet.depot.lat,
+          lng: fleet.depot.lng,
+          studentCount: 0,
+          pinnedBusId: null,
+        },
+      ],
+    })
+  }
+
+  const patchStop = (stopId: string, changes: Partial<(typeof fleet.stops)[number]>) => {
+    setFleet({
+      ...fleet,
+      stops: fleet.stops.map((s) => (s.id === stopId ? { ...s, ...changes } : s)),
+    })
+  }
+
+  const removeStop = (stopId: string) => {
+    setFleet({ ...fleet, stops: fleet.stops.filter((s) => s.id !== stopId) })
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -109,6 +160,19 @@ export function RoutesPage() {
                 onClick={() => setDirection(option)}
               >
                 {t(`fleet.direction.${option}` as TranslationKey)}
+              </button>
+            ))}
+          </div>
+
+          <div className="segmented" role="group" aria-label={t('fleet.lineStyle')}>
+            {(['straight', 'route'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={lineStyle === option}
+                onClick={() => setLineStyle(option)}
+              >
+                {t(`fleet.lineStyle.${option}` as TranslationKey)}
               </button>
             ))}
           </div>
@@ -222,12 +286,16 @@ export function RoutesPage() {
           <div className="panel">
             <div className="panel__head">
               <h3 className="panel__title">{t('fleet.buses')}</h3>
+              <button type="button" className="btn btn--sm" onClick={addBus}>
+                {t('fleet.addBus')}
+              </button>
             </div>
             <table className="table">
               <thead>
                 <tr>
                   <th>{t('fleet.bus')}</th>
                   <th style={{ width: 62 }}>{t('fleet.seatsShort')}</th>
+                  <th style={{ width: 30 }} />
                 </tr>
               </thead>
               <tbody>
@@ -270,10 +338,105 @@ export function RoutesPage() {
                         }
                       />
                     </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => removeBus(bus.id)}
+                        aria-label={`${t('fleet.removeBus')} ${bus.name}`}
+                      >
+                        ×
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="panel">
+            <div className="panel__head">
+              <h3 className="panel__title">{t('fleet.stopsEditor')}</h3>
+              <button type="button" className="btn btn--sm" onClick={addStop}>
+                {t('fleet.addStop')}
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ minWidth: 420 }}>
+                <thead>
+                  <tr>
+                    <th>{t('fleet.stopName')}</th>
+                    <th style={{ width: 84 }}>{t('fleet.stopLat')}</th>
+                    <th style={{ width: 84 }}>{t('fleet.stopLng')}</th>
+                    <th style={{ width: 110 }}>{t('fleet.pinnedBus')}</th>
+                    <th style={{ width: 30 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {fleet.stops.map((stop) => (
+                    <tr key={stop.id}>
+                      <td>
+                        <input
+                          className="cell-input"
+                          value={stop.name}
+                          onChange={(event) => patchStop(stop.id, { name: event.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="cell-input cell-input--num"
+                          type="number"
+                          step="any"
+                          value={stop.lat}
+                          onChange={(event) => {
+                            const value = Number(event.target.value)
+                            if (!Number.isNaN(value)) patchStop(stop.id, { lat: value })
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="cell-input cell-input--num"
+                          type="number"
+                          step="any"
+                          value={stop.lng}
+                          onChange={(event) => {
+                            const value = Number(event.target.value)
+                            if (!Number.isNaN(value)) patchStop(stop.id, { lng: value })
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          className="cell-input"
+                          value={stop.pinnedBusId ?? ''}
+                          onChange={(event) =>
+                            patchStop(stop.id, { pinnedBusId: event.target.value || null })
+                          }
+                        >
+                          <option value="">{t('fleet.pinnedBus.none')}</option>
+                          {fleet.buses.map((bus) => (
+                            <option key={bus.id} value={bus.id}>
+                              {bus.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => removeStop(stop.id)}
+                          aria-label={`${t('fleet.removeStop')} ${stop.name}`}
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </aside>
 
@@ -283,6 +446,8 @@ export function RoutesPage() {
             solution={solution}
             focusBusId={focusBusId}
             onSelectBus={(busId) => setFocusBusId((current) => (current === busId ? null : busId))}
+            lineStyle={lineStyle}
+            students={students}
           />
         </main>
 

@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import type { Guardian, GuardianLanguage, Student } from '../domain/students'
 import { emptyGuardian } from '../domain/students'
 import type { SchoolClass } from '../domain/classes'
+import type { FleetProblem } from '../domain/fleet'
 import { updateStudent } from '../lib/studentsApi'
 import { getEnrollments, transferStudent, withdrawStudent } from '../lib/enrollmentsApi'
 import type { Enrollment } from '../lib/enrollmentsApi'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { LocationPicker } from './LocationPicker'
 
 /**
  * Everything about one student that doesn't belong in the roster table:
@@ -17,12 +19,14 @@ import type { TranslationKey } from '../i18n/translations'
 export function StudentDetailDialog({
   student,
   classes,
+  fleet,
   getAccessToken,
   onClose,
   onChanged,
 }: {
   student: Student
   classes: SchoolClass[]
+  fleet: FleetProblem
   getAccessToken: () => Promise<string | null>
   onClose: () => void
   onChanged: (updated: Student) => void
@@ -33,6 +37,38 @@ export function StudentDetailDialog({
   const [guardians, setGuardians] = useState<Guardian[]>(() => student.guardians ?? [])
   const [savingG, setSavingG] = useState(false)
   const [gErr, setGErr] = useState<string | null>(null)
+
+  const [location, setLocation] = useState<{ lat: number | null; lng: number | null }>({
+    lat: student.lat ?? null,
+    lng: student.lng ?? null,
+  })
+  const [savingLoc, setSavingLoc] = useState(false)
+
+  const saveLocation = async (next: { lat: number | null; lng: number | null }) => {
+    const previous = location
+    setLocation(next)
+    setSavingLoc(true)
+    const token = await getAccessToken()
+    if (!token) return setSavingLoc(false)
+    const res = await updateStudent(token, student.id, { lat: next.lat, lng: next.lng })
+    setSavingLoc(false)
+    if (res.kind === 'ok') onChanged(res.data)
+    else setLocation(previous)
+  }
+
+  // Separate draft text so an in-progress keystroke like "-" (typing a
+  // negative coordinate) or "12." isn't immediately parsed, found invalid,
+  // and silently discarded — which made the controlled input snap back and
+  // look like the keystroke did nothing. The draft only commits (and syncs
+  // back from) `location` once it parses to a real number.
+  const [latDraft, setLatDraft] = useState(String(location.lat ?? ''))
+  const [lngDraft, setLngDraft] = useState(String(location.lng ?? ''))
+  useEffect(() => {
+    setLatDraft(String(location.lat ?? ''))
+  }, [location.lat])
+  useEffect(() => {
+    setLngDraft(String(location.lng ?? ''))
+  }, [location.lng])
 
   const [toClassId, setToClassId] = useState('')
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10))
@@ -165,6 +201,61 @@ export function StudentDetailDialog({
             <button type="button" className="btn btn--sm btn--primary" disabled={savingG} onClick={() => void saveGuardians()}>
               {t('notify.save')}
             </button>
+          </section>
+
+          <section style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+            <div className="page__actions" style={{ marginBottom: 8 }}>
+              <h3 className="card__subtitle" style={{ margin: 0, flex: 1 }}>{t('students.location')}</h3>
+              {savingLoc && <span className="card__hint">{t('students.saving')}</span>}
+              {location.lat != null && (
+                <button
+                  type="button"
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => void saveLocation({ lat: null, lng: null })}
+                >
+                  {t('students.clearLocation')}
+                </button>
+              )}
+            </div>
+            <p className="card__hint" style={{ marginTop: 0 }}>{t('students.locationHint')}</p>
+            <LocationPicker
+              lat={location.lat}
+              lng={location.lng}
+              center={fleet.depot}
+              onChange={(lat, lng) => void saveLocation({ lat, lng })}
+            />
+            <div className="break-card__row" style={{ gap: 6, marginTop: 8 }}>
+              <input
+                className="input input--sm"
+                style={{ maxWidth: 140 }}
+                type="text"
+                inputMode="decimal"
+                placeholder={t('students.lat')}
+                value={latDraft}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  setLatDraft(raw)
+                  if (raw.trim() === '') return void saveLocation({ lat: null, lng: location.lng })
+                  const value = Number(raw)
+                  if (Number.isFinite(value)) void saveLocation({ lat: value, lng: location.lng })
+                }}
+              />
+              <input
+                className="input input--sm"
+                style={{ maxWidth: 140 }}
+                type="text"
+                inputMode="decimal"
+                placeholder={t('students.lng')}
+                value={lngDraft}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  setLngDraft(raw)
+                  if (raw.trim() === '') return void saveLocation({ lat: location.lat, lng: null })
+                  const value = Number(raw)
+                  if (Number.isFinite(value)) void saveLocation({ lat: location.lat, lng: value })
+                }}
+              />
+            </div>
           </section>
 
           <section style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
