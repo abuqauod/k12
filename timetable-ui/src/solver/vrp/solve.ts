@@ -48,6 +48,8 @@ interface Compiled {
   dwell: number
   maxRide: number
   maxRouteMinutes: number
+  /** Bus index a stop is pinned to, or -1 if the solver may place it freely. */
+  pinnedBus: Int32Array
 }
 
 function compile(problem: FleetProblem, demand: number[], costs?: TravelCosts): Compiled {
@@ -84,6 +86,11 @@ function compile(problem: FleetProblem, demand: number[], costs?: TravelCosts): 
     toMinutes(settings.bellTime) - Math.max(0, settings.arrivalBufferMinutes)
   const maxRouteMinutes = Math.max(10, latest - toMinutes(settings.earliestDeparture))
 
+  const busIndexById = new Map(buses.map((bus, index) => [bus.id, index]))
+  const pinnedBus = Int32Array.from(
+    stops.map((stop) => (stop.pinnedBusId ? (busIndexById.get(stop.pinnedBusId) ?? -1) : -1)),
+  )
+
   return {
     n,
     buses: buses.length,
@@ -94,6 +101,7 @@ function compile(problem: FleetProblem, demand: number[], costs?: TravelCosts): 
     dwell: Math.max(0, settings.dwellMinutes),
     maxRide: Math.max(1, settings.maxRideMinutes),
     maxRouteMinutes,
+    pinnedBus,
   }
 }
 
@@ -158,6 +166,28 @@ const scalar = (s: { hard: number; soft: number }) => s.hard * 1_000_000 + s.sof
  * (the hardest to place well) and insert each into the position that adds the
  * least driving, skipping buses that cannot take the load.
  */
+/** Best insertion position within one specific bus's route, by added distance. */
+function bestPositionOn(model: Compiled, plan: Plan, bus: number, stop: number, rand: () => number) {
+  const size = model.n + 1
+  const route = plan[bus]!
+  let bestPos = route.length
+  let bestCost = Number.POSITIVE_INFINITY
+  for (let pos = 0; pos <= route.length; pos++) {
+    const before = pos === 0 ? 0 : route[pos - 1]! + 1
+    const after = pos === route.length ? 0 : route[pos]! + 1
+    const added =
+      model.dist[before * size + (stop + 1)]! +
+      model.dist[(stop + 1) * size + after]! -
+      model.dist[before * size + after]!
+    const cost = added + rand() * 0.001
+    if (cost < bestCost) {
+      bestCost = cost
+      bestPos = pos
+    }
+  }
+  return bestPos
+}
+
 function construct(model: Compiled, rand: () => number): Plan {
   const size = model.n + 1
   const plan: Plan = Array.from({ length: model.buses }, () => [])
@@ -168,7 +198,22 @@ function construct(model: Compiled, rand: () => number): Plan {
     .filter((stop) => model.demand[stop]! > 0)
     .sort((a, b) => model.dist[(b + 1) * size]! - model.dist[(a + 1) * size]!)
 
-  for (const stop of order) {
+  // Pinned stops place first, always onto their pinned bus regardless of
+  // capacity — a manual pin is a hard constraint, not a preference, so it
+  // must never lose out to the "emptiest bus" fallback below. Any resulting
+  // overload is a real BUS_CAPACITY violation the school should see, not a
+  // silently reassigned stop.
+  const pinned = order.filter((stop) => model.pinnedBus[stop]! >= 0 && model.pinnedBus[stop]! < model.buses)
+  const unpinned = order.filter((stop) => !(model.pinnedBus[stop]! >= 0 && model.pinnedBus[stop]! < model.buses))
+
+  for (const stop of pinned) {
+    const bus = model.pinnedBus[stop]!
+    const pos = bestPositionOn(model, plan, bus, stop, rand)
+    plan[bus]!.splice(pos, 0, stop)
+    loads[bus]! += model.demand[stop]!
+  }
+
+  for (const stop of unpinned) {
     let bestBus = -1
     let bestPos = 0
     let bestCost = Number.POSITIVE_INFINITY
@@ -265,16 +310,22 @@ export function solveFleet(problem: FleetProblem, options: VrpOptions): FleetSol
       const move = rand()
 
       if (move < 0.45) {
-        // Relocate one stop to a new position, possibly on another bus.
+        // Relocate one stop to a new position, possibly on another bus — but
+        // never off a pinned stop's assigned bus (still free to move within it).
         const from = pickNonEmpty(candidate, rand)
         if (from < 0) break
         const route = candidate[from]!
-        const [stop] = route.splice((rand() * route.length) | 0, 1)
-        const to = (rand() * candidate.length) | 0
+        const stopIndex = (rand() * route.length) | 0
+        const stop = route[stopIndex]!
+        const pin = model.pinnedBus[stop]!
+        const to = pin >= 0 ? from : (rand() * candidate.length) | 0
+        if (pin >= 0 && to !== pin) continue
+        route.splice(stopIndex, 1)
         const target = candidate[to]!
-        target.splice((rand() * (target.length + 1)) | 0, 0, stop!)
+        target.splice((rand() * (target.length + 1)) | 0, 0, stop)
       } else if (move < 0.75) {
-        // Swap a stop between two buses.
+        // Swap a stop between two buses — skip if either side is pinned to a
+        // bus other than the one it would land on.
         const a = pickNonEmpty(candidate, rand)
         const b = pickNonEmpty(candidate, rand)
         if (a < 0 || b < 0) break
@@ -282,9 +333,13 @@ export function solveFleet(problem: FleetProblem, options: VrpOptions): FleetSol
         const rb = candidate[b]!
         const ia = (rand() * ra.length) | 0
         const ib = (rand() * rb.length) | 0
-        const tmp = ra[ia]!
-        ra[ia] = rb[ib]!
-        rb[ib] = tmp
+        const stopA = ra[ia]!
+        const stopB = rb[ib]!
+        const pinA = model.pinnedBus[stopA]!
+        const pinB = model.pinnedBus[stopB]!
+        if ((pinA >= 0 && pinA !== b) || (pinB >= 0 && pinB !== a)) continue
+        ra[ia] = stopB
+        rb[ib] = stopA
       } else {
         // 2-opt: reverse a segment, which untangles crossing legs.
         const bus = pickNonEmpty(candidate, rand)

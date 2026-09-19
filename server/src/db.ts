@@ -298,6 +298,11 @@ export interface StudentDoc extends Document {
   /** Where this student boards. Empty means not yet placed on a route. */
   stopId: string
   transportMode: 'TWO_WAY' | 'MORNING' | 'EVENING' | 'NONE'
+  /** The student's own pickup point, set by dragging a pin on the routes map
+   * (RoutesPage / StudentDetailDialog) — independent of `stopId`, which is a
+   * reference into the client-held fleet stop list. Null until set. */
+  lat: number | null
+  lng: number | null
   /** Required for an active student. The number called first if the bus is
    * delayed — kept even though `guardians` also carries phones, since the
    * bus-routing feature (RoutesPage, VRP solver) reads this flat pair

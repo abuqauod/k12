@@ -985,6 +985,24 @@ body.is-resizing .sidebar__link {
   box-shadow: 0 2px 6px rgba(13, 10, 70, 0.35);
 }
 
+.routemap--picker {
+  min-height: 220px;
+  height: 220px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--line);
+}
+
+.map-pin--student {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ff7300;
+  color: #ffffff;
+  font-size: 11px;
+  box-shadow: 0 2px 6px rgba(13, 10, 70, 0.35);
+  cursor: grab;
+}
+
 .route-swatch {
   display: inline-block;
   width: 10px;

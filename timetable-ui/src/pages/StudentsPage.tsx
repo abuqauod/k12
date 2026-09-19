@@ -437,6 +437,7 @@ export function StudentsPage() {
             <StudentDetailDialog
               student={s}
               classes={classes}
+              fleet={fleet}
               getAccessToken={getAccessToken}
               onClose={() => setDetailId(null)}
               onChanged={(updated) =>

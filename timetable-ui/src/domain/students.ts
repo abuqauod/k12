@@ -71,6 +71,11 @@ export interface Student {
   /** Where this student boards. Empty means not yet placed on a route. */
   stopId: string
   transportMode: TransportMode
+  /** The student's own pickup point — set by placing a pin on the map
+   * (StudentDetailDialog / RoutesPage), independent of `stopId`. Undefined on
+   * records saved before this existed; treat the same as null. */
+  lat?: number | null
+  lng?: number | null
   /** Required. The number called first if the bus is delayed. */
   primaryPhone: string
   /** Required. A second contactable adult — one number is a single point of failure. */
