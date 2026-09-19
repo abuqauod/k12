@@ -64,6 +64,13 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+    # Forwards everything in .env (SMTP_*, ROUTE_PREFIX, APP_URL,
+    # ACCESS_TOKEN_TTL, etc.) into the container. The explicit `environment:`
+    # block below still wins for any key listed in both, per Compose's
+    # env_file-then-environment precedence — this only adds the vars that
+    # were previously silently dropped.
+    env_file:
+      - ./.env
     environment:
       NODE_ENV: production
       PORT: 4000
