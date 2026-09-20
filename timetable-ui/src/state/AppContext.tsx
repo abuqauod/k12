@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react'
 import type { Problem, Score, Solution } from '../domain/types'
 import { DEFAULT_WEIGHTS } from '../domain/types'
-import { DEFAULT_CALENDAR } from '../domain/calendar'
+import { DEFAULT_CALENDAR, normalizeProblem } from '../domain/calendar'
 import { sampleProblem } from '../domain/sample'
 import type { FleetProblem } from '../domain/fleet'
 import { sampleFleet } from '../domain/fleet'
@@ -371,14 +371,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           onDone('NEEDS_ARRAYS')
           return
         }
-        setProblemState({
-          calendar: { ...DEFAULT_CALENDAR, ...(parsed.calendar ?? {}) },
-          timeslots: parsed.timeslots,
-          rooms: parsed.rooms ?? [],
-          lessons: parsed.lessons,
-          unavailability: parsed.unavailability ?? [],
-          weights: { ...DEFAULT_WEIGHTS, ...(parsed.weights ?? {}) },
-        })
+        setProblemState(
+          normalizeProblem({
+            calendar: { ...DEFAULT_CALENDAR, ...(parsed.calendar ?? {}) },
+            timeslots: parsed.timeslots,
+            rooms: parsed.rooms ?? [],
+            lessons: parsed.lessons,
+            unavailability: parsed.unavailability ?? [],
+            weights: { ...DEFAULT_WEIGHTS, ...(parsed.weights ?? {}) },
+          }),
+        )
         onDone(`OK:${parsed.lessons.length}`)
       } catch {
         onDone('FAILED')

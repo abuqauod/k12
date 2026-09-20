@@ -1,4 +1,5 @@
 import type { Problem } from '../domain/types'
+import { normalizeProblem } from '../domain/calendar'
 import { authorizedFetch, request, type TokenGetter } from './http'
 
 // Re-exported so existing `import type { TokenGetter } from './sync'` call
@@ -141,7 +142,7 @@ export async function pullDataset(settings: SyncSettings, getToken: TokenGetter)
     if (!body?.problem?.lessons) return { kind: 'error', message: 'BAD_PAYLOAD' }
     return {
       kind: 'pulled',
-      problem: body.problem,
+      problem: normalizeProblem(body.problem),
       revision: body.revision,
       updatedAt: body.updatedAt,
     }
@@ -177,7 +178,7 @@ export async function pushDataset(
         kind: 'conflict',
         revision: body.revision,
         updatedAt: body.updatedAt,
-        serverProblem: body.problem,
+        serverProblem: normalizeProblem(body.problem),
       }
     }
     if (!response.ok) return { kind: 'error', message: `HTTP ${response.status}` }

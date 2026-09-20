@@ -1,6 +1,28 @@
 import type { BreakRule, Calendar, DayOfWeek, Problem, Timeslot } from './types'
 import { DAYS_OF_WEEK } from './types'
 
+/**
+ * Guards a `Problem` loaded from outside the running app (localStorage, a
+ * server pull, a file import) against predating `BreakRule.classIds` — that
+ * field replaced a label-keyed `studentGroups`, so old data has no `classIds`
+ * at all and crashes `breakAt`/`wholeSchoolBreakAt` (`.length` on
+ * `undefined`) the first time a break is looked up. A break missing it reads
+ * as applying to the whole school (`classIds: []`) until re-configured,
+ * rather than throwing.
+ */
+export function normalizeProblem(problem: Problem): Problem {
+  return {
+    ...problem,
+    calendar: {
+      ...problem.calendar,
+      breaks: (problem.calendar.breaks ?? []).map((rule) => ({
+        ...rule,
+        classIds: Array.isArray(rule.classIds) ? rule.classIds : [],
+      })),
+    },
+  }
+}
+
 /** The seven days rotated so `weekStart` comes first. */
 export function weekOrder(weekStart: DayOfWeek): DayOfWeek[] {
   const start = DAYS_OF_WEEK.indexOf(weekStart)

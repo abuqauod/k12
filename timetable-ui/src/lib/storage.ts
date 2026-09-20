@@ -1,6 +1,6 @@
 import type { Problem } from '../domain/types'
 import { DEFAULT_WEIGHTS } from '../domain/types'
-import { DEFAULT_CALENDAR } from '../domain/calendar'
+import { DEFAULT_CALENDAR, normalizeProblem } from '../domain/calendar'
 
 /**
  * Local persistence for the working dataset.
@@ -32,14 +32,14 @@ export function loadDataset(): StoredDataset | null {
       schema: SCHEMA,
       savedAt: parsed.savedAt ?? new Date().toISOString(),
       revision: parsed.revision ?? 1,
-      problem: {
+      problem: normalizeProblem({
         calendar: { ...DEFAULT_CALENDAR, ...(problem.calendar ?? {}) },
         timeslots: problem.timeslots,
         rooms: problem.rooms ?? [],
         lessons: problem.lessons,
         unavailability: problem.unavailability ?? [],
         weights: { ...DEFAULT_WEIGHTS, ...(problem.weights ?? {}) },
-      },
+      }),
     }
   } catch {
     // Corrupt or unreadable payload: fall back to the sample rather than crash.
