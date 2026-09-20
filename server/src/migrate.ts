@@ -1,7 +1,11 @@
 import { MongoClient } from 'mongodb'
 import { config } from './config.js'
 import { ensureIndexes } from './schema.js'
-import { backfillBranchesAndClasses, backfillEnrollmentModel } from './backfill.js'
+import {
+  backfillBranchesAndClasses,
+  backfillEnrollmentModel,
+  backfillParentsFromGuardians,
+} from './backfill.js'
 
 /**
  * Creates every index the app needs, then runs the one-time data backfills
@@ -25,6 +29,10 @@ async function main(): Promise<void> {
 
   console.log('Backfilling academic years, enrollments, guardians, calendars...')
   await backfillEnrollmentModel(db)
+  console.log('  done')
+
+  console.log('Backfilling parents from embedded guardian records...')
+  await backfillParentsFromGuardians(db)
   console.log('  done')
 
   await client.close()

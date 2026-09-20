@@ -13,19 +13,20 @@ interface NavEntry {
   icon: string
 }
 
-// The first five are the day-to-day "plan" group; the rest sit under
-// "account". Keep the split index (5) in step with this list.
+// The first six are the day-to-day "plan" group; the rest sit under
+// "account". Keep the split index (6) in step with this list.
 const NAV: NavEntry[] = [
   { to: '/dashboard', key: 'nav.dashboard', icon: '▤' },
   { to: '/timetable', key: 'nav.timetable', icon: '▦' },
   { to: '/students', key: 'nav.students', icon: '☺' },
+  { to: '/parents', key: 'nav.parents', icon: '⚭' },
   { to: '/classes', key: 'nav.classes', icon: '▣' },
   { to: '/attendance', key: 'nav.attendance', icon: '✓' },
   { to: '/routes', key: 'nav.routes', icon: '⌖' },
   { to: '/logs', key: 'nav.logs', icon: '☰' },
   { to: '/settings', key: 'nav.settings', icon: '⚙' },
 ]
-const NAV_SPLIT = 5
+const NAV_SPLIT = 6
 
 const COLLAPSE_KEY = 'timetable.sidebar'
 

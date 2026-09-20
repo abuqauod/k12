@@ -78,6 +78,18 @@ export type NewStudent = Omit<Student, 'id' | 'active' | 'branchId' | 'studentGr
   classId: string
 }
 
+/** One student by id — e.g. to open `StudentDetailDialog` from a card that
+ * only carries the id (a parent's linked-students list). */
+export async function getStudent(getToken: TokenGetter, id: string): Promise<StudentsResult<Student>> {
+  try {
+    const response = await call(`/students/${encodeURIComponent(id)}`, { method: 'GET' }, getToken)
+    const result = await parse<WireStudent>(response)
+    return result.kind === 'ok' ? { kind: 'ok', data: fromWire(result.data) } : result
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
 export async function createStudent(
   getToken: TokenGetter,
   student: NewStudent,

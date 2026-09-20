@@ -10,6 +10,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { TimetablePage } from './pages/TimetablePage'
 import { RoutesPage } from './pages/RoutesPage'
 import { StudentsPage } from './pages/StudentsPage'
+import { ParentsPage } from './pages/ParentsPage'
 import { AttendancePage } from './pages/AttendancePage'
 import { ClassesPage } from './pages/ClassesPage'
 import { LogsPage } from './pages/LogsPage'
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/timetable" element={<TimetablePage />} />
         <Route path="/students" element={<StudentsPage />} />
+        <Route path="/parents" element={<ParentsPage />} />
         <Route path="/classes" element={<ClassesPage />} />
         <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/logs" element={<LogsPage />} />

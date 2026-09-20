@@ -75,10 +75,16 @@ export async function callerCanUseBranch(
 
 const RANK: Record<Role, number> = { viewer: 0, scheduler: 1, admin: 2, owner: 3 }
 
+/** For an inline check inside a handler body — e.g. a field in the request
+ * body needs a higher role than the route's own preHandler requires (see
+ * parents/routes.ts's financial-responsibility / portal-access flags). */
+export function roleAtLeast(role: Role | undefined, minimum: Role): boolean {
+  return role !== undefined && RANK[role] >= RANK[minimum]
+}
+
 export function requireRole(minimum: Role) {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const role = request.auth?.role
-    if (!role || RANK[role] < RANK[minimum]) {
+    if (!roleAtLeast(request.auth?.role, minimum)) {
       await reply.code(403).send({ error: 'FORBIDDEN', required: minimum })
     }
   }
