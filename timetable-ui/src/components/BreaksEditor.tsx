@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { BreakRule } from '../domain/types'
 import { applyCalendar } from '../domain/calendar'
-import { naturalCompare, unique } from '../lib/view'
+import { naturalCompare } from '../lib/view'
 import { useApp } from '../state/AppContext'
 import { useI18n } from '../i18n/I18nContext'
 import { clampNumber as clamp } from './SchoolWeekFields'
@@ -17,10 +17,19 @@ export function BreaksEditor() {
   const { problem, setProblem } = useApp()
   const { calendar } = problem
 
-  const cohorts = useMemo(
-    () => unique(problem.lessons.map((lesson) => lesson.studentGroup)).sort(naturalCompare),
-    [problem.lessons],
-  )
+  // {classId, label} pairs, deduped by classId — the chip toggles join on
+  // the real id, but still need something readable to print on the button.
+  // Derived from the lessons already in memory (every lesson already
+  // carries its own resolved label) rather than a separate class fetch.
+  const cohorts = useMemo(() => {
+    const byId = new Map<string, string>()
+    for (const lesson of problem.lessons) {
+      if (lesson.classId) byId.set(lesson.classId, lesson.studentGroup)
+    }
+    return [...byId.entries()]
+      .map(([classId, label]) => ({ classId, label }))
+      .sort((a, b) => naturalCompare(a.label, b.label))
+  }, [problem.lessons])
 
   const patch = (changes: Partial<typeof calendar>) =>
     setProblem(applyCalendar(problem, { ...calendar, ...changes }))
@@ -40,7 +49,7 @@ export function BreaksEditor() {
           kind: 'CLOCK',
           period: Math.min(calendar.periodsPerDay, calendar.breaks.length + 2),
           minutes: 15,
-          studentGroups: [],
+          classIds: [],
         },
       ],
     })
@@ -48,12 +57,10 @@ export function BreaksEditor() {
   const removeBreak = (id: string) =>
     patch({ breaks: calendar.breaks.filter((rule) => rule.id !== id) })
 
-  const toggleCohort = (rule: BreakRule, group: string) => {
-    const has = rule.studentGroups.includes(group)
+  const toggleCohort = (rule: BreakRule, classId: string) => {
+    const has = rule.classIds.includes(classId)
     patchBreak(rule.id, {
-      studentGroups: has
-        ? rule.studentGroups.filter((entry) => entry !== group)
-        : [...rule.studentGroups, group],
+      classIds: has ? rule.classIds.filter((entry) => entry !== classId) : [...rule.classIds, classId],
     })
   }
 
@@ -142,21 +149,21 @@ export function BreaksEditor() {
             <div className="break-card__cohorts">
               <button
                 type="button"
-                className={`chip chip--toggle${rule.studentGroups.length === 0 ? ' chip--on' : ''}`}
-                onClick={() => patchBreak(rule.id, { studentGroups: [] })}
+                className={`chip chip--toggle${rule.classIds.length === 0 ? ' chip--on' : ''}`}
+                onClick={() => patchBreak(rule.id, { classIds: [] })}
               >
                 {t('calendar.allClasses')}
               </button>
-              {cohorts.map((group) => (
+              {cohorts.map((cohort) => (
                 <button
                   type="button"
-                  key={group}
+                  key={cohort.classId}
                   className={`chip chip--toggle${
-                    rule.studentGroups.includes(group) ? ' chip--on' : ''
+                    rule.classIds.includes(cohort.classId) ? ' chip--on' : ''
                   }`}
-                  onClick={() => toggleCohort(rule, group)}
+                  onClick={() => toggleCohort(rule, cohort.classId)}
                 >
-                  {group}
+                  {cohort.label}
                 </button>
               ))}
             </div>

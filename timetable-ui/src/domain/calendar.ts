@@ -64,17 +64,17 @@ export function generateTimeslots(calendar: Calendar): Timeslot[] {
   return slots
 }
 
-/** The PERIOD break covering `studentGroup` at a 0-based period index, if any. */
+/** The PERIOD break covering `classId` at a 0-based period index, if any. */
 export function breakAt(
   calendar: Calendar,
-  studentGroup: string,
+  classId: string,
   periodIndex: number,
 ): BreakRule | undefined {
   return calendar.breaks.find(
     (rule) =>
       rule.kind === 'PERIOD' &&
       rule.period === periodIndex + 1 &&
-      (rule.studentGroups.length === 0 || rule.studentGroups.includes(studentGroup)),
+      (rule.classIds.length === 0 || rule.classIds.includes(classId)),
   )
 }
 
@@ -84,8 +84,7 @@ export function wholeSchoolBreakAt(
   periodIndex: number,
 ): BreakRule | undefined {
   return calendar.breaks.find(
-    (rule) =>
-      rule.kind === 'PERIOD' && rule.period === periodIndex + 1 && rule.studentGroups.length === 0,
+    (rule) => rule.kind === 'PERIOD' && rule.period === periodIndex + 1 && rule.classIds.length === 0,
   )
 }
 
@@ -110,15 +109,11 @@ export function applyCalendar(problem: Problem, calendar: Calendar): Problem {
 }
 
 /** How many teaching slots a cohort actually has once its breaks are removed. */
-export function teachingSlotsFor(
-  calendar: Calendar,
-  timeslots: Timeslot[],
-  studentGroup: string,
-): number {
+export function teachingSlotsFor(calendar: Calendar, timeslots: Timeslot[], classId: string): number {
   const periods = Math.max(1, calendar.periodsPerDay)
   let reservedPerDay = 0
   for (let period = 0; period < periods; period++) {
-    if (breakAt(calendar, studentGroup, period)) reservedPerDay++
+    if (breakAt(calendar, classId, period)) reservedPerDay++
   }
   const days = new Set(timeslots.map((slot) => slot.dayOfWeek)).size
   return Math.max(0, timeslots.length - reservedPerDay * days)
@@ -137,7 +132,7 @@ export const DEFAULT_CALENDAR: Calendar = {
       kind: 'CLOCK',
       period: 2,
       minutes: 20,
-      studentGroups: [],
+      classIds: [],
     },
     {
       id: 'BR-2',
@@ -145,7 +140,7 @@ export const DEFAULT_CALENDAR: Calendar = {
       kind: 'PERIOD',
       period: 5,
       minutes: 0,
-      studentGroups: [],
+      classIds: [],
     },
   ],
 }
