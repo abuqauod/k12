@@ -49,7 +49,7 @@ export function AttendancePage() {
     void (async () => {
       const token = await getAccessToken()
       if (!token) return
-      const result = await listClasses(token, { branchId: activeBranchId })
+      const result = await listClasses(getAccessToken, { branchId: activeBranchId })
       if (!cancelled && result.kind === 'ok') setClasses(result.data)
     })()
     return () => {
@@ -74,7 +74,7 @@ export function AttendancePage() {
         if (!cancelled) setLoading(false)
         return
       }
-      const result = await getRegister(token, date, classId)
+      const result = await getRegister(getAccessToken, date, classId)
       if (cancelled) return
       setLoading(false)
       if (result.kind === 'ok') {
@@ -145,7 +145,7 @@ export function AttendancePage() {
       setSaving(false)
       return
     }
-    const result = await markAttendance(token, date, records)
+    const result = await markAttendance(getAccessToken, date, records)
     setSaving(false)
     if (result.kind === 'ok') setSavedAt(Date.now())
     else setError(t('attendance.saveError'))
@@ -161,7 +161,7 @@ export function AttendancePage() {
       setNotifying(false)
       return
     }
-    const result = await runAbsenceNotifications(token, { branchId, date, studentId })
+    const result = await runAbsenceNotifications(getAccessToken, { branchId, date, studentId })
     setNotifying(false)
     if (result.kind === 'ok') {
       const { enqueued, alreadyQueued, delivered, dead } = result.data

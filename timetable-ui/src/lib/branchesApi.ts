@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 import type { Branch } from '../domain/branches'
 
 /**
@@ -15,11 +16,9 @@ function baseUrl(): string {
   return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
 }
 
-export async function listBranches(accessToken: string): Promise<BranchesResult<Branch[]>> {
+export async function listBranches(getToken: TokenGetter): Promise<BranchesResult<Branch[]>> {
   try {
-    const response = await fetch(`${baseUrl()}/branches`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    })
+    const response = await authorizedFetch(`${baseUrl()}/branches`, {}, getToken)
     const text = await response.text()
     let body: unknown = null
     try {

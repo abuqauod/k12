@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 
 /** Client for `/audit-log` — the school's activity trail (admin only). */
 
@@ -19,13 +20,11 @@ function baseUrl(): string {
 }
 
 export async function listAuditLog(
-  accessToken: string,
+  getToken: TokenGetter,
   limit = 100,
 ): Promise<AuditResult<AuditEntry[]>> {
   try {
-    const response = await fetch(`${baseUrl()}/audit-log?limit=${limit}`, {
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    })
+    const response = await authorizedFetch(`${baseUrl()}/audit-log?limit=${limit}`, {}, getToken)
     const text = await response.text()
     let body: unknown = null
     try {

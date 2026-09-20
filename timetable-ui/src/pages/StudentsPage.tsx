@@ -53,7 +53,7 @@ export function StudentsPage() {
     void (async () => {
       const token = await getAccessToken()
       if (!token) return
-      const result = await listClasses(token, { branchId: activeBranchId })
+      const result = await listClasses(getAccessToken, { branchId: activeBranchId })
       if (!cancelled && result.kind === 'ok') setClasses(result.data)
     })()
     return () => {
@@ -73,7 +73,7 @@ export function StudentsPage() {
         if (!cancelled) setLoading(false)
         return
       }
-      const result = await listStudents(token, activeBranchId ? { branchId: activeBranchId } : {})
+      const result = await listStudents(getAccessToken, activeBranchId ? { branchId: activeBranchId } : {})
       if (cancelled) return
       setLoading(false)
       if (result.kind === 'ok') setStudents(result.data)
@@ -106,12 +106,12 @@ export function StudentsPage() {
     try {
       if (id.startsWith(NEW_PREFIX)) {
         if (!readyToCreate(row)) return
-        const result = await createStudent(token, toPayload(row))
+        const result = await createStudent(getAccessToken, toPayload(row))
         if (result.kind === 'ok') {
           setStudents(latestStudents.current.map((s) => (s.id === id ? { ...s, id: result.data.id } : s)))
         }
       } else {
-        await updateStudent(token, id, changes)
+        await updateStudent(getAccessToken, id, changes)
       }
     } finally {
       setPendingSaves((count) => count - 1)

@@ -383,7 +383,7 @@ function TeamSettingsTab() {
   const refresh = async () => {
     const token = await getAccessToken()
     if (!token) return
-    const result = await listMembers(token)
+    const result = await listMembers(getAccessToken)
     if (result.kind === 'ok') {
       setMembers(result.data)
       setLoadError(null)
@@ -408,7 +408,7 @@ function TeamSettingsTab() {
       setBusy(false)
       return
     }
-    const result = await inviteMember(token, email.trim(), role)
+    const result = await inviteMember(getAccessToken, email.trim(), role)
     setBusy(false)
     if (result.kind === 'ok') {
       const outcome = result.data.outcome
@@ -438,7 +438,7 @@ function TeamSettingsTab() {
     setRowError(null)
     const token = await getAccessToken()
     if (!token) return
-    const result = await changeMemberRole(token, member.userId, nextRole)
+    const result = await changeMemberRole(getAccessToken, member.userId, nextRole)
     if (result.kind === 'ok') {
       void refresh()
       return
@@ -459,7 +459,7 @@ function TeamSettingsTab() {
     )
     const token = await getAccessToken()
     if (!token) return
-    const result = await setMemberBranches(token, member.userId, branchIds)
+    const result = await setMemberBranches(getAccessToken, member.userId, branchIds)
     if (result.kind === 'ok') void refresh()
     else setRowError({ userId: member.userId, text: t('login.errorNetwork') })
   }
@@ -469,7 +469,7 @@ function TeamSettingsTab() {
     setRowError(null)
     const token = await getAccessToken()
     if (!token) return
-    const result = await removeMember(token, member.userId)
+    const result = await removeMember(getAccessToken, member.userId)
     if (result.kind === 'ok') {
       void refresh()
       return
@@ -711,7 +711,7 @@ function SchoolCalendarForm({ branchId }: { branchId: string }) {
     void (async () => {
       const token = await getAccessToken()
       if (!token) return
-      const result = await getSchoolCalendar(token, branchId)
+      const result = await getSchoolCalendar(getAccessToken, branchId)
       if (!cancelled && result.kind === 'ok') setCal(result.data)
     })()
     return () => {
@@ -754,7 +754,7 @@ function SchoolCalendarForm({ branchId }: { branchId: string }) {
     setMsg(null)
     const token = await getAccessToken()
     if (!token) return setBusy(false)
-    const result = await putSchoolCalendar(token, branchId, cal)
+    const result = await putSchoolCalendar(getAccessToken, branchId, cal)
     setBusy(false)
     setMsg(
       result.kind === 'ok'
@@ -833,7 +833,7 @@ function NotificationSettingsForm({ branchId }: { branchId: string }) {
     void (async () => {
       const token = await getAccessToken()
       if (!token) return
-      const result = await getNotificationSettings(token, branchId)
+      const result = await getNotificationSettings(getAccessToken, branchId)
       if (!cancelled && result.kind === 'ok') setSettings(result.data)
     })()
     return () => {
@@ -855,7 +855,7 @@ function NotificationSettingsForm({ branchId }: { branchId: string }) {
       return
     }
     const { lastSweptDate: _drop, ...body } = settings
-    const result = await putNotificationSettings(token, branchId, body)
+    const result = await putNotificationSettings(getAccessToken, branchId, body)
     setBusy(false)
     setMsg(
       result.kind === 'ok'
@@ -872,7 +872,7 @@ function NotificationSettingsForm({ branchId }: { branchId: string }) {
       setBusy(false)
       return
     }
-    const result = await runAbsenceNotifications(token, { branchId })
+    const result = await runAbsenceNotifications(getAccessToken, { branchId })
     setBusy(false)
     if (result.kind === 'ok') {
       const { delivered, dead, alreadyQueued } = result.data

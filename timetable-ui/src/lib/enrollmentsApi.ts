@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 
 /** Client for enrollment history and the operations that change it —
  * transfer, withdraw, bulk class assignment. */
@@ -31,11 +32,8 @@ function baseUrl(): string {
   return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
 }
 
-async function call(path: string, init: RequestInit, accessToken: string): Promise<Response> {
-  return fetch(`${baseUrl()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-  })
+async function call(path: string, init: RequestInit, getToken: TokenGetter): Promise<Response> {
+  return authorizedFetch(`${baseUrl()}${path}`, init, getToken)
 }
 
 async function parse<T>(response: Response): Promise<EnrollmentsResult<T>> {
@@ -54,14 +52,14 @@ async function parse<T>(response: Response): Promise<EnrollmentsResult<T>> {
 }
 
 export async function getEnrollments(
-  accessToken: string,
+  getToken: TokenGetter,
   studentId: string,
 ): Promise<EnrollmentsResult<Enrollment[]>> {
   try {
     const response = await call(
       `/students/${encodeURIComponent(studentId)}/enrollments`,
       { method: 'GET' },
-      accessToken,
+      getToken,
     )
     const result = await parse<{ enrollments: Enrollment[] }>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: result.data.enrollments } : result
@@ -71,7 +69,7 @@ export async function getEnrollments(
 }
 
 export async function transferStudent(
-  accessToken: string,
+  getToken: TokenGetter,
   studentId: string,
   input: { toClassId: string; effectiveDate?: string; reason?: string | null },
 ): Promise<EnrollmentsResult<{ from: Enrollment; to: Enrollment }>> {
@@ -79,7 +77,7 @@ export async function transferStudent(
     const response = await call(
       `/students/${encodeURIComponent(studentId)}/transfer`,
       { method: 'POST', body: JSON.stringify(input) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -88,7 +86,7 @@ export async function transferStudent(
 }
 
 export async function withdrawStudent(
-  accessToken: string,
+  getToken: TokenGetter,
   studentId: string,
   input: { status: 'withdrawn' | 'graduated'; effectiveDate?: string; reason?: string | null },
 ): Promise<EnrollmentsResult<{ enrollment: Enrollment }>> {
@@ -96,7 +94,7 @@ export async function withdrawStudent(
     const response = await call(
       `/students/${encodeURIComponent(studentId)}/withdraw`,
       { method: 'POST', body: JSON.stringify(input) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -105,14 +103,14 @@ export async function withdrawStudent(
 }
 
 export async function bulkAssign(
-  accessToken: string,
+  getToken: TokenGetter,
   input: { studentIds: string[]; toClassId: string; effectiveDate?: string; reason?: string | null },
 ): Promise<EnrollmentsResult<{ summary: Record<string, number>; rows: BulkAssignRow[] }>> {
   try {
     const response = await call(
       '/enrollments/bulk-assign',
       { method: 'POST', body: JSON.stringify(input) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
