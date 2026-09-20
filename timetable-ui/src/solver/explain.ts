@@ -90,7 +90,7 @@ export function explain(
 
   clash(
     'STUDENT_GROUP_CONFLICT',
-    bucket((i) => (assigned(i) ? `${ts[i]}|${lessons[i].studentGroup}` : null)),
+    bucket((i) => (assigned(i) ? `${ts[i]}|${lessons[i].classId}` : null)),
     (members) => ({
       key: 'msg.groupConflict',
       params: {
@@ -130,7 +130,7 @@ export function explain(
         lessonIds: [lesson.id],
       })
     }
-    const reserved = breakAt(model.problem.calendar, lesson.studentGroup, model.tsPeriod[ts[i]])
+    const reserved = breakAt(model.problem.calendar, lesson.classId, model.tsPeriod[ts[i]])
     if (reserved) {
       hard -= 1
       violations.push({
@@ -212,16 +212,20 @@ export function explain(
   }
 
   const byGroupDay = bucket((i) =>
-    assigned(i) ? `${lessons[i].studentGroup}|${model.tsDay[ts[i]]}` : null,
+    assigned(i) ? `${lessons[i].classId}|${model.tsDay[ts[i]]}` : null,
   )
   const periods = model.problem.calendar.periodsPerDay
   for (const [key, members] of byGroupDay) {
-    const [group] = key.split('|')
+    const [classId] = key.split('|')
+    // Display label, not the join key — read straight off the lesson
+    // rather than resolved separately, since every lesson already carries
+    // its own current label (see Lesson.studentGroup's doc comment).
+    const group = lessons[members[0]].studentGroup
     const dayToken = timeslots[ts[members[0]]].dayOfWeek
     // A period the cohort has reserved as its break is not an idle gap.
     const reservedPeriods: number[] = []
     for (let period = 0; period < periods; period++) {
-      if (breakAt(model.problem.calendar, group, period)) reservedPeriods.push(period)
+      if (breakAt(model.problem.calendar, classId, period)) reservedPeriods.push(period)
     }
     const gaps = gapCount(
       [...new Set([...periodsOf(members), ...reservedPeriods])].sort((a, b) => a - b),
@@ -254,13 +258,13 @@ export function explain(
   }
 
   const bySubjectDay = bucket((i) =>
-    assigned(i)
-      ? `${lessons[i].studentGroup}|${lessons[i].subject}|${model.tsDay[ts[i]]}`
-      : null,
+    assigned(i) ? `${lessons[i].classId}|${lessons[i].subject}|${model.tsDay[ts[i]]}` : null,
   )
   for (const [key, members] of bySubjectDay) {
     if (members.length < 2) continue
-    const [group, subject] = key.split('|')
+    const [, subject] = key.split('|')
+    // Display label, read off the lesson rather than the (now classId-keyed) bucket key.
+    const group = lessons[members[0]].studentGroup
     const sorted = [...members].sort((a, b) => model.tsPeriod[ts[a]] - model.tsPeriod[ts[b]])
     let paired = 0
     for (let k = 0; k < sorted.length - 1; k++) {

@@ -42,7 +42,19 @@ export interface Lesson {
   id: string
   subject: string
   teacher: string
-  /** "KG1-A" | "Grade 4-B" | "Grade 11-Science" — free-form across all tiers. */
+  /** The real `SchoolClass.id` this lesson belongs to (see
+   * `timetable-ui/src/domain/classes.ts`) — the source of truth. Empty
+   * string means unmatched: an old lesson from before this field existed,
+   * or one whose class was since deleted/renamed past what the label-match
+   * reconciliation on load could resolve (see the class-backfill effect in
+   * `components/DataPanel.tsx`'s `LessonsTab`). Never write this from a
+   * hardcoded literal — always from a real class the branch's `/classes`
+   * list returned. */
+  classId: string
+  /** Display label only, e.g. "Grade 4-B" — derived from `classId` via the
+   * real class list wherever possible, kept as the last-known string when
+   * `classId` is unmatched so the row still reads sensibly. Never the
+   * source of truth; never round-tripped back into a join key. */
   studentGroup: string
   tier?: Tier
   studentCount?: number
@@ -79,8 +91,11 @@ export interface BreakRule {
   period: number
   /** CLOCK only — length of the gap. */
   minutes: number
-  /** PERIOD only — cohorts on break. Empty means every cohort. */
-  studentGroups: string[]
+  /** PERIOD only — the real `SchoolClass.id`s on break. Empty means every
+   * cohort. Unlike `Lesson.studentGroup`, there is no external wire
+   * contract reading this field, so it holds ids directly — no parallel
+   * display-label field needed; resolve a label at render time instead. */
+  classIds: string[]
 }
 
 /** Shape of the school week. Regenerates `Problem.timeslots` when edited. */

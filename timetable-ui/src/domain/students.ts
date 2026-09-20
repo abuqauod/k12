@@ -1,4 +1,5 @@
 import { sampleFleet } from './fleet'
+import { SAMPLE_COHORTS } from './classes'
 
 /**
  * Transport registration. The morning and afternoon runs carry different
@@ -164,10 +165,6 @@ const FAMILY = [
   ['Haddad', 'حداد'], ['Nasser', 'ناصر'], ['Khalil', 'خليل'], ['Masri', 'المصري'],
   ['Odeh', 'عودة'], ['Salti', 'الصلتي'], ['Rimawi', 'الريماوي'], ['Zaben', 'الزبن'],
 ]
-const COHORTS = [
-  'KG1-A', 'KG2-A', 'Grade 4-A', 'Grade 4-B', 'Grade 8-A', 'Grade 11-Science',
-]
-
 function mulberry32(seed: number) {
   let a = seed >>> 0
   return () => {
@@ -200,6 +197,7 @@ export function sampleStudents(): Student[] {
       const [family, familyAr] = FAMILY[Math.floor(random() * FAMILY.length)]!
       const roll = random()
       const mode: TransportMode = roll < 0.72 ? 'TWO_WAY' : roll < 0.88 ? 'MORNING' : 'EVENING'
+      const cohort = SAMPLE_COHORTS[Math.floor(random() * SAMPLE_COHORTS.length)]!
 
       students.push({
         id: `S-${String(n).padStart(4, '0')}`,
@@ -208,7 +206,8 @@ export function sampleStudents(): Student[] {
         familyName: family!,
         givenNameAr: givenAr,
         familyNameAr: familyAr,
-        studentGroup: COHORTS[Math.floor(random() * COHORTS.length)]!,
+        classId: cohort.classId,
+        studentGroup: cohort.label,
         stopId: stop.id,
         transportMode: mode,
         primaryPhone: phone(random),

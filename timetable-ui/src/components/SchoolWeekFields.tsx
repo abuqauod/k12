@@ -26,8 +26,9 @@ export function SchoolWeekFields({ problem, onChange }: Props) {
   const { t, day: dayName } = useI18n()
   const { calendar } = problem
 
+  // classIds, not labels — breakAt() below joins on the real class id.
   const cohorts = useMemo(
-    () => unique(problem.lessons.map((lesson) => lesson.studentGroup)).sort(naturalCompare),
+    () => unique(problem.lessons.map((lesson) => lesson.classId)).sort(naturalCompare),
     [problem.lessons],
   )
 

@@ -1,6 +1,16 @@
 import type { Calendar, Lesson, Problem, Room, Tier, Timeslot, Unavailability } from './types'
 import { DEFAULT_WEIGHTS } from './types'
 import { generateTimeslots, schoolDays } from './calendar'
+import { SAMPLE_COHORTS } from './classes'
+
+const [KG1_A, KG2_A, GRADE4_A, GRADE4_B, GRADE8_A, GRADE11_SCIENCE] = SAMPLE_COHORTS as [
+  (typeof SAMPLE_COHORTS)[number],
+  (typeof SAMPLE_COHORTS)[number],
+  (typeof SAMPLE_COHORTS)[number],
+  (typeof SAMPLE_COHORTS)[number],
+  (typeof SAMPLE_COHORTS)[number],
+  (typeof SAMPLE_COHORTS)[number],
+]
 
 /**
  * A worked K-12 dataset spanning every tier the model supports: KG homerooms,
@@ -23,7 +33,7 @@ export const SAMPLE_CALENDAR: Calendar = {
       kind: 'CLOCK',
       period: 3,
       minutes: 20,
-      studentGroups: [],
+      classIds: [],
     },
     {
       id: 'BR-LUNCH-EARLY',
@@ -31,7 +41,7 @@ export const SAMPLE_CALENDAR: Calendar = {
       kind: 'PERIOD',
       period: 5,
       minutes: 0,
-      studentGroups: ['KG1-A', 'KG2-A', 'Grade 4-A', 'Grade 4-B'],
+      classIds: [KG1_A.classId, KG2_A.classId, GRADE4_A.classId, GRADE4_B.classId],
     },
     {
       id: 'BR-LUNCH-LATE',
@@ -39,7 +49,7 @@ export const SAMPLE_CALENDAR: Calendar = {
       kind: 'PERIOD',
       period: 6,
       minutes: 0,
-      studentGroups: ['Grade 8-A', 'Grade 11-Science'],
+      classIds: [GRADE8_A.classId, GRADE11_SCIENCE.classId],
     },
   ],
 }
@@ -69,6 +79,7 @@ interface CurriculumBlock {
 }
 
 interface Cohort {
+  classId: string
   studentGroup: string
   tier: Tier
   studentCount: number
@@ -77,7 +88,8 @@ interface Cohort {
 
 const CURRICULUM: Cohort[] = [
   {
-    studentGroup: 'KG1-A',
+    classId: KG1_A.classId,
+    studentGroup: KG1_A.label,
     tier: 'KG',
     studentCount: 22,
     blocks: [
@@ -91,7 +103,8 @@ const CURRICULUM: Cohort[] = [
     ],
   },
   {
-    studentGroup: 'KG2-A',
+    classId: KG2_A.classId,
+    studentGroup: KG2_A.label,
     tier: 'KG',
     studentCount: 24,
     blocks: [
@@ -105,7 +118,8 @@ const CURRICULUM: Cohort[] = [
     ],
   },
   {
-    studentGroup: 'Grade 4-A',
+    classId: GRADE4_A.classId,
+    studentGroup: GRADE4_A.label,
     tier: 'ELEMENTARY',
     studentCount: 28,
     blocks: [
@@ -120,7 +134,8 @@ const CURRICULUM: Cohort[] = [
     ],
   },
   {
-    studentGroup: 'Grade 4-B',
+    classId: GRADE4_B.classId,
+    studentGroup: GRADE4_B.label,
     tier: 'ELEMENTARY',
     studentCount: 27,
     blocks: [
@@ -135,7 +150,8 @@ const CURRICULUM: Cohort[] = [
     ],
   },
   {
-    studentGroup: 'Grade 8-A',
+    classId: GRADE8_A.classId,
+    studentGroup: GRADE8_A.label,
     tier: 'MIDDLE',
     studentCount: 30,
     blocks: [
@@ -151,7 +167,8 @@ const CURRICULUM: Cohort[] = [
     ],
   },
   {
-    studentGroup: 'Grade 11-Science',
+    classId: GRADE11_SCIENCE.classId,
+    studentGroup: GRADE11_SCIENCE.label,
     tier: 'HIGH',
     studentCount: 26,
     blocks: [
@@ -190,6 +207,7 @@ export function buildLessons(): Lesson[] {
           id: `L-${String(n++).padStart(3, '0')}`,
           subject: block.subject,
           teacher: block.teacher,
+          classId: cohort.classId,
           studentGroup: cohort.studentGroup,
           tier: cohort.tier,
           studentCount: cohort.studentCount,

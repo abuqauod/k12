@@ -87,7 +87,7 @@ export function compile(problem: Problem): CompiledModel {
   for (let i = 0; i < L; i++) {
     const lesson = lessons[i]
     lessonTeacher[i] = teacherIdx.id(lesson.teacher)
-    lessonGroup[i] = groupIdx.id(lesson.studentGroup)
+    lessonGroup[i] = groupIdx.id(lesson.classId)
     lessonSubject[i] = subjectIdx.id(lesson.subject)
     lessonSize[i] = lesson.studentCount ?? -1
     lessonDouble[i] = lesson.doublePeriod ? 1 : 0
@@ -129,14 +129,14 @@ export function compile(problem: Problem): CompiledModel {
   }
 
   // PERIOD breaks reserve a slot for the cohorts they cover. An empty
-  // studentGroups list means the break applies to the whole school.
+  // classIds list means the break applies to the whole school.
   const groupBlocked = new Uint8Array(Math.max(1, groupIdx.list.length * T))
   const groupBreakMask = new Uint32Array(Math.max(1, groupIdx.list.length))
   for (const rule of problem.calendar.breaks) {
     if (rule.kind !== 'PERIOD') continue
     const targets =
-      rule.studentGroups.length > 0
-        ? rule.studentGroups.map((group) => groupIdx.map.get(group))
+      rule.classIds.length > 0
+        ? rule.classIds.map((classId) => groupIdx.map.get(classId))
         : groupIdx.list.map((_, index) => index)
     for (const g of targets) {
       if (g !== undefined && rule.period <= 32) groupBreakMask[g] |= 1 << (rule.period - 1)

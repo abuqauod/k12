@@ -16,6 +16,16 @@ export function DashboardPage() {
     [problem.lessons],
   )
   const cohorts = useMemo(() => coverage(problem), [problem])
+  // classId -> label, for the breaks list below (BreakRule.classIds holds
+  // real ids; every lesson already carries its own resolved label, so no
+  // separate class fetch is needed just to print one here).
+  const classLabel = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const lesson of problem.lessons) {
+      if (lesson.classId) map.set(lesson.classId, lesson.studentGroup)
+    }
+    return map
+  }, [problem.lessons])
   const days = schoolDays(problem.calendar)
   const firstDay = problem.timeslots.filter((slot) => slot.dayOfWeek === days[0])
   const dayEnds = firstDay.length > 0 ? hhmm(firstDay[firstDay.length - 1].endTime) : '—'
@@ -148,9 +158,9 @@ export function DashboardPage() {
               </span>
               {rule.kind === 'PERIOD' && (
                 <span className="break-line__groups">
-                  {rule.studentGroups.length === 0
+                  {rule.classIds.length === 0
                     ? t('dash.breaks.allClasses')
-                    : rule.studentGroups.join('، ')}
+                    : rule.classIds.map((id) => classLabel.get(id) ?? id).join('، ')}
                 </span>
               )}
             </div>

@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { DayOfWeek, Problem, Solution } from '../domain/types'
 import { DAYS_OF_WEEK } from '../domain/types'
+import { SAMPLE_COHORTS, type SchoolClass } from '../domain/classes'
 import { coverage, hhmm, naturalCompare, unique } from '../lib/view'
+import { listClasses } from '../lib/classesApi'
+import { useApp } from '../state/AppContext'
+import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 
@@ -75,11 +79,63 @@ function LessonsTab({
   setQuery,
 }: Props & { query: string; setQuery: (value: string) => void }) {
   const { t, n } = useI18n()
+  const { activeBranchId } = useApp()
+  const { getAccessToken } = useAuth()
+  const [classes, setClasses] = useState<SchoolClass[]>([])
 
   const assignments = useMemo(
     () => new Map((solution?.assignments ?? []).map((a) => [a.lessonId, a])),
     [solution],
   )
+
+  // Classes for the active branch are the source of truth for cohorts; the
+  // bundled sample cohorts are the fallback so the picker still works before
+  // a branch is signed in (no free-text cohort naming, so the two domains
+  // can no longer drift the way they used to).
+  useEffect(() => {
+    if (!activeBranchId) return
+    let cancelled = false
+    void (async () => {
+      const token = await getAccessToken()
+      if (!token) return
+      const result = await listClasses(getAccessToken, { branchId: activeBranchId })
+      if (!cancelled && result.kind === 'ok') setClasses(result.data)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeBranchId, getAccessToken])
+
+  const cohortOptions = useMemo(
+    () =>
+      classes.length > 0
+        ? classes.map((klass) => ({ id: klass.id, label: klass.label }))
+        : SAMPLE_COHORTS.map((cohort) => ({ id: cohort.classId, label: cohort.label })),
+    [classes],
+  )
+  const cohortLabel = useMemo(
+    () => new Map(cohortOptions.map((cohort) => [cohort.id, cohort.label])),
+    [cohortOptions],
+  )
+
+  // Backfills classId on lessons that predate this field (matched by their
+  // existing label) once real classes load for the branch. Never touches a
+  // lesson whose classId already resolves against the fetched list.
+  useEffect(() => {
+    if (classes.length === 0) return
+    const byLabel = new Map(classes.map((klass) => [klass.label, klass.id]))
+    const byId = new Set(classes.map((klass) => klass.id))
+    let changed = false
+    const lessons = problem.lessons.map((lesson) => {
+      if (lesson.classId && byId.has(lesson.classId)) return lesson
+      const matchId = byLabel.get(lesson.studentGroup)
+      if (!matchId) return lesson
+      changed = true
+      return { ...lesson, classId: matchId }
+    })
+    if (changed) onChange({ ...problem, lessons })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classes])
 
   /**
    * Locking freezes a lesson where the solver just put it, so the next run
@@ -119,6 +175,7 @@ function LessonsTab({
 
   const add = () => {
     const nextNumber = problem.lessons.length + 1
+    const fallback = cohortOptions[0]
     onChange({
       ...problem,
       lessons: [
@@ -127,7 +184,8 @@ function LessonsTab({
           id: `L-${String(nextNumber).padStart(3, '0')}`,
           subject: t('lessons.newSubject'),
           teacher: problem.lessons[0]?.teacher ?? t('lessons.unassignedTeacher'),
-          studentGroup: problem.lessons[0]?.studentGroup ?? 'Grade 1-A',
+          classId: problem.lessons[0]?.classId || fallback?.id || '',
+          studentGroup: problem.lessons[0]?.studentGroup || fallback?.label || 'Grade 1-A',
         },
       ],
     })
@@ -184,11 +242,25 @@ function LessonsTab({
                 />
               </td>
               <td>
-                <input
+                <select
                   className="cell-input"
-                  value={lesson.studentGroup}
-                  onChange={(event) => patch(index, { studentGroup: event.target.value })}
-                />
+                  value={lesson.classId || ''}
+                  onChange={(event) =>
+                    patch(index, {
+                      classId: event.target.value,
+                      studentGroup: cohortLabel.get(event.target.value) ?? lesson.studentGroup,
+                    })
+                  }
+                >
+                  {(!lesson.classId || !cohortLabel.has(lesson.classId)) && (
+                    <option value="">{lesson.studentGroup || '—'}</option>
+                  )}
+                  {cohortOptions.map((cohort) => (
+                    <option key={cohort.id} value={cohort.id}>
+                      {cohort.label}
+                    </option>
+                  ))}
+                </select>
               </td>
               <td style={{ textAlign: 'center' }}>
                 <input
