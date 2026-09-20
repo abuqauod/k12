@@ -41,7 +41,7 @@ export function ClassesPage() {
       setLoading(false)
       return
     }
-    const result = await listClasses(token, { branchId: activeBranchId, includeInactive: true })
+    const result = await listClasses(getAccessToken, { branchId: activeBranchId, includeInactive: true })
     setLoading(false)
     if (result.kind === 'ok') setClasses(result.data)
     else setError(t('classes.saveError'))
@@ -70,7 +70,7 @@ export function ClassesPage() {
       setBusy(false)
       return
     }
-    const result = await createSections(token, {
+    const result = await createSections(getAccessToken, {
       branchId: activeBranchId,
       gradeLevel: newGrade.trim(),
       capacity: newCapacity,
@@ -90,7 +90,7 @@ export function ClassesPage() {
     if (!activeBranchId) return
     const token = await getAccessToken()
     if (!token) return
-    const result = await createClass(token, {
+    const result = await createClass(getAccessToken, {
       branchId: activeBranchId,
       gradeLevel,
       name: nextSectionName(classes, gradeLevel),
@@ -106,7 +106,7 @@ export function ClassesPage() {
     )
     const token = await getAccessToken()
     if (!token) return
-    const result = await updateClass(token, id, changes)
+    const result = await updateClass(getAccessToken, id, changes)
     if (result.kind === 'ok') {
       setClasses((current) => current.map((c) => (c.id === id ? result.data : c)))
     } else {
@@ -122,7 +122,7 @@ export function ClassesPage() {
     }
     const token = await getAccessToken()
     if (!token) return
-    const result = await deleteClass(token, klass.id)
+    const result = await deleteClass(getAccessToken, klass.id)
     if (result.kind === 'ok') setClasses((current) => current.filter((c) => c.id !== klass.id))
     else setError(t('classes.saveError'))
   }

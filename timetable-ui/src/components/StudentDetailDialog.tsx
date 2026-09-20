@@ -6,6 +6,7 @@ import type { FleetProblem } from '../domain/fleet'
 import { updateStudent } from '../lib/studentsApi'
 import { getEnrollments, transferStudent, withdrawStudent } from '../lib/enrollmentsApi'
 import type { Enrollment } from '../lib/enrollmentsApi'
+import type { TokenGetter } from '../lib/http'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { LocationPicker } from './LocationPicker'
@@ -27,7 +28,7 @@ export function StudentDetailDialog({
   student: Student
   classes: SchoolClass[]
   fleet: FleetProblem
-  getAccessToken: () => Promise<string | null>
+  getAccessToken: TokenGetter
   onClose: () => void
   onChanged: (updated: Student) => void
 }) {
@@ -50,7 +51,7 @@ export function StudentDetailDialog({
     setSavingLoc(true)
     const token = await getAccessToken()
     if (!token) return setSavingLoc(false)
-    const res = await updateStudent(token, student.id, { lat: next.lat, lng: next.lng })
+    const res = await updateStudent(getAccessToken, student.id, { lat: next.lat, lng: next.lng })
     setSavingLoc(false)
     if (res.kind === 'ok') onChanged(res.data)
     else setLocation(previous)
@@ -82,7 +83,7 @@ export function StudentDetailDialog({
   const loadHistory = async () => {
     const token = await getAccessToken()
     if (!token) return
-    const res = await getEnrollments(token, student.id)
+    const res = await getEnrollments(getAccessToken, student.id)
     if (res.kind === 'ok') setHistory(res.data)
   }
   useEffect(() => {
@@ -102,7 +103,7 @@ export function StudentDetailDialog({
     setGErr(null)
     const token = await getAccessToken()
     if (!token) return setSavingG(false)
-    const res = await updateStudent(token, student.id, { guardians })
+    const res = await updateStudent(getAccessToken, student.id, { guardians })
     setSavingG(false)
     if (res.kind === 'ok') onChanged(res.data)
     else setGErr(t('enroll.error.generic'))
@@ -114,7 +115,7 @@ export function StudentDetailDialog({
     setActionErr(null)
     const token = await getAccessToken()
     if (!token) return setBusy(false)
-    const res = await transferStudent(token, student.id, {
+    const res = await transferStudent(getAccessToken, student.id, {
       toClassId,
       effectiveDate,
       reason: reason.trim() || null,
@@ -134,7 +135,7 @@ export function StudentDetailDialog({
     setActionErr(null)
     const token = await getAccessToken()
     if (!token) return setBusy(false)
-    const res = await withdrawStudent(token, student.id, {
+    const res = await withdrawStudent(getAccessToken, student.id, {
       status: wStatus,
       effectiveDate,
       reason: reason.trim() || null,

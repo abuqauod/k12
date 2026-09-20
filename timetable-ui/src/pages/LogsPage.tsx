@@ -32,12 +32,12 @@ export function LogsPage() {
         return
       }
       if (tab === 'activity') {
-        const result = await listAuditLog(token, 150)
+        const result = await listAuditLog(getAccessToken, 150)
         if (cancelled) return
         if (result.kind === 'ok') setActivity(result.data)
         else setError(result.error)
       } else {
-        const result = await listNotifications(token, {
+        const result = await listNotifications(getAccessToken, {
           branchId: activeBranchId ?? undefined,
           limit: 200,
         })

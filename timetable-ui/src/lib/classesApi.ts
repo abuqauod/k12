@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 import type { NewClass, SchoolClass } from '../domain/classes'
 
 /** Client for `/classes` — homeroom classes under a branch. */
@@ -9,11 +10,8 @@ function baseUrl(): string {
   return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
 }
 
-async function call(path: string, init: RequestInit, accessToken: string): Promise<Response> {
-  return fetch(`${baseUrl()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-  })
+async function call(path: string, init: RequestInit, getToken: TokenGetter): Promise<Response> {
+  return authorizedFetch(`${baseUrl()}${path}`, init, getToken)
 }
 
 async function parse<T>(response: Response): Promise<ClassesResult<T>> {
@@ -32,7 +30,7 @@ async function parse<T>(response: Response): Promise<ClassesResult<T>> {
 }
 
 export async function listClasses(
-  accessToken: string,
+  getToken: TokenGetter,
   params: { branchId?: string; includeInactive?: boolean } = {},
 ): Promise<ClassesResult<SchoolClass[]>> {
   try {
@@ -40,7 +38,7 @@ export async function listClasses(
     if (params.branchId) query.set('branchId', params.branchId)
     if (params.includeInactive) query.set('includeInactive', 'true')
     const qs = query.toString()
-    const response = await call(`/classes${qs ? `?${qs}` : ''}`, { method: 'GET' }, accessToken)
+    const response = await call(`/classes${qs ? `?${qs}` : ''}`, { method: 'GET' }, getToken)
     const result = await parse<{ classes: SchoolClass[] }>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: result.data.classes } : result
   } catch {
@@ -49,11 +47,11 @@ export async function listClasses(
 }
 
 export async function createClass(
-  accessToken: string,
+  getToken: TokenGetter,
   klass: NewClass,
 ): Promise<ClassesResult<SchoolClass>> {
   try {
-    const response = await call('/classes', { method: 'POST', body: JSON.stringify(klass) }, accessToken)
+    const response = await call('/classes', { method: 'POST', body: JSON.stringify(klass) }, getToken)
     return parse(response)
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
@@ -61,11 +59,11 @@ export async function createClass(
 }
 
 export async function createSections(
-  accessToken: string,
+  getToken: TokenGetter,
   input: { branchId: string; gradeLevel: string; capacity: number; sections: string[] },
 ): Promise<ClassesResult<{ created: SchoolClass[] }>> {
   try {
-    const response = await call('/classes/bulk', { method: 'POST', body: JSON.stringify(input) }, accessToken)
+    const response = await call('/classes/bulk', { method: 'POST', body: JSON.stringify(input) }, getToken)
     return parse(response)
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
@@ -73,7 +71,7 @@ export async function createSections(
 }
 
 export async function updateClass(
-  accessToken: string,
+  getToken: TokenGetter,
   id: string,
   patch: Partial<Omit<NewClass, 'branchId'>> & { active?: boolean },
 ): Promise<ClassesResult<SchoolClass>> {
@@ -81,7 +79,7 @@ export async function updateClass(
     const response = await call(
       `/classes/${encodeURIComponent(id)}`,
       { method: 'PATCH', body: JSON.stringify(patch) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -89,9 +87,9 @@ export async function updateClass(
   }
 }
 
-export async function deleteClass(accessToken: string, id: string): Promise<ClassesResult<null>> {
+export async function deleteClass(getToken: TokenGetter, id: string): Promise<ClassesResult<null>> {
   try {
-    const response = await call(`/classes/${encodeURIComponent(id)}`, { method: 'DELETE' }, accessToken)
+    const response = await call(`/classes/${encodeURIComponent(id)}`, { method: 'DELETE' }, getToken)
     if (response.status === 204) return { kind: 'ok', data: null }
     return parse(response)
   } catch {

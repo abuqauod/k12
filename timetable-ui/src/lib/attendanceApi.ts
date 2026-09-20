@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 
 /** Client for the signed-in user's own `/attendance` — one school's daily register. */
 
@@ -46,11 +47,8 @@ function baseUrl(): string {
   return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
 }
 
-async function call(path: string, init: RequestInit, accessToken: string): Promise<Response> {
-  return fetch(`${baseUrl()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-  })
+async function call(path: string, init: RequestInit, getToken: TokenGetter): Promise<Response> {
+  return authorizedFetch(`${baseUrl()}${path}`, init, getToken)
 }
 
 async function parse<T>(response: Response): Promise<AttendanceResult<T>> {
@@ -77,7 +75,7 @@ export interface Register {
 }
 
 export async function getRegister(
-  accessToken: string,
+  getToken: TokenGetter,
   date: string,
   classId: string,
 ): Promise<AttendanceResult<Register>> {
@@ -85,7 +83,7 @@ export async function getRegister(
     const response = await call(
       `/attendance?date=${encodeURIComponent(date)}&classId=${encodeURIComponent(classId)}`,
       { method: 'GET' },
-      accessToken,
+      getToken,
     )
     return parse<Register>(response)
   } catch {
@@ -102,7 +100,7 @@ export interface MarkOutcome {
 }
 
 export async function markAttendance(
-  accessToken: string,
+  getToken: TokenGetter,
   date: string,
   records: Array<{ studentId: string; status: AttendanceStatus; note?: string | null }>,
   reason?: string | null,
@@ -111,7 +109,7 @@ export async function markAttendance(
     const response = await call(
       '/attendance',
       { method: 'PUT', body: JSON.stringify({ date, reason: reason ?? null, records }) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -120,14 +118,14 @@ export async function markAttendance(
 }
 
 export async function getStudentCorrections(
-  accessToken: string,
+  getToken: TokenGetter,
   studentId: string,
 ): Promise<AttendanceResult<CorrectionRow[]>> {
   try {
     const response = await call(
       `/attendance/student/${encodeURIComponent(studentId)}/corrections`,
       { method: 'GET' },
-      accessToken,
+      getToken,
     )
     const result = await parse<{ corrections: CorrectionRow[] }>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: result.data.corrections } : result
@@ -137,7 +135,7 @@ export async function getStudentCorrections(
 }
 
 export async function getStudentHistory(
-  accessToken: string,
+  getToken: TokenGetter,
   studentId: string,
   from?: string,
   to?: string,
@@ -150,7 +148,7 @@ export async function getStudentHistory(
     const response = await call(
       `/attendance/student/${encodeURIComponent(studentId)}${qs ? `?${qs}` : ''}`,
       { method: 'GET' },
-      accessToken,
+      getToken,
     )
     const result = await parse<{ records: HistoryRow[] }>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: result.data.records } : result

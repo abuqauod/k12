@@ -1,4 +1,9 @@
 import type { Problem } from '../domain/types'
+import { authorizedFetch, request, type TokenGetter } from './http'
+
+// Re-exported so existing `import type { TokenGetter } from './sync'` call
+// sites keep working unchanged.
+export type { TokenGetter }
 
 /**
  * Sync client for the working dataset.
@@ -33,10 +38,6 @@ export interface SyncSettings {
   /** When set, used instead of the signed-in user's session for every request. */
   apiKey?: string
 }
-
-/** A token getter: no-arg returns the cached token (refreshing if there is
- * none yet); `force: true` skips the cache — used after a 401. */
-export type TokenGetter = (force?: boolean) => Promise<string | null>
 
 export interface SyncStatus {
   state: SyncState
@@ -102,24 +103,11 @@ function endpoint(settings: SyncSettings): string {
   return `${base}/datasets/${encodeURIComponent(settings.schoolId || 'default')}`
 }
 
-/** Aborts rather than hanging when the server is unreachable. */
-async function request(url: string, init: RequestInit, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(url, { ...init, signal: controller.signal })
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 /**
  * With `settings.apiKey` set, every request goes out with `X-Api-Key`
  * instead — no session, no refresh, nothing to retry (a key is either valid
- * or it isn't). Otherwise, attaches the current session token and retries
- * once, with a forced refresh, if the server says the token is no good —
- * covers the access token simply having expired mid-session (it's
- * short-lived by design).
+ * or it isn't). Otherwise defers to the shared `authorizedFetch`, which
+ * retries once with a forced token refresh on a 401.
  */
 async function authorizedRequest(
   url: string,
@@ -133,16 +121,7 @@ async function authorizedRequest(
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.apiKey },
     })
   }
-
-  const withAuth = async (token: string | null) =>
-    request(url, {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    })
-
-  const first = await withAuth(await getToken())
-  if (first.status !== 401) return first
-  return withAuth(await getToken(true))
+  return authorizedFetch(url, init, getToken)
 }
 
 export async function pullDataset(settings: SyncSettings, getToken: TokenGetter): Promise<PullResult> {

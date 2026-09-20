@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 
 /**
  * Client for the signed-in user's own `/memberships` — a school managing its
@@ -27,11 +28,8 @@ function baseUrl(): string {
   return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
 }
 
-async function call(path: string, init: RequestInit, accessToken: string): Promise<Response> {
-  return fetch(`${baseUrl()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-  })
+async function call(path: string, init: RequestInit, getToken: TokenGetter): Promise<Response> {
+  return authorizedFetch(`${baseUrl()}${path}`, init, getToken)
 }
 
 async function parse<T>(response: Response): Promise<MembershipsResult<T>> {
@@ -49,9 +47,9 @@ async function parse<T>(response: Response): Promise<MembershipsResult<T>> {
   return { kind: 'ok', data: body as T }
 }
 
-export async function listMembers(accessToken: string): Promise<MembershipsResult<Member[]>> {
+export async function listMembers(getToken: TokenGetter): Promise<MembershipsResult<Member[]>> {
   try {
-    const response = await call('/memberships', { method: 'GET' }, accessToken)
+    const response = await call('/memberships', { method: 'GET' }, getToken)
     const result = await parse<{ members: Member[] }>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: result.data.members } : result
   } catch {
@@ -60,7 +58,7 @@ export async function listMembers(accessToken: string): Promise<MembershipsResul
 }
 
 export async function inviteMember(
-  accessToken: string,
+  getToken: TokenGetter,
   email: string,
   role: MemberRole,
 ): Promise<MembershipsResult<{ outcome: InviteOutcome }>> {
@@ -68,7 +66,7 @@ export async function inviteMember(
     const response = await call(
       '/memberships/invite',
       { method: 'POST', body: JSON.stringify({ email, role }) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -77,7 +75,7 @@ export async function inviteMember(
 }
 
 export async function changeMemberRole(
-  accessToken: string,
+  getToken: TokenGetter,
   userId: string,
   role: MemberRole,
 ): Promise<MembershipsResult<null>> {
@@ -85,7 +83,7 @@ export async function changeMemberRole(
     const response = await call(
       `/memberships/${encodeURIComponent(userId)}`,
       { method: 'PATCH', body: JSON.stringify({ role }) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -94,7 +92,7 @@ export async function changeMemberRole(
 }
 
 export async function setMemberBranches(
-  accessToken: string,
+  getToken: TokenGetter,
   userId: string,
   branchIds: string[] | null,
 ): Promise<MembershipsResult<{ ok: true; branchIds: string[] | null }>> {
@@ -102,7 +100,7 @@ export async function setMemberBranches(
     const response = await call(
       `/memberships/${encodeURIComponent(userId)}/branches`,
       { method: 'PATCH', body: JSON.stringify({ branchIds }) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -110,9 +108,9 @@ export async function setMemberBranches(
   }
 }
 
-export async function removeMember(accessToken: string, userId: string): Promise<MembershipsResult<null>> {
+export async function removeMember(getToken: TokenGetter, userId: string): Promise<MembershipsResult<null>> {
   try {
-    const response = await call(`/memberships/${encodeURIComponent(userId)}`, { method: 'DELETE' }, accessToken)
+    const response = await call(`/memberships/${encodeURIComponent(userId)}`, { method: 'DELETE' }, getToken)
     if (response.status === 204) return { kind: 'ok', data: null }
     return parse(response)
   } catch {

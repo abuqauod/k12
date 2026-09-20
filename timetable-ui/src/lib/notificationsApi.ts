@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 
 /**
  * Client for the absence-notification feature: per-branch settings, the send
@@ -67,11 +68,8 @@ function baseUrl(): string {
   return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
 }
 
-async function call(path: string, init: RequestInit, accessToken: string): Promise<Response> {
-  return fetch(`${baseUrl()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-  })
+async function call(path: string, init: RequestInit, getToken: TokenGetter): Promise<Response> {
+  return authorizedFetch(`${baseUrl()}${path}`, init, getToken)
 }
 
 async function parse<T>(response: Response): Promise<NotificationsResult<T>> {
@@ -90,14 +88,14 @@ async function parse<T>(response: Response): Promise<NotificationsResult<T>> {
 }
 
 export async function getNotificationSettings(
-  accessToken: string,
+  getToken: TokenGetter,
   branchId: string,
 ): Promise<NotificationsResult<NotificationSettings>> {
   try {
     const response = await call(
       `/branches/${encodeURIComponent(branchId)}/notification-settings`,
       { method: 'GET' },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -106,7 +104,7 @@ export async function getNotificationSettings(
 }
 
 export async function putNotificationSettings(
-  accessToken: string,
+  getToken: TokenGetter,
   branchId: string,
   settings: Omit<NotificationSettings, 'lastSweptDate'>,
 ): Promise<NotificationsResult<{ ok: true }>> {
@@ -114,7 +112,7 @@ export async function putNotificationSettings(
     const response = await call(
       `/branches/${encodeURIComponent(branchId)}/notification-settings`,
       { method: 'PUT', body: JSON.stringify(settings) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -123,14 +121,14 @@ export async function putNotificationSettings(
 }
 
 export async function getSchoolCalendar(
-  accessToken: string,
+  getToken: TokenGetter,
   branchId: string,
 ): Promise<NotificationsResult<SchoolCalendar>> {
   try {
     const response = await call(
       `/branches/${encodeURIComponent(branchId)}/calendar`,
       { method: 'GET' },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -139,7 +137,7 @@ export async function getSchoolCalendar(
 }
 
 export async function putSchoolCalendar(
-  accessToken: string,
+  getToken: TokenGetter,
   branchId: string,
   calendar: SchoolCalendar,
 ): Promise<NotificationsResult<{ ok: true }>> {
@@ -147,7 +145,7 @@ export async function putSchoolCalendar(
     const response = await call(
       `/branches/${encodeURIComponent(branchId)}/calendar`,
       { method: 'PUT', body: JSON.stringify(calendar) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {
@@ -156,7 +154,7 @@ export async function putSchoolCalendar(
 }
 
 export async function listNotifications(
-  accessToken: string,
+  getToken: TokenGetter,
   params: { branchId?: string; date?: string; studentId?: string; limit?: number } = {},
 ): Promise<NotificationsResult<NotificationLogEntry[]>> {
   try {
@@ -166,7 +164,7 @@ export async function listNotifications(
     if (params.studentId) query.set('studentId', params.studentId)
     if (params.limit) query.set('limit', String(params.limit))
     const qs = query.toString()
-    const response = await call(`/notifications${qs ? `?${qs}` : ''}`, { method: 'GET' }, accessToken)
+    const response = await call(`/notifications${qs ? `?${qs}` : ''}`, { method: 'GET' }, getToken)
     const result = await parse<{ entries: NotificationLogEntry[] }>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: result.data.entries } : result
   } catch {
@@ -175,14 +173,14 @@ export async function listNotifications(
 }
 
 export async function runAbsenceNotifications(
-  accessToken: string,
+  getToken: TokenGetter,
   input: { branchId: string; date?: string; studentId?: string },
 ): Promise<NotificationsResult<NotifyOutcome>> {
   try {
     const response = await call(
       '/notifications/run',
       { method: 'POST', body: JSON.stringify(input) },
-      accessToken,
+      getToken,
     )
     return parse(response)
   } catch {

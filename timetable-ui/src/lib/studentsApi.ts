@@ -1,4 +1,5 @@
 import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
 import type { Student, StudentStatus } from '../domain/students'
 
 /**
@@ -14,11 +15,8 @@ function baseUrl(): string {
   return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
 }
 
-async function call(path: string, init: RequestInit, accessToken: string): Promise<Response> {
-  return fetch(`${baseUrl()}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-  })
+async function call(path: string, init: RequestInit, getToken: TokenGetter): Promise<Response> {
+  return authorizedFetch(`${baseUrl()}${path}`, init, getToken)
 }
 
 async function parse<T>(response: Response): Promise<StudentsResult<T>> {
@@ -49,7 +47,7 @@ function fromWire(w: WireStudent): Student {
 }
 
 export async function listStudents(
-  accessToken: string,
+  getToken: TokenGetter,
   params: {
     branchId?: string
     classId?: string
@@ -66,7 +64,7 @@ export async function listStudents(
     if (params.status) query.set('status', params.status)
     if (params.search) query.set('search', params.search)
     const qs = query.toString()
-    const response = await call(`/students${qs ? `?${qs}` : ''}`, { method: 'GET' }, accessToken)
+    const response = await call(`/students${qs ? `?${qs}` : ''}`, { method: 'GET' }, getToken)
     const result = await parse<{ students: WireStudent[] }>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: result.data.students.map(fromWire) } : result
   } catch {
@@ -81,11 +79,11 @@ export type NewStudent = Omit<Student, 'id' | 'active' | 'branchId' | 'studentGr
 }
 
 export async function createStudent(
-  accessToken: string,
+  getToken: TokenGetter,
   student: NewStudent,
 ): Promise<StudentsResult<{ id: string }>> {
   try {
-    const response = await call('/students', { method: 'POST', body: JSON.stringify(student) }, accessToken)
+    const response = await call('/students', { method: 'POST', body: JSON.stringify(student) }, getToken)
     return parse(response)
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
@@ -93,7 +91,7 @@ export async function createStudent(
 }
 
 export async function updateStudent(
-  accessToken: string,
+  getToken: TokenGetter,
   id: string,
   patch: Partial<NewStudent>,
 ): Promise<StudentsResult<Student>> {
@@ -101,7 +99,7 @@ export async function updateStudent(
     const response = await call(
       `/students/${encodeURIComponent(id)}`,
       { method: 'PATCH', body: JSON.stringify(patch) },
-      accessToken,
+      getToken,
     )
     const result = await parse<WireStudent>(response)
     return result.kind === 'ok' ? { kind: 'ok', data: fromWire(result.data) } : result
