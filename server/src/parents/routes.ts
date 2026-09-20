@@ -120,7 +120,6 @@ const ERROR_STATUS: Record<string, number> = {
   UNKNOWN_STUDENT: 404,
   UNKNOWN_LINK: 404,
   LINK_EXISTS: 409,
-  LINK_INACTIVE_EXISTS: 409,
   FINANCIAL_FLAG_REQUIRES_ADMIN: 403,
   PORTAL_FLAG_REQUIRES_ADMIN: 403,
 }
@@ -212,6 +211,10 @@ export function registerParentRoutes(app: FastifyInstance): void {
     const tenantId = request.auth!.tenantId!
     const now = new Date()
     const { portalAccessEnabled, ...rest } = parsed.data
+    // Lowercased at the one write boundary so a stored email always matches
+    // findDuplicateCandidates' lowercased probe, regardless of the case a
+    // caller typed it in.
+    if (rest.email) rest.email = rest.email.toLowerCase()
     let warnings: DuplicateCandidate[] = []
     const created = await withTenant(tenantId, async (ctx) => {
       warnings = await findDuplicateCandidates(ctx, {
@@ -260,6 +263,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
 
     const tenantId = request.auth!.tenantId!
     const { portalAccessEnabled, ...scalar } = parsed.data
+    if (scalar.email) scalar.email = scalar.email.toLowerCase()
     let warnings: DuplicateCandidate[] = []
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.parents.findOne({ _id: id })
@@ -368,7 +372,10 @@ export function registerParentRoutes(app: FastifyInstance): void {
       createLink(ctx, tenantId, { parentId, ...parsed.data, actorId: request.auth!.sub }),
     )
     if (!result.ok) return reply.code(ERROR_STATUS[result.error] ?? 400).send({ error: result.error })
-    return reply.code(201).send(linkToResponse(result.link))
+    // A reactivated (previously deactivated) relationship is a 200 update,
+    // not a 201 create — see createLink's comment for why re-adding one
+    // restores it rather than erroring.
+    return reply.code(result.reactivated ? 200 : 201).send(linkToResponse(result.link))
   })
 
   app.patch('/parents/:parentId/links/:linkId', writeGuard, async (request, reply) => {

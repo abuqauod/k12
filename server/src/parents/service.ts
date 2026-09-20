@@ -216,9 +216,21 @@ export async function findDuplicateCandidates(
 }
 
 export type CreateLinkResult =
-  | { ok: true; link: ParentStudentLinkDoc }
-  | { ok: false; error: 'UNKNOWN_PARENT' | 'UNKNOWN_STUDENT' | 'LINK_EXISTS' | 'LINK_INACTIVE_EXISTS' }
+  | { ok: true; link: ParentStudentLinkDoc; reactivated: boolean }
+  | { ok: false; error: 'UNKNOWN_PARENT' | 'UNKNOWN_STUDENT' | 'LINK_EXISTS' }
 
+/**
+ * Creates the parent<->student relationship — or, if one already exists but
+ * was previously deactivated (see deactivateLink below), reactivates it with
+ * the newly submitted field values instead of erroring. A removed
+ * relationship being re-added is the same relationship coming back, not a
+ * new one, and the unique (tenantId, parentId, studentId) index means there
+ * is only ever one row for the pair to reactivate — restoring it, rather
+ * than requiring a separate "find the old inactive link and reactivate it"
+ * step the UI has no surface for. Only a genuinely still-active duplicate
+ * (`LINK_EXISTS`) is rejected — that is the real duplicate-relationship
+ * prevention requirement 7 asks for.
+ */
 export async function createLink(
   ctx: TenantContext,
   tenantId: string,
@@ -241,13 +253,43 @@ export async function createLink(
   const student = await ctx.students.findOne({ _id: params.studentId })
   if (!student) return { ok: false, error: 'UNKNOWN_STUDENT' }
 
+  const now = new Date()
   const existing = await ctx.parentStudentLinks.findOne({
     parentId: params.parentId,
     studentId: params.studentId,
   })
-  if (existing) return { ok: false, error: existing.active ? 'LINK_EXISTS' : 'LINK_INACTIVE_EXISTS' }
 
-  const now = new Date()
+  if (existing) {
+    if (existing.active) return { ok: false, error: 'LINK_EXISTS' }
+    const reactivated = await ctx.parentStudentLinks.findOneAndUpdate(
+      { _id: existing._id },
+      {
+        $set: {
+          relationshipType: params.relationshipType,
+          primaryContact: params.primaryContact,
+          secondaryContact: params.secondaryContact,
+          emergencyContact: params.emergencyContact,
+          authorizedPickup: params.authorizedPickup,
+          financialResponsibility: params.financialResponsibility,
+          communicationPermissions: params.communicationPermissions,
+          portalAccess: params.portalAccess,
+          active: true,
+          updatedAt: now,
+        },
+      },
+      { returnDocument: 'after' },
+    )
+    await recordAudit(ctx.auditLog, {
+      actorId: params.actorId,
+      action: 'parentStudentLink.reactivate',
+      entity: 'parentStudentLink',
+      entityId: existing._id,
+      before: existing,
+      after: reactivated,
+    })
+    return { ok: true, link: reactivated!, reactivated: true }
+  }
+
   const link: ParentStudentLinkDoc = {
     _id: randomUUID(),
     tenantId,
@@ -266,7 +308,15 @@ export async function createLink(
     updatedAt: now,
     createdBy: params.actorId,
   }
-  await ctx.parentStudentLinks.insertOne(link)
+  try {
+    await ctx.parentStudentLinks.insertOne(link)
+  } catch (error) {
+    // The findOne above is not atomic with this insert — two concurrent
+    // createLink calls for the same (parentId, studentId) can both pass it
+    // and race for the unique index. The loser gets this, not a 500.
+    if (isDuplicateKeyError(error)) return { ok: false, error: 'LINK_EXISTS' }
+    throw error
+  }
   await recordAudit(ctx.auditLog, {
     actorId: params.actorId,
     action: 'parentStudentLink.create',
@@ -275,5 +325,9 @@ export async function createLink(
     before: null,
     after: link,
   })
-  return { ok: true, link }
+  return { ok: true, link, reactivated: false }
+}
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000
 }

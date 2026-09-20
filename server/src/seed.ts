@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { MongoClient } from 'mongodb'
 import { config } from './config.js'
 import { ensureIndexes } from './schema.js'
-import { backfillBranchesAndClasses, backfillEnrollmentModel } from './backfill.js'
+import {
+  backfillBranchesAndClasses,
+  backfillEnrollmentModel,
+  backfillParentsFromGuardians,
+} from './backfill.js'
 import { createBranchForTenant, listBranchesForTenant } from './branches/service.js'
 import { hashPassword } from './auth/routes.js'
 import type { MembershipDoc, TenantDoc, UserDoc } from './db.js'
@@ -104,6 +108,7 @@ async function main(): Promise<void> {
   console.log('  backfilling structural baseline...')
   await backfillBranchesAndClasses(db)
   await backfillEnrollmentModel(db)
+  await backfillParentsFromGuardians(db)
 
   // Northgate is a two-campus school, so the demo exercises branches for
   // real. Branch identity is console-provisioned now — this is the seed
