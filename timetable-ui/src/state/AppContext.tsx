@@ -92,9 +92,12 @@ function fleetRevisionKey(branchId: string | null): string {
 }
 /** See server/src/datasets/routes.ts for why `:key` can hold any JSON shape
  * — this reuses the same generic document store, one document per branch
- * instead of one for the whole tenant. */
+ * instead of one for the whole tenant. A hyphen, not a colon: the server
+ * validates `:key` against `/^[A-Za-z0-9_-]+$/` (datasets/routes.ts's
+ * `keyParam`), which rejects colons — a `fleet:<branchId>` key 400s as
+ * INVALID_KEY on every real request. */
 function fleetDatasetKey(branchId: string | null): string {
-  return `fleet:${branchId ?? 'default'}`
+  return `fleet-${branchId ?? 'default'}`
 }
 
 function readRevision(key: string): number {
@@ -386,7 +389,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /**
    * The fleet rides along with every "Sync now" / "Pull from server", under
-   * its own dataset key — one document per branch (`fleet:<branchId>`)
+   * its own dataset key — one document per branch (`fleet-<branchId>`)
    * rather than the timetable's own, since a campus's bus routing has
    * nothing to do with how many timetable drafts the school keeps. Best-
    * effort: a conflict or error here is folded into the main sync's status
