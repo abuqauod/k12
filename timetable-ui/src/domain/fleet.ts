@@ -27,6 +27,12 @@ export interface BusStop {
    * optimising its position within that bus's route. Unset means the solver
    * picks the bus freely. */
   pinnedBusId?: string | null
+  /** Present only on a synthetic node built for one outlier student's own
+   * pin ("door-to-door" routing — see domain/students.ts's
+   * `buildDoorToDoorStops`), never on a real, editable stop. Absent means a
+   * real stop; never written into a persisted `FleetProblem.stops` or shown
+   * in the stops editor table. */
+  studentId?: string
 }
 
 export interface Bus {
@@ -51,6 +57,17 @@ export interface FleetSettings {
   arrivalBufferMinutes: number
   /** OSRM base url. Empty falls back to straight-line estimates. */
   osrmUrl: string
+  /**
+   * A student's own pin further than this from their assigned stop is
+   * flagged "needs review" (RoutesPage's outliers panel) and, if
+   * `doorToDoorEnabled`, routed to directly instead of at their stop.
+   * Undefined on a fleet saved before this existed — callers fall back to
+   * `DEFAULT_OUTLIER_THRESHOLD_M` (domain/students.ts).
+   */
+  outlierThresholdMeters?: number
+  /** Master switch for door-to-door fallback routing of outlier students.
+   * Undefined (a fleet saved before this existed) behaves as `true`. */
+  doorToDoorEnabled?: boolean
 }
 
 export interface FleetProblem {
@@ -223,6 +240,22 @@ export function toMinutes(time: string): number {
 export function toClock(minutes: number): string {
   const wrapped = ((Math.round(minutes) % 1440) + 1440) % 1440
   return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`
+}
+
+/** The closest real stop to a point, straight-line — `null` when there are
+ * no stops to compare against. Used to suggest a stop when a student's pin
+ * is placed (StudentDetailDialog) and to compute distance-to-assigned-stop
+ * (domain/students.ts's `computeStopLink`). */
+export function findNearestStop(
+  point: { lat: number; lng: number },
+  stops: BusStop[],
+): { stop: BusStop; distanceM: number } | null {
+  let best: { stop: BusStop; distanceM: number } | null = null
+  for (const stop of stops) {
+    const distanceM = haversineKm(point, stop) * 1000
+    if (!best || distanceM < best.distanceM) best = { stop, distanceM }
+  }
+  return best
 }
 
 /** Minutes a bus needs to travel between two points. */

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import type { FleetProblem, FleetSolution } from '../domain/fleet'
-import type { Student } from '../domain/students'
+import type { Student, StopLink } from '../domain/students'
 import { fetchRouteGeometry } from '../lib/routing'
 
 /** Distinct, colour-blind-safe route colours; index wraps for large fleets. */
@@ -31,6 +31,10 @@ interface Props {
   /** Students with a saved pin are drawn as small dots, independent of the
    * routes — omit to skip drawing them. */
   students?: Student[]
+  /** How each student's own pin relates to their assigned stop — drives the
+   * connecting line/distance tooltip and outlier styling. Omit to skip
+   * both (students still draw as plain dots). */
+  stopLinks?: StopLink[]
 }
 
 /**
@@ -46,6 +50,7 @@ export function RouteMap({
   onSelectBus,
   lineStyle = 'straight',
   students,
+  stopLinks,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -77,6 +82,7 @@ export function RouteMap({
     layers.clearLayers()
 
     const stopById = new Map(problem.stops.map((stop) => [stop.id, stop]))
+    const stopLinkByStudentId = new Map((stopLinks ?? []).map((link) => [link.studentId, link]))
     const bounds = L.latLngBounds([[problem.depot.lat, problem.depot.lng]])
 
     // School
@@ -92,15 +98,38 @@ export function RouteMap({
       .addTo(layers)
 
     // Students with a saved pin — independent of any route, so they still
-    // show up before a solve, or for students not yet placed on a stop.
+    // show up before a solve, or for students not yet placed on a stop. A
+    // line to their assigned stop (when one resolves) makes the pin<->stop
+    // relationship visible; red/thicker when the pin is an outlier.
     for (const student of students ?? []) {
       if (student.lat == null || student.lng == null) continue
       bounds.extend([student.lat, student.lng])
+      const link = stopLinkByStudentId.get(student.id)
+      const isOutlier = link?.status === 'OUTLIER' || link?.status === 'UNASSIGNED_WITH_PIN'
+
+      const assignedStop = link?.stopId ? stopById.get(link.stopId) : undefined
+      if (assignedStop && link?.distanceM != null) {
+        L.polyline(
+          [
+            [student.lat, student.lng],
+            [assignedStop.lat, assignedStop.lng],
+          ],
+          {
+            color: link.status === 'OUTLIER' ? '#d62828' : '#7d7c8a',
+            weight: link.status === 'OUTLIER' ? 2 : 1,
+            opacity: link.status === 'OUTLIER' ? 0.7 : 0.35,
+            dashArray: link.status === 'OUTLIER' ? undefined : '4 4',
+          },
+        )
+          .bindTooltip(`${Math.round(link.distanceM)} m`, { direction: 'center' })
+          .addTo(layers)
+      }
+
       L.circleMarker([student.lat, student.lng], {
-        radius: 4,
-        color: '#ff7300',
+        radius: isOutlier ? 5 : 4,
+        color: isOutlier ? '#d62828' : '#ff7300',
         weight: 1,
-        fillColor: '#ff7300',
+        fillColor: isOutlier ? '#d62828' : '#ff7300',
         fillOpacity: 0.8,
       })
         .bindTooltip(`${student.givenName} ${student.familyName}`.trim(), { direction: 'top' })
@@ -135,20 +164,33 @@ export function RouteMap({
         const stop = stopById.get(leg.stopId)
         if (!stop) return
         bounds.extend([stop.lat, stop.lng])
-        L.circleMarker([stop.lat, stop.lng], {
-          radius: dimmed ? 5 : 8,
-          color: colour,
-          weight: 2,
-          fillColor: colour,
-          fillOpacity: dimmed ? 0.25 : 0.95,
-          opacity: dimmed ? 0.3 : 1,
-        })
-          .bindTooltip(
-            `${order + 1}. ${stop.name} · ${stop.studentCount} students · ${Math.round(
+        const tooltip = stop.studentId
+          ? `${order + 1}. ${stop.name} · ${Math.round(leg.rideMinutes)} min ride (direct pickup)`
+          : `${order + 1}. ${stop.name} · ${stop.studentCount} students · ${Math.round(
               leg.rideMinutes,
-            )} min ride`,
-            { direction: 'top' },
-          )
+            )} min ride`
+        // A synthetic door-to-door node (one outlier student's own pin, not
+        // a real shared stop) gets a square marker so it reads as visually
+        // distinct from every real stop on the route.
+        const marker = stop.studentId
+          ? L.marker([stop.lat, stop.lng], {
+              icon: L.divIcon({
+                className: 'map-pin map-pin--doortodoor',
+                html: `<span style="display:block;width:12px;height:12px;background:${colour};opacity:${dimmed ? 0.3 : 0.95};border:2px solid ${colour}"></span>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
+              }),
+            })
+          : L.circleMarker([stop.lat, stop.lng], {
+              radius: dimmed ? 5 : 8,
+              color: colour,
+              weight: 2,
+              fillColor: colour,
+              fillOpacity: dimmed ? 0.25 : 0.95,
+              opacity: dimmed ? 0.3 : 1,
+            })
+        marker
+          .bindTooltip(tooltip, { direction: 'top' })
           .on('click', () => onSelectBus(route.busId))
           .addTo(layers)
       })
@@ -216,7 +258,7 @@ export function RouteMap({
     return () => {
       cancelled = true
     }
-  }, [problem, solution, focusBusId, onSelectBus, lineStyle, students])
+  }, [problem, solution, focusBusId, onSelectBus, lineStyle, students, stopLinks])
 
   return <div className="routemap" ref={containerRef} role="application" aria-label="Bus routes" />
 }
