@@ -16,6 +16,7 @@ import { registerAcademicYearRoutes } from './academicYears/routes.js'
 import { registerAttendanceRoutes } from './attendance/routes.js'
 import { registerBranchRoutes } from './branches/routes.js'
 import { registerClassRoutes } from './classes/routes.js'
+import { registerParentRoutes } from './parents/routes.js'
 import { registerNotificationRoutes } from './notifications/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 
@@ -85,6 +86,7 @@ export function buildServer() {
       registerAttendanceRoutes(instance)
       registerBranchRoutes(instance)
       registerClassRoutes(instance)
+      registerParentRoutes(instance)
       registerNotificationRoutes(instance)
     },
     { prefix: config.routePrefix },

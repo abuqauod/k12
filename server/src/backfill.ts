@@ -10,6 +10,8 @@ import type {
   MembershipDoc,
   NotificationJobDoc,
   NotificationSettingsDoc,
+  ParentDoc,
+  ParentStudentLinkDoc,
   SchoolCalendarDoc,
   SchoolClassDoc,
   StudentDoc,
@@ -313,6 +315,117 @@ export async function backfillEnrollmentModel(db: Db): Promise<void> {
         createdAt: row.createdAt instanceof Date ? row.createdAt : now,
         updatedAt: now,
       })
+    }
+  }
+}
+
+function normalizePhoneDigits(phone: string): string {
+  return phone.replace(/[^\d]/g, '')
+}
+
+/**
+ * One-time seed for the new normalized Parent Management model
+ * (ParentDoc / ParentStudentLinkDoc — see db.ts's parents section) from the
+ * embedded `StudentDoc.guardians` that predates it. Read-only against its
+ * source: never writes to `guardians`, which keeps driving absence
+ * notifications exactly as before.
+ *
+ * Dedup is a best-effort heuristic, not a guarantee: `Guardian` carries no
+ * national ID to key on, so a normalized phone match is the only reliable
+ * signal available. Two different guardians who share a household phone
+ * number but are genuinely different people will be merged into one parent
+ * record here — spot-check real tenant data after running this in
+ * production, and expect to manually split a few. Falling back to an
+ * exact-name match when there is no phone reduces false negatives (missed
+ * merges) at the cost of more false positives (wrongly merged); that
+ * trade-off is deliberate — an over-merged parent is easier to notice and
+ * fix by hand than a silently duplicated one.
+ */
+export async function backfillParentsFromGuardians(db: Db): Promise<void> {
+  const now = new Date()
+  const tenantsCol = db.collection<TenantDoc>('tenants')
+  const studentsCol = db.collection<StudentDoc>('students')
+  const parentsCol = db.collection<ParentDoc>('parents')
+  const linksCol = db.collection<ParentStudentLinkDoc>('parentStudentLinks')
+
+  const tenants = await tenantsCol.find({}, { projection: { _id: 1 } }).toArray()
+
+  for (const tenant of tenants) {
+    const tenantId = tenant._id
+    const students = await studentsCol.find({ tenantId }).toArray()
+    if (students.length === 0) continue
+
+    const existingParents = await parentsCol.find({ tenantId }).toArray()
+    const byPhone = new Map<string, ParentDoc>()
+    const byName = new Map<string, ParentDoc>()
+    for (const p of existingParents) {
+      const digits = normalizePhoneDigits(p.primaryPhone)
+      if (digits) byPhone.set(digits, p)
+      byName.set(p.fullName.trim().toLowerCase(), p)
+    }
+
+    for (const student of students) {
+      for (const guardian of student.guardians ?? []) {
+        const linkId = `${tenantId}:bf:${student._id}:${guardian.id}`
+        if (await linksCol.findOne({ _id: linkId })) continue // already backfilled
+
+        const digits = normalizePhoneDigits(guardian.phone)
+        let parent = (digits && byPhone.get(digits)) || byName.get(guardian.name.trim().toLowerCase())
+
+        if (!parent) {
+          parent = {
+            _id: randomUUID(),
+            tenantId,
+            fullName: guardian.name,
+            fullNameAr: null,
+            nationalId: null,
+            primaryPhone: guardian.phone,
+            alternativePhone: guardian.secondaryPhone,
+            email: guardian.email,
+            address: null,
+            city: null,
+            preferredContactMethod: 'phone',
+            status: guardian.active ? 'active' : 'inactive',
+            occupation: null,
+            employer: null,
+            emergencyContactName: null,
+            emergencyContactPhone: null,
+            notes: 'Backfilled from student guardian record.',
+            portalAccess: { enabled: false, userId: null },
+            createdAt: now,
+            updatedAt: now,
+            createdBy: null,
+            archivedAt: null,
+            archivedBy: null,
+          }
+          await parentsCol.insertOne(parent)
+          if (digits) byPhone.set(digits, parent)
+          byName.set(parent.fullName.trim().toLowerCase(), parent)
+        }
+
+        const link: ParentStudentLinkDoc = {
+          _id: linkId,
+          tenantId,
+          parentId: parent._id,
+          studentId: student._id,
+          relationshipType: guardian.relationship,
+          primaryContact: guardian.isPrimary,
+          secondaryContact: false,
+          emergencyContact: false,
+          authorizedPickup: false,
+          financialResponsibility: false,
+          communicationPermissions: {
+            email: guardian.notifyByEmail,
+            sms: guardian.notifyBySms,
+          },
+          portalAccess: false,
+          active: guardian.active,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: null,
+        }
+        await linksCol.insertOne(link)
+      }
     }
   }
 }

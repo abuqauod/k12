@@ -498,6 +498,91 @@ export interface SchoolClassDoc extends Document {
   updatedAt: Date
 }
 
+// --------------------------------------------------------------- parents --
+// A parent/guardian as a real, independent record — distinct from the
+// embedded `Guardian[]` on `StudentDoc`, which continues to drive absence
+// notifications unchanged (notifyByEmail/notifyBySms/preferredLanguage are
+// read directly by the sweep — see notifications/sweep.ts). This collection
+// is the actual Parent Management feature: many-to-many with students via
+// `ParentStudentLinkDoc`, never a duplicated blob on either side. It is the
+// join a future Payments/Finance module (Parent -> Students -> Enrollment ->
+// Fees -> Invoices -> Payments) will read `financialResponsibility` from to
+// decide who is billed for a student.
+
+export type ParentStatus = 'active' | 'inactive' | 'archived'
+export type PreferredContactMethod = 'phone' | 'email' | 'sms' | 'whatsapp'
+
+export interface ParentDoc extends Document {
+  _id: string
+  tenantId: string
+  fullName: string
+  fullNameAr: string | null
+  nationalId: string | null
+  primaryPhone: string
+  alternativePhone: string | null
+  email: string | null
+  address: string | null
+  city: string | null
+  preferredContactMethod: PreferredContactMethod
+  /** `archived` is a status flip, never a delete — historical
+   * `ParentStudentLinkDoc` rows referencing this id must keep resolving. */
+  status: ParentStatus
+  occupation: string | null
+  employer: string | null
+  emergencyContactName: string | null
+  emergencyContactPhone: string | null
+  notes: string | null
+  /**
+   * Account-level placeholder for a future parent portal. `enabled` is a
+   * flag only — nothing authenticates against it yet. `userId` stays null
+   * until a real portal-login feature links this parent to a `UserDoc`.
+   * Distinct from `ParentStudentLinkDoc.portalAccess`, which is
+   * per-relationship ("may this parent see *this* student's data").
+   */
+  portalAccess: { enabled: boolean; userId: string | null }
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+  archivedAt: Date | null
+  archivedBy: string | null
+}
+
+/**
+ * The many-to-many join: one student can have several parents, one parent
+ * several students. This — not a duplicated blob on either side — is the
+ * real relationship. Unique on (tenantId, parentId, studentId) regardless of
+ * `active`, so "removing" a relationship is always a flip to `active: false`
+ * and "restoring" it flips back, never a second insert — the DB-level
+ * backstop for never losing relationship history (see schema.ts).
+ */
+export interface ParentStudentLinkDoc extends Document {
+  _id: string
+  tenantId: string
+  parentId: string
+  studentId: string
+  /** Free text, same convention as `Guardian.relationship` — "Father",
+   * "Mother", "Legal Guardian", not a closed enum. */
+  relationshipType: string
+  primaryContact: boolean
+  secondaryContact: boolean
+  emergencyContact: boolean
+  authorizedPickup: boolean
+  /** Anticipates Finance: who is billed for this student. Setting this to
+   * `true` requires `admin` — see `auth/guard.ts`'s `roleAtLeast` and the
+   * inline check in `parents/routes.ts`. */
+  financialResponsibility: boolean
+  communicationPermissions: { email: boolean; sms: boolean }
+  /** Per-relationship portal grant — may this parent see/act on *this*
+   * student via the future portal. Requires `admin` to set, same reasoning
+   * as `financialResponsibility`. */
+  portalAccess: boolean
+  /** A former relationship kept for history, never deleted. */
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
 // -------------------------------------------------------- notifications --
 // Delivery is a queue: an absence sweep (or the manual button) ENQUEUES one
 // `NotificationJobDoc` per (student, guardian, channel, date); a separate
@@ -709,6 +794,8 @@ export interface TenantContext {
   notificationSettings: TenantScope<NotificationSettingsDoc>
   notificationJobs: TenantScope<NotificationJobDoc>
   notificationAttempts: TenantScope<NotificationAttemptDoc>
+  parents: TenantScope<ParentDoc>
+  parentStudentLinks: TenantScope<ParentStudentLinkDoc>
 }
 
 /**
@@ -764,6 +851,12 @@ export async function withTenant<T>(
         ),
         notificationAttempts: new TenantScope(
           db.collection<NotificationAttemptDoc>('notificationAttempts'),
+          tenantId,
+          session,
+        ),
+        parents: new TenantScope(db.collection<ParentDoc>('parents'), tenantId, session),
+        parentStudentLinks: new TenantScope(
+          db.collection<ParentStudentLinkDoc>('parentStudentLinks'),
           tenantId,
           session,
         ),

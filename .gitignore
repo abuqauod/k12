@@ -4,6 +4,7 @@
 /*
 !/server
 !/timetable-ui
+!/docs
 !/.gitignore
 
 # .github holds other tools' data too (e.g. prompts/) — only workflows/ is

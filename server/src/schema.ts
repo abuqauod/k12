@@ -96,4 +96,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('notificationAttempts').createIndex({ tenantId: 1, jobId: 1, attemptNo: 1 })
   // Advisory locks self-heal: an abandoned row ages out on its own.
   await db.collection('locks').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+
+  await db.collection('parents').createIndex({ tenantId: 1, status: 1 })
+  await db.collection('parents').createIndex({ tenantId: 1, fullName: 1 })
+  await db.collection('parents').createIndex({ tenantId: 1, primaryPhone: 1 })
+  await db.collection('parents').createIndex({ tenantId: 1, nationalId: 1 }, { sparse: true })
+
+  // The DB-level backstop for "no duplicate parent-student relationship":
+  // unique regardless of `active`, so a soft-removed link is restored by
+  // flipping `active` back to true, never by a second insert.
+  await db
+    .collection('parentStudentLinks')
+    .createIndex({ tenantId: 1, parentId: 1, studentId: 1 }, { unique: true })
+  await db.collection('parentStudentLinks').createIndex({ tenantId: 1, parentId: 1 })
+  await db.collection('parentStudentLinks').createIndex({ tenantId: 1, studentId: 1 })
 }
