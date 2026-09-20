@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../state/AppContext'
+import { DEFAULT_OUTLIER_THRESHOLD_M } from '../domain/students'
 import { useI18n } from '../i18n/I18nContext'
 import { LocationPicker } from './LocationPicker'
 
@@ -167,6 +168,27 @@ export function RoutingRulesEditor({ showBellCheck = true }: { showBellCheck?: b
             value={fleet.settings.roadFactor}
             onChange={(event) => patch({ roadFactor: Number(event.target.value) || 1.35 })}
           />
+        </label>
+        <label className="field">
+          <span>{t('fleet.outlierThreshold')}</span>
+          <input
+            className="input"
+            type="number"
+            min={50}
+            max={5000}
+            value={fleet.settings.outlierThresholdMeters ?? DEFAULT_OUTLIER_THRESHOLD_M}
+            onChange={(event) =>
+              patch({ outlierThresholdMeters: Number(event.target.value) || DEFAULT_OUTLIER_THRESHOLD_M })
+            }
+          />
+        </label>
+        <label className="inline-field">
+          <input
+            type="checkbox"
+            checked={fleet.settings.doorToDoorEnabled ?? true}
+            onChange={(event) => patch({ doorToDoorEnabled: event.target.checked })}
+          />
+          {t('fleet.doorToDoor')}
         </label>
       </div>
 
