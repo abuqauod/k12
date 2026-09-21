@@ -131,7 +131,9 @@ async function main(): Promise<void> {
   console.log('seed complete')
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })
