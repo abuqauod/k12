@@ -252,6 +252,7 @@ export function registerAttendanceRoutes(app: FastifyInstance): void {
           action: 'attendance.correct',
           entity: 'attendance',
           entityId: _id,
+          branchId: existing.branchId,
           before: { status: existing.status, note: existing.note },
           after: { status: record.status, note: record.note },
           meta: { reason, date, studentId: record.studentId },

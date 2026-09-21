@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listAuditLog } from '../lib/auditLog'
+import { exportAuditLog, listAuditLog } from '../lib/auditLog'
 import type { AuditEntry } from '../lib/auditLog'
 import { listNotifications } from '../lib/notificationsApi'
 import type { NotificationLogEntry } from '../lib/notificationsApi'
@@ -21,6 +21,14 @@ export function LogsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [entityFilter, setEntityFilter] = useState('')
+  const [actionFilter, setActionFilter] = useState('')
+  const [branchFilter, setBranchFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -32,7 +40,14 @@ export function LogsPage() {
         return
       }
       if (tab === 'activity') {
-        const result = await listAuditLog(getAccessToken, 150)
+        const result = await listAuditLog(getAccessToken, {
+          entity: entityFilter.trim() || undefined,
+          action: actionFilter.trim() || undefined,
+          branchId: branchFilter || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          limit: 150,
+        })
         if (cancelled) return
         if (result.kind === 'ok') setActivity(result.data)
         else setError(result.error)
@@ -50,9 +65,23 @@ export function LogsPage() {
     return () => {
       cancelled = true
     }
-  }, [tab, activeBranchId, getAccessToken])
+  }, [tab, activeBranchId, getAccessToken, entityFilter, actionFilter, branchFilter, dateFrom, dateTo])
 
   const branchName = (id: string) => branches.find((b) => b.id === id)?.name ?? id
+
+  const runExport = async () => {
+    setExporting(true)
+    setExportError(null)
+    const result = await exportAuditLog(getAccessToken, {
+      entity: entityFilter.trim() || undefined,
+      action: actionFilter.trim() || undefined,
+      branchId: branchFilter || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    })
+    setExporting(false)
+    if (result.kind === 'error') setExportError(result.error)
+  }
 
   return (
     <div className="page">
@@ -76,6 +105,55 @@ export function LogsPage() {
         </button>
       </div>
 
+      {tab === 'activity' && (
+        <div className="panel">
+          <div className="break-card__row" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <input
+              className="input"
+              style={{ minWidth: 160 }}
+              placeholder={t('logs.filter.entity')}
+              value={entityFilter}
+              onChange={(e) => setEntityFilter(e.target.value)}
+            />
+            <input
+              className="input"
+              style={{ minWidth: 160 }}
+              placeholder={t('logs.filter.action')}
+              value={actionFilter}
+              onChange={(e) => setActionFilter(e.target.value)}
+            />
+            {branches.length > 1 && (
+              <select className="input" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+                <option value="">{t('logs.filter.allBranches')}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              className="input"
+              type="date"
+              aria-label={t('logs.filter.dateFrom')}
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+            <input
+              className="input"
+              type="date"
+              aria-label={t('logs.filter.dateTo')}
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+            <button type="button" className="btn" onClick={() => void runExport()} disabled={exporting}>
+              {exporting ? t('logs.exporting') : t('logs.export')}
+            </button>
+          </div>
+          {exportError && <p className="card__hint" style={{ color: 'var(--bad)' }}>{exportError}</p>}
+        </div>
+      )}
+
       {error && <p className="card__hint" style={{ color: 'var(--bad)' }}>{error}</p>}
 
       <div className="card">
@@ -88,6 +166,7 @@ export function LogsPage() {
                 <tr>
                   <th style={{ width: 170 }}>{t('logs.col.when')}</th>
                   <th style={{ width: 220 }}>{t('logs.col.action')}</th>
+                  {branches.length > 1 && <th style={{ width: 120 }}>{t('nav.branch')}</th>}
                   <th>{t('logs.col.detail')}</th>
                 </tr>
               </thead>
@@ -96,6 +175,7 @@ export function LogsPage() {
                   <tr key={entry.id}>
                     <td>{new Date(entry.createdAt).toLocaleString()}</td>
                     <td className="mono">{entry.action}</td>
+                    {branches.length > 1 && <td>{entry.branchId ? branchName(entry.branchId) : '—'}</td>}
                     <td className="mono" style={{ fontSize: 12 }}>
                       {[entry.entity, entry.entityId].filter(Boolean).join(' · ')}
                       {Object.keys(entry.meta).length > 0 && ` — ${JSON.stringify(entry.meta)}`}

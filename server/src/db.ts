@@ -165,6 +165,12 @@ export interface AuditLogDoc extends Document {
   action: string
   entity: string | null
   entityId: string | null
+  /** Denormalized from the mutation's own branch context, so the audit feed
+   * can be branch-filtered the same way finance/attendance already are.
+   * Null for tenant-wide actions and for every row recorded before this
+   * field existed — never backfilled, same "kept as written" convention as
+   * `AttendanceRecordDoc.branchId`. */
+  branchId: string | null
   meta: Record<string, unknown>
   createdAt: Date
 }
