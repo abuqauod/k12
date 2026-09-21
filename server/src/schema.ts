@@ -26,6 +26,8 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('datasetVersions').createIndex({ tenantId: 1, key: 1, revision: -1 })
 
   await db.collection('auditLog').createIndex({ tenantId: 1, createdAt: -1 })
+  await db.collection('auditLog').createIndex({ tenantId: 1, branchId: 1, createdAt: -1 })
+  await db.collection('auditLog').createIndex({ tenantId: 1, entity: 1, action: 1, createdAt: -1 })
 
   await db.collection('apiKeys').createIndex({ keyHash: 1 }, { unique: true })
   await db.collection('apiKeys').createIndex({ tenantId: 1 })

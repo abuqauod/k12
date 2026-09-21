@@ -124,6 +124,7 @@ export async function generateInvoice(
     action: 'invoice.generate',
     entity: 'invoice',
     entityId: invoice._id,
+    branchId: invoice.branchId,
     before: null,
     after: invoice,
   })
@@ -158,6 +159,7 @@ async function writeLineItems(
     action,
     entity: 'invoice',
     entityId: invoiceId,
+    branchId: before.branchId,
     before,
     after: updated,
   })
@@ -251,6 +253,7 @@ export async function voidInvoice(
     action: 'invoice.void',
     entity: 'invoice',
     entityId: invoiceId,
+    branchId: before.branchId,
     before,
     after: updated,
   })
@@ -351,6 +354,7 @@ export async function recordPayment(
     action: 'payment.record',
     entity: 'payment',
     entityId: payment._id,
+    branchId: invoice.branchId,
     before: null,
     after: payment,
   })
@@ -359,6 +363,7 @@ export async function recordPayment(
     action: 'receipt.issue',
     entity: 'receipt',
     entityId: receipt._id,
+    branchId: invoice.branchId,
     before: null,
     after: receipt,
   })
@@ -387,17 +392,18 @@ export async function voidPayment(
     { $set: { voidedAt: now, voidedBy: actorId } },
     { returnDocument: 'after' },
   )
+  const invoice = await ctx.invoices.findOne({ _id: before.invoiceId })
   await recordAudit(ctx.auditLog, {
     actorId,
     action: 'payment.void',
     entity: 'payment',
     entityId: paymentId,
+    branchId: invoice?.branchId ?? null,
     before,
     after: updated,
   })
 
   const paid = await paidTotalFor(ctx, before.invoiceId)
-  const invoice = await ctx.invoices.findOne({ _id: before.invoiceId })
   const updatedInvoice = invoice
     ? await ctx.invoices.findOneAndUpdate(
         { _id: before.invoiceId },

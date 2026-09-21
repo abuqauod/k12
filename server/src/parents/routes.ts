@@ -401,11 +401,13 @@ export function registerParentRoutes(app: FastifyInstance): void {
         { $set: { ...parsed.data, updatedAt: new Date() } },
         { returnDocument: 'after' },
       )
+      const student = await ctx.students.findOne({ _id: before.studentId })
       await recordAudit(ctx.auditLog, {
         actorId: request.auth!.sub,
         action: 'parentStudentLink.update',
         entity: 'parentStudentLink',
         entityId: linkId,
+        branchId: student?.branchId ?? null,
         before,
         after: updated,
       })
@@ -426,11 +428,13 @@ export function registerParentRoutes(app: FastifyInstance): void {
         { $set: { active: false, updatedAt: new Date() } },
         { returnDocument: 'after' },
       )
+      const student = await ctx.students.findOne({ _id: before.studentId })
       await recordAudit(ctx.auditLog, {
         actorId: request.auth!.sub,
         action: 'parentStudentLink.deactivate',
         entity: 'parentStudentLink',
         entityId: linkId,
+        branchId: student?.branchId ?? null,
         before,
         after: updated,
       })

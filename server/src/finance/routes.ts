@@ -280,6 +280,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
         action: 'feeStructure.create',
         entity: 'feeStructure',
         entityId: doc._id,
+        branchId: doc.branchId,
         before: null,
         after: doc,
       })
@@ -331,6 +332,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
         action: 'feeStructure.update',
         entity: 'feeStructure',
         entityId: id,
+        branchId: before.branchId,
         before,
         after: updated,
       })
@@ -359,6 +361,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
         action: 'feeStructure.deactivate',
         entity: 'feeStructure',
         entityId: id,
+        branchId: before.branchId,
         before,
         after: updated,
       })

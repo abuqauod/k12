@@ -18,6 +18,14 @@ export async function recordAudit(
     action: string
     entity: string
     entityId: string
+    /** The branch this mutation belongs to, when the entity has one — lets
+     * the audit feed be branch-filtered the same way finance/attendance
+     * already are. Omitted (not just `null`) for genuinely tenant-wide
+     * actions (a parent's own profile, membership changes, tenant
+     * settings) — those have no branch to attribute. Rows recorded before
+     * this field existed are never backfilled (`null`), same "kept as
+     * written" convention as `AttendanceRecordDoc`. */
+    branchId?: string | null
     before?: unknown
     after?: unknown
     meta?: Record<string, unknown>
@@ -32,6 +40,7 @@ export async function recordAudit(
     action: entry.action,
     entity: entry.entity,
     entityId: entry.entityId,
+    branchId: entry.branchId ?? null,
     meta,
     createdAt: new Date(),
   })

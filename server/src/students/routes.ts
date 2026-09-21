@@ -232,6 +232,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
           action: 'student.create',
           entity: 'student',
           entityId: _id,
+          branchId: klass.branchId,
           before: null,
           after: { studentNumber: parsed.data.studentNumber, classId: klass._id },
         })
@@ -280,6 +281,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
           action: 'guardians.update',
           entity: 'student',
           entityId: id,
+          branchId: before.branchId,
           before: before.guardians,
           after: guardians,
         })

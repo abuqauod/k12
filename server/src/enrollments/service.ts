@@ -107,6 +107,7 @@ export async function createInitialEnrollment(
     action: 'enrollment.create',
     entity: 'enrollment',
     entityId: enrollment._id,
+    branchId: enrollment.branchId,
     before: null,
     after: enrollment,
   })
@@ -197,6 +198,11 @@ export async function transferStudent(
     action: 'enrollment.transfer',
     entity: 'student',
     entityId: params.studentId,
+    // The destination branch — where the student (and this audit row's
+    // entity) now lives. A single branchId can't represent "moved from A
+    // to B" for filtering purposes; the full before/after below still
+    // records both branches for anyone who can see this row at all.
+    branchId: klass.branchId,
     before: { classId: current.classId, branchId: current.branchId, enrollmentId: current._id },
     after: { classId: klass._id, branchId: klass.branchId, enrollmentId: newId, effectiveDate },
     meta: { reason: params.reason ?? null },
@@ -248,6 +254,7 @@ export async function withdrawStudent(
     action: `enrollment.${params.status}`,
     entity: 'student',
     entityId: params.studentId,
+    branchId: current.branchId,
     before: { status: 'active', enrollmentId: current._id },
     after: { status: params.status, effectiveDate },
     meta: { reason: params.reason ?? null },

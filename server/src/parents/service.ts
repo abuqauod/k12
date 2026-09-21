@@ -296,6 +296,7 @@ export async function createLink(
       action: 'parentStudentLink.reactivate',
       entity: 'parentStudentLink',
       entityId: existing._id,
+      branchId: student.branchId,
       before: existing,
       after: reactivated,
     })
@@ -334,6 +335,7 @@ export async function createLink(
     action: 'parentStudentLink.create',
     entity: 'parentStudentLink',
     entityId: link._id,
+    branchId: student.branchId,
     before: null,
     after: link,
   })

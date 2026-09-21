@@ -150,6 +150,7 @@ export async function enqueueAbsenceNotifications(params: {
         action: trigger === 'auto' ? 'notifications.sweep' : 'notifications.run',
         entity: 'branch',
         entityId: branchId,
+        branchId,
         meta: { ...outcome },
       })
     }
