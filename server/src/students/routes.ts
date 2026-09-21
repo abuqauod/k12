@@ -4,7 +4,13 @@ import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import type { Guardian, StudentDoc } from '../db.js'
-import { authenticate, requireActiveSubscription, requireRole } from '../auth/guard.js'
+import {
+  authenticate,
+  callerBranchIds,
+  callerCanUseBranch,
+  requireActiveSubscription,
+  requirePermission,
+} from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
 import { createInitialEnrollment, resolveAcademicYearId } from '../enrollments/service.js'
 
@@ -110,17 +116,43 @@ function toResponse(doc: StudentDoc) {
   }
 }
 
+/** Every read/write below is branch-scoped via `callerCanUseBranch` — a
+ * membership confined to specific branches (`MembershipDoc.branchIds`)
+ * used to be able to read and write every student tenant-wide through this
+ * module regardless of that confinement, since nothing here ever checked
+ * it. Same idiom `classes/routes.ts`/`finance/routes.ts` already use. */
+async function requireStudentBranchAccess(
+  request: Parameters<typeof callerCanUseBranch>[0],
+  id: string,
+  tenantId: string,
+) {
+  const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: id }))
+  if (!student) return { ok: false as const, status: 404, error: 'NOT_FOUND' }
+  if (!(await callerCanUseBranch(request, student.branchId))) {
+    return { ok: false as const, status: 403, error: 'BRANCH_FORBIDDEN' }
+  }
+  return { ok: true as const, student }
+}
+
 export function registerStudentRoutes(app: FastifyInstance): void {
   const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('scheduler')] }
+  const writeGuard = {
+    preHandler: [authenticate, requireActiveSubscription, requirePermission('students.write')],
+  }
 
   app.get('/students', readGuard, async (request, reply) => {
     const parsed = listQuery.safeParse(request.query)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_QUERY' })
     const { branchId, classId, studentGroup, academicYearId, status, search } = parsed.data
 
+    const allowed = await callerBranchIds(request)
+    if (branchId && allowed !== null && !allowed.includes(branchId)) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
+
     const filter: Filter<StudentDoc> = {}
     if (branchId) filter.branchId = branchId
+    else if (allowed !== null) filter.branchId = { $in: allowed }
     if (classId) filter.classId = classId
     if (studentGroup) filter.studentGroup = studentGroup
     if (academicYearId) filter.academicYearId = academicYearId
@@ -138,9 +170,9 @@ export function registerStudentRoutes(app: FastifyInstance): void {
 
   app.get('/students/:id', readGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const student = await withTenant(request.auth!.tenantId!, (ctx) => ctx.students.findOne({ _id: id }))
-    if (!student) return reply.code(404).send({ error: 'NOT_FOUND' })
-    return reply.send(toResponse(student))
+    const access = await requireStudentBranchAccess(request, id, request.auth!.tenantId!)
+    if (!access.ok) return reply.code(access.status).send({ error: access.error })
+    return reply.send(toResponse(access.student))
   })
 
   app.post('/students', writeGuard, async (request, reply) => {
@@ -152,6 +184,17 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     }
 
     const tenantId = request.auth!.tenantId!
+    // The new student's branch follows from the class, not known until it's
+    // resolved — pre-fetched here, before the write transaction, same
+    // reasoning as the branch check itself: a check that ran after the
+    // insert committed would only gate the HTTP response, not the write.
+    const targetClass = await withTenant(tenantId, (ctx) =>
+      ctx.classes.findOne({ _id: parsed.data.classId }),
+    )
+    if (targetClass && !(await callerCanUseBranch(request, targetClass.branchId))) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
+
     const now = new Date()
     try {
       const result = await withTenant(tenantId, async (ctx) => {
@@ -219,6 +262,9 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     }
 
     const tenantId = request.auth!.tenantId!
+    const access = await requireStudentBranchAccess(request, id, tenantId)
+    if (!access.ok) return reply.code(access.status).send({ error: access.error })
+
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.students.findOne({ _id: id })
       if (!before) return null

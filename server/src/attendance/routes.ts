@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import type { AttendanceStatus } from '../db.js'
-import { authenticate, requireActiveSubscription, requireRole } from '../auth/guard.js'
+import { authenticate, callerCanUseBranch, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
 
 /**
@@ -40,7 +40,9 @@ const markBody = z.object({
 
 export function registerAttendanceRoutes(app: FastifyInstance): void {
   const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('scheduler')] }
+  const writeGuard = {
+    preHandler: [authenticate, requireActiveSubscription, requirePermission('attendance.write')],
+  }
 
   /** The register for one class on one day — every enrolled student, each
    * paired with their record for that date (null if not yet marked). */
@@ -65,6 +67,12 @@ export function registerAttendanceRoutes(app: FastifyInstance): void {
       return { klass, roster, records }
     })
     if (!klass) return reply.code(404).send({ error: 'UNKNOWN_CLASS' })
+    // Read-only, so checking after the fetch (rather than before) is safe —
+    // nothing commits from a GET; this only gates whether the response goes
+    // out, exactly the boundary that matters.
+    if (!(await callerCanUseBranch(request, klass.branchId))) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
 
     const byStudent = new Map(records.map((r) => [r.studentId, r]))
     return reply.send({
@@ -98,7 +106,14 @@ export function registerAttendanceRoutes(app: FastifyInstance): void {
     const from =
       query.data.from ?? new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)
 
-    const records = await withTenant(request.auth!.tenantId!, (ctx) =>
+    const tenantId = request.auth!.tenantId!
+    const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: studentId }))
+    if (!student) return reply.code(404).send({ error: 'UNKNOWN_STUDENT' })
+    if (!(await callerCanUseBranch(request, student.branchId))) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
+
+    const records = await withTenant(tenantId, (ctx) =>
       ctx.attendance
         .find({ studentId, date: { $gte: from, $lte: to } })
         .sort({ date: -1 })
@@ -119,7 +134,14 @@ export function registerAttendanceRoutes(app: FastifyInstance): void {
   /** A student's correction trail. */
   app.get('/attendance/student/:studentId/corrections', readGuard, async (request, reply) => {
     const { studentId } = request.params as { studentId: string }
-    const rows = await withTenant(request.auth!.tenantId!, (ctx) =>
+    const tenantId = request.auth!.tenantId!
+    const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: studentId }))
+    if (!student) return reply.code(404).send({ error: 'UNKNOWN_STUDENT' })
+    if (!(await callerCanUseBranch(request, student.branchId))) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
+
+    const rows = await withTenant(tenantId, (ctx) =>
       ctx.attendanceCorrections.find({ studentId }).sort({ changedAt: -1 }).limit(200).toArray(),
     )
     return reply.send({
@@ -145,9 +167,22 @@ export function registerAttendanceRoutes(app: FastifyInstance): void {
     const tenantId = request.auth!.tenantId!
     const actor = request.auth!.sub
     const now = new Date()
+    const ids = records.map((r) => r.studentId)
+
+    // Every involved student's branch is checked in its own read, before the
+    // write transaction — a check that ran only after `withTenant` below had
+    // already committed would gate the response, not the writes.
+    const involvedBranchIds = await withTenant(tenantId, async (ctx) => {
+      const involved = await ctx.students.find({ _id: { $in: ids } }).toArray()
+      return new Set(involved.map((s) => s.branchId))
+    })
+    for (const branchId of involvedBranchIds) {
+      if (!(await callerCanUseBranch(request, branchId))) {
+        return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+      }
+    }
 
     const outcome = await withTenant(tenantId, async (ctx) => {
-      const ids = records.map((r) => r.studentId)
       const students = await ctx.students.find({ _id: { $in: ids } }).toArray()
       const enrollments = await ctx.enrollments
         .find({ studentId: { $in: ids }, status: 'active' })

@@ -90,6 +90,145 @@ export function requireRole(minimum: Role) {
   }
 }
 
+// -------------------------------------------------------------- permissions
+//
+// A named-scope layer on top of the 4-role rank system above, not a
+// replacement for it. `requireRole`/`roleAtLeast` stay exactly as they are —
+// every existing route keeps working unmodified — but every NEW route from
+// here on should be written against `requirePermission`/`callerHasPermission`
+// instead of a fresh `requireRole` call, because a rank comparison can only
+// ever express "this action needs at least role X." It cannot express "can
+// approve a refund but not manage fee structures" (two admin-tier actions
+// with no rank relationship to each other) — real cases this app already
+// needs (finance/routes.ts's discount gate, parents/routes.ts's
+// financialResponsibility gate) and will need more of as the admin surface
+// grows.
+//
+// `ROLE_SCOPES` below is DERIVED from today's `requireRole` call sites, not
+// designed fresh — every existing route's authorization behavior is
+// reproduced exactly once it's switched from `requireRole(x)` to
+// `requirePermission('module.write')`, so migrating a route is a no-op for
+// callers, not a silent behavior change. A handful of scopes with no route
+// yet (branches.manage, settings.*, search.read, dashboard.read,
+// audit.export) are declared now so the bundle table doesn't need touching
+// again for each of the several PRs that will consume them.
+//
+// This is Layer 1 of a two-layer design. Layer 2 — per-membership
+// `customScopes`/`deniedScopes` fields on `MembershipDoc` for real
+// per-tenant customization beyond a role's bundle — is deliberately NOT
+// built here. Nothing today needs a school to define its own named role;
+// they need finer per-action gates, which this layer already provides.
+// Build Layer 2 only once a real case appears that this doesn't cover.
+
+export type PermissionScope =
+  | 'academicYears.read'
+  | 'academicYears.write'
+  | 'attendance.read'
+  | 'attendance.write'
+  | 'audit.export'
+  | 'audit.read'
+  | 'branches.manage'
+  | 'branches.read'
+  | 'classes.read'
+  | 'classes.write'
+  | 'dashboard.read'
+  | 'datasets.read'
+  | 'datasets.write'
+  | 'enrollments.read'
+  | 'enrollments.write'
+  | 'finance.manage'
+  | 'finance.read'
+  | 'finance.write'
+  | 'memberships.manage'
+  | 'notifications.manage'
+  | 'notifications.run'
+  | 'parents.manage'
+  | 'parents.read'
+  | 'parents.write'
+  | 'search.read'
+  | 'settings.manage'
+  | 'settings.read'
+  | 'students.read'
+  | 'students.write'
+
+/** Every read-only scope, granted at every role including `viewer`. Mirrors
+ * every module's existing `readGuard`/`authenticate`-only route today.
+ * `audit.read` is deliberately NOT here — it's admin-only today
+ * (`auditlog/routes.ts`), unlike every other module's read side. */
+const VIEWER_SCOPES: readonly PermissionScope[] = [
+  'academicYears.read',
+  'attendance.read',
+  'branches.read',
+  'classes.read',
+  'dashboard.read',
+  'datasets.read',
+  'enrollments.read',
+  'finance.read',
+  'parents.read',
+  'search.read',
+  'settings.read',
+  'students.read',
+]
+
+/** Adds the routine day-to-day write actions — mirrors every module's
+ * existing `requireRole('scheduler')` write guard. */
+const SCHEDULER_SCOPES: readonly PermissionScope[] = [
+  ...VIEWER_SCOPES,
+  'academicYears.write',
+  'attendance.write',
+  'datasets.write',
+  'finance.write',
+  'notifications.run',
+  'parents.write',
+  'students.write',
+]
+
+/** Adds the higher-trust actions — mirrors every module's existing
+ * `requireRole('admin')` guard (`classes.write`/`enrollments.write` are
+ * admin-only today, not scheduler, unlike most other modules' write side —
+ * reproduced here exactly, not normalized to match the others). */
+const ADMIN_SCOPES: readonly PermissionScope[] = [
+  ...SCHEDULER_SCOPES,
+  'audit.export',
+  'audit.read',
+  'branches.manage',
+  'classes.write',
+  'enrollments.write',
+  'finance.manage',
+  'memberships.manage',
+  'notifications.manage',
+  'parents.manage',
+  'settings.manage',
+]
+
+/** Same bundle as admin for now — owner's extra powers (e.g. "only an owner
+ * can grant the owner role") stay an explicit separate check in
+ * memberships/service.ts, not modeled as a scope, matching how that rule
+ * already works today under plain rank comparison. */
+const OWNER_SCOPES: readonly PermissionScope[] = ADMIN_SCOPES
+
+const ROLE_SCOPES: Record<Role, ReadonlySet<PermissionScope>> = {
+  viewer: new Set(VIEWER_SCOPES),
+  scheduler: new Set(SCHEDULER_SCOPES),
+  admin: new Set(ADMIN_SCOPES),
+  owner: new Set(OWNER_SCOPES),
+}
+
+/** For an inline check inside a handler body — same idiom as `roleAtLeast`,
+ * e.g. when only part of a route's behavior needs a scope a lower-privilege
+ * caller of the same route doesn't. */
+export function callerHasPermission(role: Role | undefined, scope: PermissionScope): boolean {
+  return role !== undefined && ROLE_SCOPES[role].has(scope)
+}
+
+export function requirePermission(scope: PermissionScope) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    if (!callerHasPermission(request.auth?.role, scope)) {
+      await reply.code(403).send({ error: 'FORBIDDEN', required: scope })
+    }
+  }
+}
+
 /**
  * Gate for `/admin/*`: the vendor's own operator flag, not a tenant role.
  * Re-checked against the database on every request (like
