@@ -138,4 +138,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('receipts').createIndex({ tenantId: 1, receiptNumber: 1 }, { unique: true })
   await db.collection('receipts').createIndex({ tenantId: 1, paymentId: 1 }, { unique: true })
   await db.collection('receipts').createIndex({ tenantId: 1, studentId: 1 })
+
+  await db.collection('buses').createIndex({ tenantId: 1, branchId: 1, active: 1 })
+  await db.collection('stops').createIndex({ tenantId: 1, branchId: 1, active: 1 })
+  // Lets deactivating a bus unpin every stop pointing at it in one indexed
+  // updateMany, instead of scanning the branch's whole stop list.
+  await db.collection('stops').createIndex({ tenantId: 1, pinnedBusId: 1 }, { sparse: true })
 }

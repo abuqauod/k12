@@ -20,6 +20,7 @@ import { registerClassRoutes } from './classes/routes.js'
 import { registerParentRoutes } from './parents/routes.js'
 import { registerFinanceRoutes } from './finance/routes.js'
 import { registerNotificationRoutes } from './notifications/routes.js'
+import { registerTransportRoutes } from './transport/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 
 export function buildServer() {
@@ -92,6 +93,7 @@ export function buildServer() {
       registerParentRoutes(instance)
       registerFinanceRoutes(instance)
       registerNotificationRoutes(instance)
+      registerTransportRoutes(instance)
     },
     { prefix: config.routePrefix },
   )
