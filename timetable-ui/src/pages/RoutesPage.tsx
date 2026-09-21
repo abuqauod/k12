@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { sampleFleet } from '../domain/fleet'
 import type { FleetProblem } from '../domain/fleet'
@@ -16,6 +16,8 @@ import type { TravelMatrix } from '../lib/routing'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { RouteMap, routeColour } from '../components/RouteMap'
+import { Splitter } from '../components/Splitter'
+import { useMediaQuery } from '../lib/useMediaQuery'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 
@@ -23,6 +25,38 @@ const BUDGETS = [3000, 8000, 20000]
 
 let busCounter = 0
 let stopCounter = 0
+
+const WIDTHS_KEY = 'fleet.layout'
+// Wider than the timetable's side panels — the stops editor table (name,
+// lat, lng, pinned bus) needs the room to stop scrolling horizontally.
+const DEFAULT_LEFT = 380
+const DEFAULT_RIGHT = 360
+const MIN_LEFT = 280
+const MAX_LEFT = 640
+const MIN_RIGHT = 280
+const MAX_RIGHT = 560
+/** The map itself never shrinks past this, whatever the side panels do. */
+const MIN_MAP = 360
+const SPLITTER = 8
+
+interface PanelWidths {
+  left: number
+  right: number
+}
+
+function readWidths(): PanelWidths {
+  try {
+    const raw = localStorage.getItem(WIDTHS_KEY)
+    if (!raw) return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT }
+    const parsed = JSON.parse(raw) as Partial<PanelWidths>
+    return {
+      left: Number.isFinite(parsed.left) ? Number(parsed.left) : DEFAULT_LEFT,
+      right: Number.isFinite(parsed.right) ? Number(parsed.right) : DEFAULT_RIGHT,
+    }
+  } catch {
+    return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT }
+  }
+}
 
 export function RoutesPage() {
   const { t, n } = useI18n()
@@ -40,6 +74,59 @@ export function RoutesPage() {
   // synthetic door-to-door nodes, so the map and route-card list can
   // resolve every leg's stopId, real or synthetic.
   const [effectiveProblem, setEffectiveProblem] = useState<FleetProblem>(fleet)
+
+  // Splitters appear as soon as there are two columns to divide — the right
+  // column itself only exists above the wider breakpoint, matching
+  // shell.css's `.workspace--routes` media rules.
+  const roomy = useMediaQuery('(min-width: 861px)')
+  const rightFits = useMediaQuery('(min-width: 1181px)')
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const [widths, setWidths] = useState<PanelWidths>(readWidths)
+  const [workspaceWidth, setWorkspaceWidth] = useState(0)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WIDTHS_KEY, JSON.stringify(widths))
+    } catch {
+      // Preference simply will not persist.
+    }
+  }, [widths])
+
+  // Observed rather than read from the ref during render, so the clamp also
+  // reacts to the sidebar collapsing — not just to window resizes.
+  useLayoutEffect(() => {
+    const element = workspaceRef.current
+    if (!element) return
+    setWorkspaceWidth(element.clientWidth)
+    const observer = new ResizeObserver((entries) => {
+      setWorkspaceWidth(entries[0].contentRect.width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [roomy])
+
+  /**
+   * The hard limit is the map, not the panel: a panel may only grow while
+   * the map still has MIN_MAP left, so it can never be squeezed to nothing.
+   */
+  const maxFor = useCallback(
+    (side: 'left' | 'right') => {
+      const ceiling = side === 'left' ? MAX_LEFT : MAX_RIGHT
+      if (!workspaceWidth) return ceiling
+      const other = side === 'left' ? (rightFits ? widths.right : 0) : widths.left
+      const splitters = SPLITTER * (rightFits ? 2 : 1)
+      return Math.max(
+        side === 'left' ? MIN_LEFT : MIN_RIGHT,
+        Math.min(ceiling, workspaceWidth - other - splitters - MIN_MAP),
+      )
+    },
+    [workspaceWidth, rightFits, widths.left, widths.right],
+  )
+
+  const effectiveWidths = {
+    left: Math.min(widths.left, maxFor('left')),
+    right: Math.min(widths.right, maxFor('right')),
+  }
 
   const thresholdM = fleet.settings.outlierThresholdMeters ?? DEFAULT_OUTLIER_THRESHOLD_M
   const doorToDoorEnabled = fleet.settings.doorToDoorEnabled ?? true
@@ -269,7 +356,19 @@ export function RoutesPage() {
         </div>
       </header>
 
-      <div className="workspace workspace--routes">
+      <div
+        ref={workspaceRef}
+        className="workspace workspace--routes"
+        style={
+          roomy
+            ? {
+                gridTemplateColumns: rightFits
+                  ? `${effectiveWidths.left}px ${SPLITTER}px minmax(${MIN_MAP}px, 1fr) ${SPLITTER}px ${effectiveWidths.right}px`
+                  : `${effectiveWidths.left}px ${SPLITTER}px minmax(${MIN_MAP}px, 1fr)`,
+              }
+            : undefined
+        }
+      >
         <aside className="column column--left">
           <div className="panel">
             <div className="panel__head">
@@ -491,6 +590,17 @@ export function RoutesPage() {
           </div>
         </aside>
 
+        {roomy && (
+          <Splitter
+            value={effectiveWidths.left}
+            min={MIN_LEFT}
+            max={maxFor('left')}
+            defaultValue={DEFAULT_LEFT}
+            onChange={(next) => setWidths((current) => ({ ...current, left: next }))}
+            label={t('layout.resizeFleetPanel')}
+          />
+        )}
+
         <main className="column column--center column--map">
           <RouteMap
             problem={solution ? effectiveProblem : fleet}
@@ -502,6 +612,18 @@ export function RoutesPage() {
             stopLinks={stopLinks}
           />
         </main>
+
+        {roomy && rightFits && (
+          <Splitter
+            value={effectiveWidths.right}
+            min={MIN_RIGHT}
+            max={maxFor('right')}
+            defaultValue={DEFAULT_RIGHT}
+            invert
+            onChange={(next) => setWidths((current) => ({ ...current, right: next }))}
+            label={t('layout.resizeRoutesPanel')}
+          />
+        )}
 
         <aside className="column column--right">
           <div className="panel">
