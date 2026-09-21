@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { DuplicateCandidate, LinkedStudentSummary, Parent, PreferredContactMethod } from '../domain/parents'
+import { formatMinorUnits } from '../domain/finance'
 import { PREFERRED_CONTACT_METHODS, emptyLink, emptyParent } from '../domain/parents'
 import type { NewLink, NewParent } from '../lib/parentsApi'
 import { createParent, createParentLink, deactivateParentLink, getParent, updateParent } from '../lib/parentsApi'
@@ -449,6 +450,9 @@ export function ParentDetailDialog({
                             </span>
                             <span className="chip">
                               {stopName ?? t(`students.mode.${s.transportMode}` as TranslationKey)}
+                            </span>
+                            <span className={`chip${s.outstandingBalance > 0 ? '' : ' chip--on'}`}>
+                              {t('parents.card.balance', { amount: formatMinorUnits(s.outstandingBalance) })}
                             </span>
                           </div>
                           <div className="break-card__row" style={{ flexWrap: 'wrap', gap: 6, marginTop: 4 }}>

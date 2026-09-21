@@ -4,13 +4,18 @@ import { emptyGuardian } from '../domain/students'
 import type { SchoolClass } from '../domain/classes'
 import type { FleetProblem } from '../domain/fleet'
 import { findNearestStop } from '../domain/fleet'
+import type { FeeStructure, Invoice, StudentBalance } from '../domain/finance'
+import { formatMinorUnits } from '../domain/finance'
 import { updateStudent } from '../lib/studentsApi'
 import { getEnrollments, transferStudent, withdrawStudent } from '../lib/enrollmentsApi'
 import type { Enrollment } from '../lib/enrollmentsApi'
+import { generateInvoice, getStudentBalance, listFeeStructures, listInvoices } from '../lib/financeApi'
 import type { TokenGetter } from '../lib/http'
+import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { LocationPicker } from './LocationPicker'
+import { InvoiceDetailDialog } from './InvoiceDetailDialog'
 
 /**
  * Everything about one student that doesn't belong in the roster table:
@@ -34,7 +39,40 @@ export function StudentDetailDialog({
   onChanged: (updated: Student) => void
 }) {
   const { t } = useI18n()
+  const { user } = useAuth()
   const name = `${student.givenName} ${student.familyName}`.trim()
+
+  const [balance, setBalance] = useState<StudentBalance | null>(null)
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([])
+  const [generating, setGenerating] = useState(false)
+  const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null)
+
+  const loadBilling = async () => {
+    const [balanceRes, invoicesRes] = await Promise.all([
+      getStudentBalance(getAccessToken, student.id),
+      listInvoices(getAccessToken, { studentId: student.id }),
+    ])
+    if (balanceRes.kind === 'ok') setBalance(balanceRes.data)
+    if (invoicesRes.kind === 'ok') setInvoices(invoicesRes.data)
+  }
+  useEffect(() => {
+    void loadBilling()
+    if (student.branchId) {
+      void listFeeStructures(getAccessToken, { branchId: student.branchId }).then((res) => {
+        if (res.kind === 'ok') setFeeStructures(res.data)
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student.id])
+
+  const generateFromStructure = async (feeStructureId: string) => {
+    if (!feeStructureId) return
+    setGenerating(true)
+    await generateInvoice(getAccessToken, { studentId: student.id, feeStructureId })
+    setGenerating(false)
+    await loadBilling()
+  }
 
   const [guardians, setGuardians] = useState<Guardian[]>(() => student.guardians ?? [])
   const [savingG, setSavingG] = useState(false)
@@ -339,8 +377,85 @@ export function StudentDetailDialog({
               </tbody>
             </table>
           </section>
+
+          <section style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+            <div className="page__actions" style={{ marginBottom: 8 }}>
+              <h3 className="card__subtitle" style={{ margin: 0, flex: 1 }}>{t('billing.title')}</h3>
+              {balance && (
+                <span className={`chip${balance.outstandingBalance > 0 ? '' : ' chip--on'}`}>
+                  {t('billing.balance', { amount: formatMinorUnits(balance.outstandingBalance) })}
+                </span>
+              )}
+            </div>
+            {user && user.role !== 'viewer' && (
+              <div className="break-card__row" style={{ gap: 6, marginBottom: 8 }}>
+                <select
+                  className="input input--sm"
+                  disabled={generating || feeStructures.length === 0}
+                  defaultValue=""
+                  onChange={(e) => {
+                    void generateFromStructure(e.target.value)
+                    e.target.value = ''
+                  }}
+                >
+                  <option value="" disabled>
+                    {feeStructures.length === 0 ? t('billing.noFeeStructures') : t('billing.generateInvoice')}
+                  </option>
+                  {feeStructures.map((fs) => (
+                    <option key={fs.id} value={fs.id}>
+                      {fs.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {invoices.length === 0 ? (
+              <p className="card__hint">{t('billing.none')}</p>
+            ) : (
+              <table className="table" style={{ minWidth: 420 }}>
+                <thead>
+                  <tr>
+                    <th>{t('billing.col.number')}</th>
+                    <th>{t('billing.col.date')}</th>
+                    <th>{t('billing.col.total')}</th>
+                    <th>{t('billing.col.status')}</th>
+                    <th style={{ width: 30 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td className="mono">{invoice.invoiceNumber}</td>
+                      <td>{invoice.issueDate}</td>
+                      <td>{formatMinorUnits(invoice.total)}</td>
+                      <td>{t(`billing.status.${invoice.status}` as TranslationKey)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => setOpenInvoiceId(invoice.id)}
+                          aria-label={`${t('billing.view')} ${invoice.invoiceNumber}`}
+                        >
+                          ⋯
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
         </div>
       </div>
+
+      {openInvoiceId && (
+        <InvoiceDetailDialog
+          invoiceId={openInvoiceId}
+          getAccessToken={getAccessToken}
+          onClose={() => setOpenInvoiceId(null)}
+          onChanged={() => void loadBilling()}
+        />
+      )}
     </div>
   )
 }

@@ -583,6 +583,212 @@ export interface ParentStudentLinkDoc extends Document {
   createdBy: string | null
 }
 
+// --------------------------------------------------------------- finance --
+// Fee structures, invoices, payments and receipts — the "core loop" of
+// Finance & Accounting. Reads `ParentStudentLinkDoc.financialResponsibility`
+// (above) to know who is billed, but nothing here writes to students/,
+// parents/, or enrollments/ — this module is a consumer of the SIS, the
+// same relationship parents/ has to students/.
+//
+// Money is stored as an integer in the tenant's smallest currency unit
+// (fils/cents — "minor units"), never a float: summing many invoice lines
+// and payments over months of partial payments would otherwise accumulate
+// floating-point drift. Every amount field in this section is minor units;
+// conversion to a displayed major-unit amount happens only at the UI
+// boundary (timetable-ui/src/domain/finance.ts).
+
+export type PaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'cheque' | 'other'
+export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
+export type DiscountType = 'amount' | 'percent'
+
+/**
+ * A reusable price list for one grade, at one branch, for one academic
+ * year — not per class section. `SchoolClassDoc.gradeLevel` already groups
+ * sections that share a curriculum year ("Grade 3 A" / "Grade 3 B" both
+ * have `gradeLevel: "Grade 3"`), and tuition/transport/activity fees are
+ * set per grade in practice, not per section. A per-class override, if a
+ * school ever needs one, is an additive field later (old documents
+ * implicitly apply to the whole grade) — not a migration.
+ */
+export interface FeeStructureLineItem {
+  /** Stable id within the structure, so an invoice line generated from it
+   * can record `sourceFeeItemId` and survive the template being edited
+   * later. */
+  id: string
+  label: string
+  labelAr: string | null
+  /** Minor units. */
+  amount: number
+}
+
+export interface FeeStructureDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  academicYearId: string
+  /** Matches `SchoolClassDoc.gradeLevel` exactly — not validated against
+   * the live set of classes (a fee structure can exist before any class
+   * for that grade does), but expected to line up so invoice generation's
+   * mismatch check (finance/service.ts) is meaningful. */
+  gradeLevel: string
+  name: string
+  lineItems: FeeStructureLineItem[]
+  /** A former structure kept for history — invoices already generated from
+   * it keep resolving; never deleted, only deactivated (same "archived,
+   * never erased" convention as `ParentDoc.status`). */
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+/**
+ * One line on an invoice. Either copied from a `FeeStructureLineItem` at
+ * generation time (`sourceFeeItemId` set) or added after generation as a
+ * one-off adjustment (`sourceFeeItemId` null — real schools always have
+ * one-off adjustments). `netAmount` is denormalized (amount minus the
+ * computed discount, floored at 0) so nothing reading an invoice ever has
+ * to redo discount math; it is recomputed by finance/service.ts on every
+ * write to this line.
+ */
+export interface InvoiceLineItem {
+  id: string
+  label: string
+  labelAr: string | null
+  sourceFeeItemId: string | null
+  /** Minor units. */
+  amount: number
+  /** Setting or changing this requires admin+ — see finance/routes.ts, same
+   * inline-check idiom as parents/routes.ts's `financialResponsibility`.
+   * Not a separate scholarship entity (out of scope for this PR) — just a
+   * per-line reduction. */
+  discount: { type: DiscountType; value: number } | null
+  /** Minor units. */
+  netAmount: number
+}
+
+/**
+ * One student, one billing period (one academic year — nothing outside
+ * `academicYears/routes.ts` reads `AcademicYearDoc.terms` today, confirmed
+ * by grep, so per-term billing is not what this bills against).
+ * `branchId`/`academicYearId` are captured from the student's active
+ * enrollment at generation time and then kept as issued — a later transfer
+ * does not rewrite a past invoice, same "kept as written" reasoning as
+ * `AttendanceRecordDoc`.
+ */
+export interface InvoiceDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  branchId: string
+  academicYearId: string
+  /** Forward-hook, always null today — real per-term billing is out of
+   * this PR's scope. Kept so a later feature is additive, not a
+   * migration, same idiom as `ParentStudentLinkDoc.financialResponsibility`
+   * being a hook before this PR existed. */
+  termId: string | null
+  /** The template this was generated from, or null for an invoice built
+   * entirely from one-off lines. Null does not mean anything went wrong —
+   * kept only so the UI can show provenance. */
+  feeStructureId: string | null
+  /** Human-facing, sequential, unique per tenant — see `FinanceCounterDoc`.
+   * Never re-used, even if the invoice is later voided. */
+  invoiceNumber: string
+  issueDate: string
+  dueDate: string | null
+  lineItems: InvoiceLineItem[]
+  /** Minor units — sum of `lineItems[].netAmount`, denormalized and
+   * recomputed on every line-item write in the same transaction. */
+  total: number
+  status: InvoiceStatus
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+  voidedAt: Date | null
+  voidedBy: string | null
+}
+
+/**
+ * One payment against one invoice — full or partial; several rows per
+ * invoice is the normal partial-payment case, not an edge case. `studentId`
+ * is denormalized from the invoice so "this student's payment history" is
+ * one indexed query, not a join through invoices (same reasoning as
+ * `AttendanceRecordDoc.branchId`).
+ */
+export interface PaymentDoc extends Document {
+  _id: string
+  tenantId: string
+  invoiceId: string
+  studentId: string
+  /** Minor units. */
+  amount: number
+  method: PaymentMethod
+  /** Cheque number, transfer reference, card auth code — free text. */
+  reference: string | null
+  /** ISO yyyy-mm-dd the payment was actually received, which may differ
+   * from `createdAt` (a late-entered cash payment). */
+  paidAt: string
+  /** Who physically paid — written down at the cash desk, independent of
+   * `payerParentId` below (not every payer is a system parent record). */
+  payerName: string
+  /** Best-effort match against an active, financially-responsible
+   * `ParentStudentLinkDoc` for this student at record time — informational
+   * only, never required to resolve. Null if none matched. */
+  payerParentId: string | null
+  notes: string | null
+  receivedBy: string | null
+  createdAt: Date
+  /** No refund flow exists (out of scope for this PR) — a mis-recorded
+   * payment is voided, never edited, so the audit trail always shows what
+   * was really entered and when it was reversed. */
+  voidedAt: Date | null
+  voidedBy: string | null
+}
+
+/**
+ * A structured receipt *record* generated as a side effect of recording a
+ * payment — never created standalone, so an orphan receipt with no
+ * matching payment is impossible. Deliberately not a stored PDF: no PDF
+ * library exists anywhere in this codebase (confirmed by grep), so the UI
+ * renders/prints this from structured data in the browser instead of the
+ * app generating a document server-side. Denormalizes amount/method/
+ * studentId off the payment on purpose (same "kept as written" reasoning
+ * as `PaymentDoc.voidedAt` above) — a receipt already handed to a parent
+ * must keep showing what it said at issue time even if the payment is
+ * later voided.
+ */
+export interface ReceiptDoc extends Document {
+  _id: string
+  tenantId: string
+  paymentId: string
+  invoiceId: string
+  studentId: string
+  receiptNumber: string
+  /** Minor units. */
+  amount: number
+  method: PaymentMethod
+  payerName: string
+  issueDate: string
+  createdAt: Date
+  createdBy: string | null
+}
+
+/**
+ * Backs sequential, human-facing `invoiceNumber`/`receiptNumber` — the one
+ * new mechanism this section introduces that has no existing precedent in
+ * this codebase (everything else here uses `randomUUID()`). `_id` is
+ * `` `${tenantId}:${kind}` `` (`kind` is `'invoiceNumber'` or
+ * `'receiptNumber'`), same composite-key convention as `DatasetDoc`/
+ * `SchoolCalendarDoc` — required because a bare `_id` like
+ * `"invoiceNumber"` would collide across tenants in the shared collection.
+ */
+export interface FinanceCounterDoc extends Document {
+  _id: string
+  tenantId: string
+  seq: number
+}
+
 // -------------------------------------------------------- notifications --
 // Delivery is a queue: an absence sweep (or the manual button) ENQUEUES one
 // `NotificationJobDoc` per (student, guardian, channel, date); a separate
@@ -796,6 +1002,11 @@ export interface TenantContext {
   notificationAttempts: TenantScope<NotificationAttemptDoc>
   parents: TenantScope<ParentDoc>
   parentStudentLinks: TenantScope<ParentStudentLinkDoc>
+  feeStructures: TenantScope<FeeStructureDoc>
+  invoices: TenantScope<InvoiceDoc>
+  payments: TenantScope<PaymentDoc>
+  receipts: TenantScope<ReceiptDoc>
+  financeCounters: TenantScope<FinanceCounterDoc>
 }
 
 /**
@@ -857,6 +1068,19 @@ export async function withTenant<T>(
         parents: new TenantScope(db.collection<ParentDoc>('parents'), tenantId, session),
         parentStudentLinks: new TenantScope(
           db.collection<ParentStudentLinkDoc>('parentStudentLinks'),
+          tenantId,
+          session,
+        ),
+        feeStructures: new TenantScope(
+          db.collection<FeeStructureDoc>('feeStructures'),
+          tenantId,
+          session,
+        ),
+        invoices: new TenantScope(db.collection<InvoiceDoc>('invoices'), tenantId, session),
+        payments: new TenantScope(db.collection<PaymentDoc>('payments'), tenantId, session),
+        receipts: new TenantScope(db.collection<ReceiptDoc>('receipts'), tenantId, session),
+        financeCounters: new TenantScope(
+          db.collection<FinanceCounterDoc>('financeCounters'),
           tenantId,
           session,
         ),
