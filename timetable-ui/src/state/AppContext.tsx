@@ -10,6 +10,7 @@ import type { Student } from '../domain/students'
 import { sampleStudents } from '../domain/students'
 import type { Branch } from '../domain/branches'
 import { listBranches } from '../lib/branchesApi'
+import { listStudents } from '../lib/studentsApi'
 import { useSolver } from '../lib/useSolver'
 import type { SolverProgress } from '../lib/useSolver'
 import { clearDataset, loadDataset, saveDataset } from '../lib/storage'
@@ -139,6 +140,55 @@ function readTheme(): Theme {
     // Fall through to the default.
   }
   return 'auto'
+}
+
+/**
+ * Whether `problem`/`fleet` have ever been reconciled with the server on
+ * this device — the signal the auto-hydration effects below use to decide
+ * it's safe to silently replace the bundled sample data with the real
+ * thing. Deliberately NOT "is there anything in localStorage": the autosave
+ * effects below persist the CURRENT state (sample included) on first mount
+ * regardless, so presence alone can't distinguish "never synced" from
+ * "synced once, or never touched." This flag is only ever set by an actual
+ * successful push or pull (manual or automatic), and once set, the
+ * auto-hydration effects never fire again for that key — from then on the
+ * existing manual Sync/Pull buttons and dirty-tracking are what manage a
+ * real local draft, exactly as before this existed.
+ */
+const EVER_SYNCED_PREFIX = 'timetable.everSynced'
+function everSyncedKey(schoolId: string): string {
+  return `${EVER_SYNCED_PREFIX}.${schoolId}`
+}
+function hasEverSynced(schoolId: string): boolean {
+  try {
+    return localStorage.getItem(everSyncedKey(schoolId)) === 'true'
+  } catch {
+    return true // storage unavailable: don't risk auto-overwriting on every render
+  }
+}
+function markEverSynced(schoolId: string): void {
+  try {
+    localStorage.setItem(everSyncedKey(schoolId), 'true')
+  } catch {
+    // Best effort — a failed write just means this can't skip a future retry.
+  }
+}
+function fleetEverSyncedKey(branchId: string | null): string {
+  return `timetable.fleet.everSynced.${branchId ?? 'default'}`
+}
+function hasFleetEverSynced(branchId: string | null): boolean {
+  try {
+    return localStorage.getItem(fleetEverSyncedKey(branchId)) === 'true'
+  } catch {
+    return true
+  }
+}
+function markFleetEverSynced(branchId: string | null): void {
+  try {
+    localStorage.setItem(fleetEverSyncedKey(branchId), 'true')
+  } catch {
+    // Best effort.
+  }
 }
 
 const ACTIVE_BRANCH_KEY = 'timetable.activeBranch'
@@ -410,6 +460,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (fleetResult.kind === 'pushed' && fleetResult.revision) {
       setFleetRevision(fleetResult.revision)
       writeRevision(fleetRevisionKey(activeBranchId), fleetResult.revision)
+      markFleetEverSynced(activeBranchId)
       return null
     }
     if (fleetResult.kind !== 'pushed') {
@@ -431,6 +482,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFleetState((base) => ({ ...base, ...server, settings: { ...base.settings, ...server.settings } }))
       setFleetRevision(fleetResult.revision ?? 1)
       writeRevision(fleetRevisionKey(activeBranchId), fleetResult.revision ?? 1)
+      markFleetEverSynced(activeBranchId)
     }
   }, [syncSettings, activeBranchId, getAccessToken])
 
@@ -446,6 +498,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pushFleet(),
     ])
     if (result.kind === 'pushed') {
+      markEverSynced(syncSettings.schoolId)
       setSyncStatus({
         state: 'synced',
         lastSyncedAt: result.updatedAt ?? new Date().toISOString(),
@@ -475,6 +528,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (result.kind === 'pulled' && result.problem) {
       setProblemState(result.problem)
       setRevision(result.revision ?? 1)
+      markEverSynced(syncSettings.schoolId)
       setSyncStatus({
         state: 'synced',
         lastSyncedAt: result.updatedAt ?? new Date().toISOString(),
@@ -487,6 +541,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSyncStatus((c) => ({ ...c, state: 'error', message: result.message ?? 'UNKNOWN' }))
     }
   }, [syncSettings, getAccessToken, pullFleet])
+
+  /**
+   * Auto-hydration: a device/tenant pairing that has never completed a real
+   * sync otherwise keeps showing the bundled sample `problem` (see
+   * domain/sample.ts) indefinitely — nothing previously replaced it until
+   * the user found the manual Sync/Pull button. Fires once, silently (no
+   * `syncStatus` change — this isn't a user-initiated action), the first
+   * time it's safe per `hasEverSynced`. `empty` (nothing pushed for this
+   * school yet) intentionally does NOT mark everSynced, so a later retry
+   * (next reload) can still pick up real data once it exists.
+   */
+  const problemAutoPulled = useRef(false)
+  useEffect(() => {
+    if (!user || problemAutoPulled.current) return
+    if (!isConfigured(syncSettings) || hasEverSynced(syncSettings.schoolId)) return
+    problemAutoPulled.current = true
+    void (async () => {
+      const result = await pullDataset(syncSettings, getAccessToken)
+      if (result.kind === 'pulled' && result.problem) {
+        setProblemState(result.problem)
+        setRevision(result.revision ?? 1)
+        markEverSynced(syncSettings.schoolId)
+      }
+    })()
+  }, [user, syncSettings, getAccessToken])
+
+  /** Same idea as the `problem` auto-pull above, but per branch — a branch
+   * that has never synced its own fleet (and has no legacy tenant-wide
+   * fleet to fall back to) otherwise shows `sampleFleet()`'s fake stops and
+   * buses indefinitely. Reuses `pullFleet`, which already marks
+   * `everSynced` on a real pull. */
+  const fleetAutoPulled = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!user || !activeBranchId) return
+    if (!isConfigured(syncSettings) || hasFleetEverSynced(activeBranchId)) return
+    if (fleetAutoPulled.current.has(activeBranchId)) return
+    fleetAutoPulled.current.add(activeBranchId)
+    void pullFleet()
+  }, [user, activeBranchId, syncSettings, pullFleet])
+
+  /**
+   * The bus-routing roster (`students`) has no offline-draft concept — every
+   * edit already goes straight to the server (see studentsApi.ts), so unlike
+   * `problem`/`fleet` there's no local work to risk discarding, and this can
+   * just always fetch. Previously only StudentsPage did this fetch, so a
+   * page that reads `students` without ever visiting Students first (Bus
+   * Routes' roster) could show `sampleStudents()`'s fake roster to a signed-
+   * in admin indefinitely.
+   */
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    void (async () => {
+      const token = await getAccessToken()
+      if (!token || cancelled) return
+      const result = await listStudents(getAccessToken, activeBranchId ? { branchId: activeBranchId } : {})
+      if (!cancelled && result.kind === 'ok') setStudentsState(result.data)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, activeBranchId, getAccessToken])
 
   const value = useMemo<AppValue>(
     () => ({
