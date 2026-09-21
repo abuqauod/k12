@@ -65,10 +65,27 @@ export function InvoiceDetailDialog({
   const addLine = async () => {
     const amount = parseMinorUnits(lineAmount)
     if (!lineLabel.trim() || amount === null) return
-    const discount =
-      discountValue.trim() && isAdmin
-        ? { type: discountType, value: discountType === 'percent' ? Number(discountValue) : (parseMinorUnits(discountValue) ?? 0) }
-        : null
+    let discount: NewInvoiceLine['discount'] = null
+    if (discountValue.trim() && isAdmin) {
+      if (discountType === 'percent') {
+        // The server rejects a non-integer percent outright (z.number().int()) —
+        // caught here too so a typo like "12.5" gets an inline message instead
+        // of a generic save failure.
+        const percent = Number(discountValue)
+        if (!Number.isInteger(percent) || percent < 0) {
+          setError(t('billing.error.generic'))
+          return
+        }
+        discount = { type: 'percent', value: percent }
+      } else {
+        const value = parseMinorUnits(discountValue)
+        if (value === null) {
+          setError(t('billing.error.generic'))
+          return
+        }
+        discount = { type: 'amount', value }
+      }
+    }
     setSavingLine(true)
     setError(null)
     const body: NewInvoiceLine = { label: lineLabel.trim(), labelAr: null, amount, discount }

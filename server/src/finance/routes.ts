@@ -289,6 +289,24 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.code(201).send(feeStructureResponse(created.doc))
   })
 
+  // A branch check that runs AFTER the write commits only gates the HTTP
+  // response, not the mutation — `withTenant` commits its transaction as
+  // soon as the callback resolves. Every fee-structure mutation below
+  // resolves the target's branchId in its own read, before the write
+  // transaction starts, same shape as `requireInvoiceBranchAccess`.
+  async function requireFeeStructureBranchAccess(
+    request: Parameters<typeof callerCanUseBranch>[0],
+    id: string,
+    tenantId: string,
+  ) {
+    const doc = await withTenant(tenantId, (ctx) => ctx.feeStructures.findOne({ _id: id }))
+    if (!doc) return { ok: false as const, status: 404, error: 'NOT_FOUND' }
+    if (!(await callerCanUseBranch(request, doc.branchId))) {
+      return { ok: false as const, status: 403, error: 'BRANCH_FORBIDDEN' }
+    }
+    return { ok: true as const, doc }
+  }
+
   app.patch('/finance/fee-structures/:id', adminGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = updateFeeStructureBody.safeParse(request.body)
@@ -296,6 +314,9 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
 
     const tenantId = request.auth!.tenantId!
+    const access = await requireFeeStructureBranchAccess(request, id, tenantId)
+    if (!access.ok) return reply.code(access.status).send({ error: access.error })
+
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.feeStructures.findOne({ _id: id })
       if (!before) return null
@@ -316,15 +337,15 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
       return { before, updated }
     })
     if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
-    if (!(await callerCanUseBranch(request, result.before.branchId))) {
-      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
-    }
     return reply.send(feeStructureResponse(result.updated!))
   })
 
   app.post('/finance/fee-structures/:id/deactivate', adminGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
     const tenantId = request.auth!.tenantId!
+    const access = await requireFeeStructureBranchAccess(request, id, tenantId)
+    if (!access.ok) return reply.code(access.status).send({ error: access.error })
+
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.feeStructures.findOne({ _id: id })
       if (!before) return null
@@ -344,9 +365,6 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
       return { before, updated }
     })
     if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
-    if (!(await callerCanUseBranch(request, result.before.branchId))) {
-      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
-    }
     return reply.send(feeStructureResponse(result.updated!))
   })
 
