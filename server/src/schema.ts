@@ -110,4 +110,30 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .createIndex({ tenantId: 1, parentId: 1, studentId: 1 }, { unique: true })
   await db.collection('parentStudentLinks').createIndex({ tenantId: 1, parentId: 1 })
   await db.collection('parentStudentLinks').createIndex({ tenantId: 1, studentId: 1 })
+
+  // A partial unique index on the active subset — same idiom as
+  // enrollments' at-most-one-active-per-student index above: a deactivated
+  // structure can be superseded by a fresh one for the same (branch, year,
+  // grade) without a collision, while two simultaneously-active structures
+  // for the same slot are still rejected.
+  await db
+    .collection('feeStructures')
+    .createIndex(
+      { tenantId: 1, branchId: 1, academicYearId: 1, gradeLevel: 1 },
+      { unique: true, partialFilterExpression: { active: true } },
+    )
+  await db.collection('feeStructures').createIndex({ tenantId: 1, academicYearId: 1 })
+
+  await db.collection('invoices').createIndex({ tenantId: 1, invoiceNumber: 1 }, { unique: true })
+  await db.collection('invoices').createIndex({ tenantId: 1, studentId: 1, status: 1 })
+  await db
+    .collection('invoices')
+    .createIndex({ tenantId: 1, branchId: 1, academicYearId: 1, status: 1 })
+
+  await db.collection('payments').createIndex({ tenantId: 1, invoiceId: 1 })
+  await db.collection('payments').createIndex({ tenantId: 1, studentId: 1, paidAt: -1 })
+
+  await db.collection('receipts').createIndex({ tenantId: 1, receiptNumber: 1 }, { unique: true })
+  await db.collection('receipts').createIndex({ tenantId: 1, paymentId: 1 }, { unique: true })
+  await db.collection('receipts').createIndex({ tenantId: 1, studentId: 1 })
 }

@@ -79,6 +79,12 @@ export interface LinkedStudentSummary {
   communicationPermissions: { email: boolean; sms: boolean }
   portalAccess: boolean
   linkActive: boolean
+  /** Minor units (fils/cents) — see `domain/finance.ts`'s `formatMinorUnits`
+   * to display. Composed server-side from real invoices/payments, never
+   * stored here — zero for a student with no invoices, not missing data. */
+  invoicedTotal: number
+  paidTotal: number
+  outstandingBalance: number
 }
 
 export interface ParentDetail extends Parent {

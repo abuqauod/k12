@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ParentStudentLinkDoc, TenantContext } from '../db.js'
 import { recordAudit } from '../audit.js'
+import { computeStudentBalances } from '../finance/service.js'
 
 /**
  * Parent/guardian records and their many-to-many relationship to students.
@@ -48,6 +49,12 @@ export interface LinkedStudentSummary {
   communicationPermissions: { email: boolean; sms: boolean }
   portalAccess: boolean
   linkActive: boolean
+  /** Minor units — see finance/service.ts's `computeStudentBalances`, the
+   * one place this is computed. Zero for a student with no invoices, not
+   * an absence of data. */
+  invoicedTotal: number
+  paidTotal: number
+  outstandingBalance: number
 }
 
 /** Age in whole years as of today, from an ISO yyyy-mm-dd dob. */
@@ -98,6 +105,7 @@ export async function composeLinkedStudents(
   const branchById = new Map(branches.map((b) => [b._id, b]))
   const classById = new Map(classes.map((c) => [c._id, c]))
   const yearById = new Map(years.map((y) => [y._id, y]))
+  const balances = await computeStudentBalances(ctx, studentIds)
 
   const rows: LinkedStudentSummary[] = []
   for (const link of links) {
@@ -105,6 +113,7 @@ export async function composeLinkedStudents(
     if (!student) continue // a link may outlive a deleted student; skip rather than 500
     const activeEnrollment = activeEnrollmentByStudent.get(student._id) ?? null
     const klass = student.classId ? classById.get(student.classId) : undefined
+    const balance = balances.get(student._id)
 
     rows.push({
       linkId: link._id,
@@ -139,6 +148,9 @@ export async function composeLinkedStudents(
       communicationPermissions: link.communicationPermissions,
       portalAccess: link.portalAccess,
       linkActive: link.active,
+      invoicedTotal: balance?.invoicedTotal ?? 0,
+      paidTotal: balance?.paidTotal ?? 0,
+      outstandingBalance: balance?.outstandingBalance ?? 0,
     })
   }
   return rows

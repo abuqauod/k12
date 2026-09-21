@@ -23,6 +23,7 @@ const NAV: NavEntry[] = [
   { to: '/classes', key: 'nav.classes', icon: '▣' },
   { to: '/attendance', key: 'nav.attendance', icon: '✓' },
   { to: '/routes', key: 'nav.routes', icon: '⌖' },
+  { to: '/finance', key: 'nav.finance', icon: '⛃' },
   { to: '/logs', key: 'nav.logs', icon: '☰' },
   { to: '/settings', key: 'nav.settings', icon: '⚙' },
 ]
