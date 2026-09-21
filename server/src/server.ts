@@ -15,6 +15,7 @@ import { registerEnrollmentRoutes } from './enrollments/routes.js'
 import { registerAcademicYearRoutes } from './academicYears/routes.js'
 import { registerAttendanceRoutes } from './attendance/routes.js'
 import { registerBranchRoutes } from './branches/routes.js'
+import { registerTenantRoutes } from './tenant/routes.js'
 import { registerClassRoutes } from './classes/routes.js'
 import { registerParentRoutes } from './parents/routes.js'
 import { registerFinanceRoutes } from './finance/routes.js'
@@ -86,6 +87,7 @@ export function buildServer() {
       registerAcademicYearRoutes(instance)
       registerAttendanceRoutes(instance)
       registerBranchRoutes(instance)
+      registerTenantRoutes(instance)
       registerClassRoutes(instance)
       registerParentRoutes(instance)
       registerFinanceRoutes(instance)

@@ -27,10 +27,12 @@ import { ConstraintWeightsEditor } from '../components/ConstraintWeights'
 import { RoutingRulesEditor } from '../components/RoutingRules'
 import { BreaksEditor } from '../components/BreaksEditor'
 import { JsonDialog } from '../components/JsonDialog'
+import { getTenant } from '../lib/tenantApi'
+import type { TenantProfile } from '../lib/tenantApi'
 
 const THEMES: Theme[] = ['auto', 'light', 'dark']
 
-type SettingsTab = 'account' | 'calendar' | 'transport' | 'tuning' | 'team' | 'branches'
+type SettingsTab = 'account' | 'calendar' | 'transport' | 'tuning' | 'team' | 'branches' | 'organization'
 
 const BASE_TABS: Array<{ id: SettingsTab; key: TranslationKey }> = [
   { id: 'account', key: 'settings.tab.account' },
@@ -49,6 +51,7 @@ export function SettingsPage() {
   const tabs = canManageTeam
     ? [
         ...BASE_TABS,
+        { id: 'organization' as const, key: 'settings.tab.organization' as TranslationKey },
         { id: 'branches' as const, key: 'branches.title' as TranslationKey },
         { id: 'team' as const, key: 'settings.tab.team' as TranslationKey },
       ]
@@ -81,6 +84,7 @@ export function SettingsPage() {
       {tab === 'calendar' && <CalendarSettingsTab />}
       {tab === 'transport' && <TransportSettingsTab />}
       {tab === 'tuning' && <TuningSettingsTab />}
+      {tab === 'organization' && canManageTeam && <OrganizationSettingsTab />}
       {tab === 'branches' && canManageTeam && <BranchesSettingsTab />}
       {tab === 'team' && canManageTeam && <TeamSettingsTab />}
     </div>
@@ -606,6 +610,67 @@ function TeamSettingsTab() {
           <p className={inviteMsg.kind === 'success' ? 'login__success' : 'login__error'} style={{ marginTop: 8 }}>
             {inviteMsg.text}
           </p>
+        )}
+      </section>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ organization */
+
+function OrganizationSettingsTab() {
+  const { t } = useI18n()
+  const { getAccessToken } = useAuth()
+  const [tenant, setTenant] = useState<TenantProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const result = await getTenant(getAccessToken)
+      if (cancelled) return
+      setLoading(false)
+      if (result.kind === 'ok') setTenant(result.data)
+      else setError(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [getAccessToken])
+
+  return (
+    <div className="card-row">
+      <section className="card">
+        <h2 className="card__title">{t('settings.organization')}</h2>
+        <p className="card__hint">{t('settings.organizationHint')}</p>
+        {loading && <p className="card__hint">{t('parents.loading')}</p>}
+        {error && <p className="login__error">{t('settings.organization.loadError')}</p>}
+        {tenant && (
+          <>
+            <div className="stat-row">
+              <span>{t('settings.organization.name')}</span>
+              <b>{tenant.name}</b>
+            </div>
+            <div className="stat-row">
+              <span>{t('settings.organization.plan')}</span>
+              <b>{tenant.plan}</b>
+            </div>
+            <div className="stat-row">
+              <span>{t('settings.organization.status')}</span>
+              <span className={`chip${tenant.status === 'active' ? ' chip--on' : ''}`}>
+                {t(`settings.organization.status.${tenant.status}` as TranslationKey)}
+              </span>
+            </div>
+            <div className="stat-row">
+              <span>{t('settings.organization.validUntil')}</span>
+              <b>{tenant.validUntil ?? t('settings.organization.noExpiry')}</b>
+            </div>
+            <div className="stat-row">
+              <span>{t('settings.organization.graceDays')}</span>
+              <b>{tenant.graceDays}</b>
+            </div>
+          </>
         )}
       </section>
     </div>

@@ -1,0 +1,42 @@
+import { loadSyncSettings } from './sync'
+import { authorizedFetch, type TokenGetter } from './http'
+
+/** Client for `GET /tenant` — the school's own organization profile and
+ * subscription status. Read-only: identity/billing fields are vendor-
+ * provisioned (see server/src/tenant/routes.ts), this just makes them
+ * visible instead of only ever surfacing as a blocked-request error. */
+
+export type TenantResult<T> = { kind: 'ok'; data: T } | { kind: 'error'; error: string }
+
+export interface TenantProfile {
+  id: string
+  name: string
+  plan: string
+  status: 'active' | 'suspended' | 'cancelled'
+  validUntil: string | null
+  graceDays: number
+}
+
+function baseUrl(): string {
+  return loadSyncSettings().baseUrl.trim().replace(/\/+$/, '')
+}
+
+export async function getTenant(getToken: TokenGetter): Promise<TenantResult<TenantProfile>> {
+  try {
+    const response = await authorizedFetch(`${baseUrl()}/tenant`, { method: 'GET' }, getToken)
+    const text = await response.text()
+    let body: unknown = null
+    try {
+      body = text ? JSON.parse(text) : null
+    } catch {
+      /* keep null */
+    }
+    if (!response.ok) {
+      const error = (body as { error?: string } | null)?.error ?? `HTTP_${response.status}`
+      return { kind: 'error', error }
+    }
+    return { kind: 'ok', data: body as TenantProfile }
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
