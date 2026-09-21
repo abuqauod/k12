@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Guardian, GuardianLanguage, Student } from '../domain/students'
 import { emptyGuardian } from '../domain/students'
 import type { SchoolClass } from '../domain/classes'
 import type { FleetProblem } from '../domain/fleet'
+import { findNearestStop } from '../domain/fleet'
 import type { FeeStructure, Invoice, StudentBalance } from '../domain/finance'
 import { formatMinorUnits } from '../domain/finance'
 import { updateStudent } from '../lib/studentsApi'
@@ -93,6 +94,19 @@ export function StudentDetailDialog({
     setSavingLoc(false)
     if (res.kind === 'ok') onChanged(res.data)
     else setLocation(previous)
+  }
+
+  // Suggest, never auto-assign — a pin's nearest stop is a hint the school
+  // confirms with a click, not a silent rewrite of an existing assignment.
+  const nearestStop = useMemo(
+    () => (location.lat != null && location.lng != null ? findNearestStop({ lat: location.lat, lng: location.lng }, fleet.stops) : null),
+    [location.lat, location.lng, fleet.stops],
+  )
+
+  const assignNearestStop = async () => {
+    if (!nearestStop) return
+    const res = await updateStudent(getAccessToken, student.id, { stopId: nearestStop.stop.id })
+    if (res.kind === 'ok') onChanged(res.data)
   }
 
   // Separate draft text so an in-progress keystroke like "-" (typing a
@@ -295,6 +309,21 @@ export function StudentDetailDialog({
                 }}
               />
             </div>
+            {nearestStop && nearestStop.stop.id !== student.stopId && (
+              <p className="card__hint" style={{ marginTop: 8 }}>
+                {t('students.nearestStop', {
+                  stop: nearestStop.stop.name,
+                  distance: String(Math.round(nearestStop.distanceM)),
+                })}{' '}
+                <button
+                  type="button"
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => void assignNearestStop()}
+                >
+                  {t('students.useNearestStop')}
+                </button>
+              </p>
+            )}
           </section>
 
           <section style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>

@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { sampleFleet } from '../domain/fleet'
+import type { FleetProblem } from '../domain/fleet'
 import type { RunDirection } from '../domain/students'
-import { demandByStop } from '../domain/students'
+import {
+  DEFAULT_OUTLIER_THRESHOLD_M,
+  buildDoorToDoorStops,
+  computeStopLink,
+  findOutliers,
+} from '../domain/students'
+import { updateStudent } from '../lib/studentsApi'
 import { useFleetSolver } from '../lib/useFleetSolver'
 import { buildMatrix } from '../lib/routing'
 import type { TravelMatrix } from '../lib/routing'
@@ -10,6 +17,7 @@ import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { RouteMap, routeColour } from '../components/RouteMap'
 import { useApp } from '../state/AppContext'
+import { useAuth } from '../auth/AuthContext'
 
 const BUDGETS = [3000, 8000, 20000]
 
@@ -18,52 +26,89 @@ let stopCounter = 0
 
 export function RoutesPage() {
   const { t, n } = useI18n()
-  const { fleet, setFleet, students } = useApp()
+  const { fleet, setFleet, students, setStudents } = useApp()
+  const { getAccessToken } = useAuth()
   const { solution, progress, solving, error, run, stop } = useFleetSolver()
 
   const [budget, setBudget] = useState(8000)
   const [focusBusId, setFocusBusId] = useState<string | null>(null)
   const [direction, setDirection] = useState<RunDirection>('MORNING')
   const [matrix, setMatrix] = useState<TravelMatrix | null>(null)
+  const [matrixKey, setMatrixKey] = useState<string | null>(null)
   const [lineStyle, setLineStyle] = useState<'straight' | 'route'>('straight')
+  // The exact stops/problem a solve actually ran against — includes any
+  // synthetic door-to-door nodes, so the map and route-card list can
+  // resolve every leg's stopId, real or synthetic.
+  const [effectiveProblem, setEffectiveProblem] = useState<FleetProblem>(fleet)
 
-  /** Riders for the selected run only — two-way plus that direction's one-ways. */
-  const demand = useMemo(() => {
-    const counts = demandByStop(students, direction)
-    return fleet.stops.map((stop) => counts.get(stop.id) ?? 0)
-  }, [students, direction, fleet.stops])
+  const thresholdM = fleet.settings.outlierThresholdMeters ?? DEFAULT_OUTLIER_THRESHOLD_M
+  const doorToDoorEnabled = fleet.settings.doorToDoorEnabled ?? true
+
+  /** Riders for the selected run only — two-way plus that direction's
+   * one-ways — with any outlier's demand moved to their own synthetic
+   * door-to-door node instead of their (mismatched) assigned stop. */
+  const { stops: solveStops, demand } = useMemo(
+    () => buildDoorToDoorStops(fleet.stops, students, direction, thresholdM, doorToDoorEnabled),
+    [fleet.stops, students, direction, thresholdM, doorToDoorEnabled],
+  )
 
   const riders = useMemo(() => demand.reduce((sum, value) => sum + value, 0), [demand])
+
+  const stopLinks = useMemo(() => {
+    const stopById = new Map(fleet.stops.map((s) => [s.id, s]))
+    return students.map((student) => computeStopLink(student, stopById, fleet.stops, thresholdM))
+  }, [students, fleet.stops, thresholdM])
+
+  const outliers = useMemo(
+    () => findOutliers(students, fleet.stops, thresholdM),
+    [students, fleet.stops, thresholdM],
+  )
+  const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
+
+  const solveMatrixKey = useMemo(() => solveStops.map((s) => s.id).join('|'), [solveStops])
 
   /**
    * The matrix is fetched per set of stops, not per solve, so a whole
    * simulated-annealing run costs one OSRM call — which is what makes real
-   * road distances affordable here.
+   * road distances affordable here. Keyed off the actual node id list, not
+   * just a count, so a same-length-but-different-node-set solve (an
+   * outlier swapped in or out without the real stop count changing) still
+   * detects the matrix as stale.
    */
   const solveNow = useCallback(
     async (seed: number, budgetMs: number) => {
       const costs =
-        matrix && matrix.size === fleet.stops.length + 1
+        matrix && matrixKey === solveMatrixKey
           ? matrix
-          : await buildMatrix(fleet.depot, fleet.stops, fleet.settings).then((built) => {
+          : await buildMatrix(fleet.depot, solveStops, fleet.settings).then((built) => {
               setMatrix(built)
+              setMatrixKey(solveMatrixKey)
               return built
             })
+      const problem: FleetProblem = { ...fleet, stops: solveStops }
+      setEffectiveProblem(problem)
       run(
-        fleet,
+        problem,
         demand,
         { size: costs.size, minutes: costs.minutes, km: costs.km },
         budgetMs,
         seed,
       )
     },
-    [fleet, demand, matrix, run],
+    [fleet, solveStops, demand, matrix, matrixKey, solveMatrixKey, run],
   )
 
-  // Stops changed, so any cached matrix is stale.
+  // The node set changed, so any cached matrix is stale.
   useEffect(() => {
     setMatrix(null)
-  }, [fleet.stops, fleet.settings.osrmUrl])
+    setMatrixKey(null)
+  }, [solveMatrixKey, fleet.settings.osrmUrl])
+
+  const assignNearestStop = async (studentId: string, nearestStopId: string | null) => {
+    if (!nearestStopId) return
+    const res = await updateStudent(getAccessToken, studentId, { stopId: nearestStopId })
+    if (res.kind === 'ok') setStudents(students.map((s) => (s.id === studentId ? res.data : s)))
+  }
 
   // Solve once on arrival so the map is never blank.
   useEffect(() => {
@@ -72,7 +117,13 @@ export function RoutesPage() {
   }, [direction])
 
   const busById = useMemo(() => new Map(fleet.buses.map((bus) => [bus.id, bus])), [fleet.buses])
-  const stopById = useMemo(() => new Map(fleet.stops.map((s) => [s.id, s])), [fleet.stops])
+  // Resolved against the problem actually solved (real stops + any
+  // synthetic door-to-door nodes), not the raw editable fleet — a solved
+  // route's legs can reference a synthetic node's id.
+  const stopById = useMemo(
+    () => new Map(effectiveProblem.stops.map((s) => [s.id, s])),
+    [effectiveProblem.stops],
+  )
 
   const totalStudents = students.filter((s) => s.active && s.transportMode !== 'NONE').length
   const totalSeats = fleet.buses.reduce((sum, bus) => sum + bus.seats, 0)
@@ -442,12 +493,13 @@ export function RoutesPage() {
 
         <main className="column column--center column--map">
           <RouteMap
-            problem={fleet}
+            problem={solution ? effectiveProblem : fleet}
             solution={solution}
             focusBusId={focusBusId}
             onSelectBus={(busId) => setFocusBusId((current) => (current === busId ? null : busId))}
             lineStyle={lineStyle}
             students={students}
+            stopLinks={stopLinks}
           />
         </main>
 
@@ -559,6 +611,50 @@ export function RoutesPage() {
               <div className="empty-state">{t('fleet.allGood')}</div>
             </div>
           )}
+
+          <div className="panel">
+            <div className="panel__head">
+              <h3 className="panel__title">{t('fleet.outliers')}</h3>
+              {outliers.length > 0 && <span className="chip">{n(outliers.length)}</span>}
+            </div>
+            {outliers.length === 0 ? (
+              <div className="empty-state">{t('fleet.outliers.empty')}</div>
+            ) : (
+              outliers.map((link) => {
+                const student = studentById.get(link.studentId)
+                if (!student) return null
+                const currentStop = link.stopId ? stopById.get(link.stopId) : null
+                const nearestStop = link.nearestStopId ? fleet.stops.find((s) => s.id === link.nearestStopId) : null
+                return (
+                  <div className="stat-row" key={link.studentId} style={{ flexWrap: 'wrap', gap: 4 }}>
+                    <span>
+                      {student.givenName} {student.familyName}
+                      <br />
+                      <small className="card__hint">
+                        {currentStop
+                          ? t('fleet.outliers.distance', {
+                              stop: currentStop.name,
+                              distance: n(Math.round(link.distanceM ?? 0)),
+                            })
+                          : t('fleet.outliers.unassigned')}
+                      </small>
+                    </span>
+                    {nearestStop ? (
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() => void assignNearestStop(link.studentId, link.nearestStopId)}
+                      >
+                        {t('fleet.outliers.useNearest', { stop: nearestStop.name })}
+                      </button>
+                    ) : (
+                      <small className="card__hint">{t('fleet.outliers.noNearby')}</small>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
         </aside>
       </div>
     </div>
