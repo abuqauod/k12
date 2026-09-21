@@ -191,6 +191,24 @@ function markFleetEverSynced(branchId: string | null): void {
   }
 }
 
+/**
+ * The actual safety check the auto-hydration effects rely on: `hasEverSynced`
+ * only knows whether a round-trip ever completed, not whether the CURRENT
+ * local state is still untouched — a device can have `hasEverSynced ===
+ * false` while sitting on a real, valuable, never-successfully-synced local
+ * draft (edited fully offline, or every sync attempt failed). Both generators
+ * are pure and deterministic (fixed-seed PRNGs, no Date.now/Math.random), so
+ * a fresh call always serializes identically to the one nothing has ever
+ * touched — this is the one case where auto-replacing local state is
+ * provably safe.
+ */
+function isPristineProblem(problem: Problem): boolean {
+  return JSON.stringify(problem) === JSON.stringify(normalizeProblem(sampleProblem()))
+}
+function isPristineFleet(fleet: FleetProblem): boolean {
+  return JSON.stringify(fleet) === JSON.stringify(sampleFleet())
+}
+
 const ACTIVE_BRANCH_KEY = 'timetable.activeBranch'
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -548,15 +566,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * domain/sample.ts) indefinitely — nothing previously replaced it until
    * the user found the manual Sync/Pull button. Fires once, silently (no
    * `syncStatus` change — this isn't a user-initiated action), the first
-   * time it's safe per `hasEverSynced`. `empty` (nothing pushed for this
-   * school yet) intentionally does NOT mark everSynced, so a later retry
-   * (next reload) can still pick up real data once it exists.
+   * time it's safe.
+   *
+   * `hasEverSynced` alone is NOT enough to call that safe: it only tracks
+   * whether a real push/pull round-trip has ever completed on this device,
+   * not whether the CURRENT local `problem` is still untouched — a user who
+   * has been editing entirely offline (or whose every sync attempt failed)
+   * would have `hasEverSynced === false` while sitting on a real, valuable,
+   * unsynced draft. Silently overwriting that the moment they come online
+   * would be a data-loss regression, not a fix. So this also requires the
+   * current state to be byte-for-byte the bundled sample — the one case
+   * where there is provably nothing local to lose.
+   *
+   * `empty` (nothing pushed for this school yet) intentionally does NOT mark
+   * everSynced, so a later retry (next reload) can still pick up real data
+   * once it exists.
+   *
+   * Keyed by schoolId (like `fleetAutoPulled` is by branch), not a plain
+   * boolean: `syncSettings.schoolId` can change mid-session (Settings has a
+   * free-text field for it) — a boolean would permanently suppress the
+   * first-ever attempt for a newly-entered school once the very first
+   * schoolId's attempt had already run.
    */
-  const problemAutoPulled = useRef(false)
+  const problemAutoPulled = useRef<Set<string>>(new Set())
   useEffect(() => {
-    if (!user || problemAutoPulled.current) return
-    if (!isConfigured(syncSettings) || hasEverSynced(syncSettings.schoolId)) return
-    problemAutoPulled.current = true
+    if (!user || !isConfigured(syncSettings)) return
+    if (problemAutoPulled.current.has(syncSettings.schoolId)) return
+    if (hasEverSynced(syncSettings.schoolId)) return
+    if (!isPristineProblem(problem)) return
+    problemAutoPulled.current.add(syncSettings.schoolId)
     void (async () => {
       const result = await pullDataset(syncSettings, getAccessToken)
       if (result.kind === 'pulled' && result.problem) {
@@ -565,21 +603,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
         markEverSynced(syncSettings.schoolId)
       }
     })()
-  }, [user, syncSettings, getAccessToken])
+  }, [user, syncSettings, getAccessToken, problem])
 
   /** Same idea as the `problem` auto-pull above, but per branch — a branch
    * that has never synced its own fleet (and has no legacy tenant-wide
    * fleet to fall back to) otherwise shows `sampleFleet()`'s fake stops and
    * buses indefinitely. Reuses `pullFleet`, which already marks
-   * `everSynced` on a real pull. */
+   * `everSynced` on a real pull. Same pristine-check reasoning as `problem`
+   * above — `hasFleetEverSynced` alone can't tell "nothing to lose" from
+   * "real unsynced routing edits sitting here." */
   const fleetAutoPulled = useRef<Set<string>>(new Set())
   useEffect(() => {
     if (!user || !activeBranchId) return
-    if (!isConfigured(syncSettings) || hasFleetEverSynced(activeBranchId)) return
+    // `fleet` lags `activeBranchId` by one render right after a branch
+    // switch (the branch-switch effect above hasn't committed its
+    // `setFleetState` yet) — deciding from a stale, wrong-branch `fleet`
+    // here would both check the wrong data AND (worse) permanently mark
+    // this branch "attempted" before its real fleet was ever examined.
+    // Wait for `fleetBranchRef` to confirm `fleet` actually belongs to this
+    // branch; the effect re-runs once it does, since `fleet` is a dep.
+    if (fleetBranchRef.current !== activeBranchId) return
     if (fleetAutoPulled.current.has(activeBranchId)) return
     fleetAutoPulled.current.add(activeBranchId)
+    if (!isConfigured(syncSettings) || hasFleetEverSynced(activeBranchId)) return
+    if (!isPristineFleet(fleet)) return
     void pullFleet()
-  }, [user, activeBranchId, syncSettings, pullFleet])
+  }, [user, activeBranchId, syncSettings, pullFleet, fleet])
 
   /**
    * The bus-routing roster (`students`) has no offline-draft concept — every
