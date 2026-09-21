@@ -1,10 +1,14 @@
 # School Management System — Gap Analysis
 
-**Scope of this document**: analysis and a recommended build order only. Nothing
-in this document is built as part of this PR except the Parent Management
-module, which is implemented alongside it (`server/src/parents/`,
-`timetable-ui/src/pages/ParentsPage.tsx`) and is included in the table below
-as "existing" for that reason.
+**Scope of this document**: analysis and a recommended build order. Originally
+written alongside the Parent Management PR; updated after two further PRs
+shipped and merged — bus-route/student-location integration (outlier
+detection, nearest-stop suggestion, door-to-door routing for outliers) and a
+Finance & Accounting core loop (fee structures, invoices, payments, receipts).
+All three are graded "Existing" below and were spot-checked against the live
+production site (`heymueen.com`), not just the source tree — real backfilled
+parent records, a working Finance page pulling real branch/academic-year data,
+and audit-log entries from all three modules were confirmed live.
 
 ## Methodology
 
@@ -17,13 +21,13 @@ and the page files under `timetable-ui/src/pages/`.
 
 Server module evidence base (`server/src/*`, one directory per domain):
 `academicYears`, `admin`, `apikeys`, `attendance`, `auditlog`, `auth`,
-`branches`, `classes`, `datasets`, `enrollments`, `memberships`,
+`branches`, `classes`, `datasets`, `enrollments`, `finance`, `memberships`,
 `notifications`, `parents`, `students`.
 
 Frontend page evidence base (`timetable-ui/src/pages/*`):
-`AttendancePage`, `ClassesPage`, `DashboardPage`, `LogsPage`, `ParentsPage`,
-`RoutesPage`, `SettingsPage`, `StudentsPage`, `TimetablePage`, plus
-auth-flow pages (`LoginPage`, `ForgotPasswordPage`, `SetPasswordPage`).
+`AttendancePage`, `ClassesPage`, `DashboardPage`, `FinancePage`, `LogsPage`,
+`ParentsPage`, `RoutesPage`, `SettingsPage`, `StudentsPage`, `TimetablePage`,
+plus auth-flow pages (`LoginPage`, `ForgotPasswordPage`, `SetPasswordPage`).
 
 ## Per-area status
 
@@ -48,7 +52,7 @@ auth-flow pages (`LoginPage`, `ForgotPasswordPage`, `SetPasswordPage`).
 | Medical/emergency info | Partially implemented | `StudentDoc.medicalNotes` | Free-text only — no structured allergy/condition list, no vaccination record. |
 | Behavior/discipline | Missing | — | |
 | Student attendance | Existing | (see Attendance above) | |
-| Transportation | Existing | `RoutesPage.tsx`, `solver/vrp/*`, `StudentDoc.stopId/transportMode/lat/lng` | Full bus-routing solver with stop pinning and per-student pickup pins. |
+| Transportation | Existing | `RoutesPage.tsx`, `solver/vrp/*`, `StudentDoc.stopId/transportMode/lat/lng` | Full bus-routing solver with stop pinning and per-student pickup pins, now genuinely connected: a distance-based outlier detector, a nearest-stop suggestion at pin-placement time, and door-to-door routing for outlier students (synthetic per-student nodes, no solver changes needed). |
 | Student activities | Missing | — | |
 | Student ID/cards | Missing | — | `studentNumber` exists as a field; no card-generation or ID-badge feature. |
 | **Parent Management** | | | |
@@ -59,11 +63,11 @@ auth-flow pages (`LoginPage`, `ForgotPasswordPage`, `SetPasswordPage`).
 | Parent portal | Missing (placeholder only) | `ParentDoc.portalAccess`, `ParentStudentLinkDoc.portalAccess` | Flags only — no login surface, no `UserDoc` link, no portal-facing UI. |
 | Notifications | Partially implemented | `notifications/` (absence sweep only) | Not parent-management-specific; a general "notify this parent" action doesn't exist yet. |
 | Parent documents | Missing | — | |
-| Financial responsibility | Partially implemented (forward hook only) | `ParentStudentLinkDoc.financialResponsibility` | A boolean flag with nothing downstream to read it yet — see Finance below. |
-| **Finance & Accounting** | Missing (whole area) | — | No fee, invoice, payment, or ledger model anywhere. The Parent↔Student join and its `financialResponsibility` flag (this PR) are the only piece in place that a Finance module needs to exist before it can be built. |
+| Financial responsibility | Existing | `ParentStudentLinkDoc.financialResponsibility` | Now actually read: `recordPayment` (`finance/service.ts`) resolves a student's financially-responsible parent onto every payment; the Parent page's linked-student cards and the Student page's Billing section both show a live balance. |
+| **Finance & Accounting** | Existing (core loop) | `server/src/finance/`, `FinancePage.tsx`, `InvoiceDetailDialog.tsx`, `FeeStructureDialog.tsx` | Fee structures (per branch/year/grade), invoices (generated from a structure, one-off line adjustments, per-line discounts), payments (full/partial, multiple per invoice), receipts (structured record, browser-printed — no PDF library in this stack). Money is integer minor units throughout. Branch-scoped reads/writes, stricter than the rest of the app. **Still missing** (deliberately deferred, see "Recommended build order"): refunds, installment/payment plans, formal scholarship records (today: a per-line discount only), expenses, accounts payable, general ledger, budgets, and any financial report beyond a per-student balance. |
 | **HR & Staff Management** | Missing (whole area) | `MembershipDoc` covers *authentication/authorization* for staff (role, branch scoping), not HR records | No contracts, payroll, leave, performance, or recruitment model. A "staff profile" beyond login credentials doesn't exist. |
 | **Communication** | Partially implemented | `notifications/` (email/SMS queue + worker + per-channel opt-in), used only for the absence sweep today | The queue/worker/attempt-log infrastructure (`NotificationJobDoc`, `NotificationAttemptDoc`) is generic enough to extend to announcements, fee reminders, and exam-result notices without rebuilding it — see roadmap. |
-| **Transportation** | Existing | `RoutesPage.tsx`, `solver/vrp/*`, `server/src/students` (stop/location fields), fleet dataset | Buses, stops, routing, student pins, straight/route map toggle. GPS/live tracking is the one sub-item genuinely missing (no device/telemetry ingestion anywhere). |
+| **Transportation** | Existing | `RoutesPage.tsx`, `solver/vrp/*`, `server/src/students` (stop/location fields), fleet dataset | Buses, stops, routing, student pins (now functionally linked to routing — see the Student Management row above), straight/route map toggle. GPS/live tracking is the one sub-item genuinely missing (no device/telemetry ingestion anywhere). |
 | **School/Branch Management** | Existing | `branches/routes.ts`, `BranchDoc`, per-branch scoping throughout (`classes`, `students`, `schoolCalendars`, `notificationSettings`, `fleet`) | Multi-branch is a first-class concept across the whole schema, not bolted on. |
 | **Documents & Administration** | Missing (whole area) | — | No document/file storage model exists for any entity (student, parent, staff, enrollment). |
 | **Inventory & Assets** | Missing (whole area) | — | |
@@ -103,26 +107,34 @@ follow-up work, not done here.
 ## Recommended build order
 
 Grouped by what each depends on, not strictly by business priority — a
-school might reasonably want Communication before Finance, for instance.
+school might reasonably want Communication before deeper Finance work, for
+instance. Parent Management, the bus-routing/student-location integration,
+and the Finance core loop (items that used to head this list) have since
+shipped and merged — struck through below, kept for the dependency
+reasoning that still applies to what they unblock.
 
-1. **Academic Management gaps (Subjects/Curriculum, Exams/Assessments,
-   Grades/Results, Report Cards, Promotion/Repetition)** — the one area
-   where later items build directly on earlier ones within the same group.
-   Nothing else in this list depends on it, so it can move independently.
-2. **Finance & Accounting** — depends on this PR's Parent↔Student join
-   (`financialResponsibility`) and the existing Enrollment model (what a
-   student is being charged for follows from their class/year). The
-   highest-value next module given `financialResponsibility` already exists
-   as a hook with nothing reading it yet.
+1. ~~Academic Management gaps~~ — explicitly out of scope for now (deferred
+   by request), otherwise still the one area where later items
+   (Subjects/Curriculum → Exams/Assessments → Grades/Results → Report Cards
+   → Promotion/Repetition) build directly on earlier ones in the same group.
+   Nothing else in this list depends on it, so it can move independently
+   whenever it's picked back up.
+2. ~~Finance & Accounting core loop~~ — **shipped**. The natural next slice,
+   not yet built: **installment/payment plans and refunds** — both are
+   additive to the current model (today's invoices already support ad-hoc
+   partial payments with no schedule; a plan is a schedule layered on top,
+   and a refund is a new record symmetric to how `voidPayment` already
+   reverses a payment's effect on invoice status).
 3. **Communication (general)** — extends the existing
    `NotificationJobDoc`/`NotificationAttemptDoc` queue and worker rather than
-   building new send infrastructure; natural to build once Finance exists
-   (fee reminders) but doesn't strictly require it (school-wide announcements
-   and exam-result notices don't).
-4. **Parent Portal** — depends on Parent Management (this PR) and
+   building new send infrastructure. Now higher-value than when this was
+   originally written, since Finance exists: fee/payment reminders read
+   real outstanding balances instead of a hook with nothing behind it.
+4. **Parent Portal** — depends on Parent Management (shipped) and
    Communication (for portal-triggered notifications); a real auth surface
    for `ParentDoc.portalAccess`/`ParentStudentLinkDoc.portalAccess` to mean
-   something.
+   something. Also the natural place to surface a parent's real-time
+   balance and invoice history, now that Finance exists to back it.
 5. **Health & Welfare** — a natural extension of `StudentDoc.medicalNotes`
    into a structured model; independent of the above, low complexity.
 6. **HR & Staff Management** — independent of the student/parent/finance
