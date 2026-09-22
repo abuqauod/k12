@@ -150,6 +150,9 @@ export type PermissionScope =
   | 'settings.read'
   | 'students.read'
   | 'students.write'
+  | 'transport.manage'
+  | 'transport.read'
+  | 'transport.write'
 
 /** Every read-only scope, granted at every role including `viewer`. Mirrors
  * every module's existing `readGuard`/`authenticate`-only route today.
@@ -168,6 +171,7 @@ const VIEWER_SCOPES: readonly PermissionScope[] = [
   'search.read',
   'settings.read',
   'students.read',
+  'transport.read',
 ]
 
 /** Adds the routine day-to-day write actions — mirrors every module's
@@ -181,6 +185,7 @@ const SCHEDULER_SCOPES: readonly PermissionScope[] = [
   'notifications.run',
   'parents.write',
   'students.write',
+  'transport.write',
 ]
 
 /** Adds the higher-trust actions — mirrors every module's existing
@@ -199,6 +204,7 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'notifications.manage',
   'parents.manage',
   'settings.manage',
+  'transport.manage',
 ]
 
 /** Same bundle as admin for now — owner's extra powers (e.g. "only an owner

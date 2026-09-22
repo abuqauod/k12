@@ -22,6 +22,14 @@ const BASE = process.env.SEED_BASE ?? 'http://localhost:4000'
 const GIVEN_NAMES = ['Layan', 'Yousef', 'Hala', 'Ahmad', 'Dana', 'Karim', 'Lina', 'Rami', 'Nour', 'Zaid', 'Rand', 'Adam']
 const FAMILY_NAMES = ['Haddad', 'Khoury', 'Saleh', 'Barakat', 'Odeh', 'Qasim', 'Nasser', 'Habash', 'Zaidan', 'Ayyash']
 const METHODS = ['cash', 'bank_transfer', 'card', 'cheque'] as const
+const TRANSPORT_MODES = ['TWO_WAY', 'MORNING', 'EVENING'] as const
+
+/** Same locale as the rest of this demo data (guardian names, phone
+ * numbers). Roughly central Amman — matches where the bundled offline
+ * sample fleet (now retired, see domain/fleet.ts on the frontend) used to
+ * place its depot, so the demo map looks familiar. */
+const DEPOT = { lat: 31.9539, lng: 35.9106 }
+const NEIGHBOURHOODS = ['Abdoun', 'Sweifieh', 'Deir Ghbar', 'Um Uthaina', 'Khalda', 'Tla al-Ali', 'Jubeiha', 'Shmeisani']
 
 /** Deterministic so re-runs produce the same demo picture. */
 function mulberry32(seed: number) {
@@ -112,6 +120,52 @@ async function seedTenant(plan: SeedPlan): Promise<void> {
       }),
     }, token)
 
+    // Transport: a depot, a small fleet, and a ring of stops — so Bus
+    // Routes has real, branch-scoped data too, not an empty screen.
+    await call(`/branches/${branch.id}/transport-settings`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        depotName: branch.name,
+        depotLat: DEPOT.lat,
+        depotLng: DEPOT.lng,
+        roadFactor: 1.35,
+        averageSpeedKph: 32,
+        dwellMinutes: 1.5,
+        maxRideMinutes: 45,
+        earliestDeparture: '06:30:00',
+        bellTime: '08:30:00',
+        arrivalBufferMinutes: 15,
+        osrmUrl: '',
+        outlierThresholdMeters: 500,
+        doorToDoorEnabled: true,
+      }),
+    }, token)
+
+    for (let i = 1; i <= 3; i++) {
+      await call('/transport/buses', {
+        method: 'POST',
+        body: JSON.stringify({ branchId: branch.id, name: `Bus ${i}`, seats: 25 + i * 5 }),
+      }, token)
+    }
+
+    const stopIds: string[] = []
+    for (const name of NEIGHBOURHOODS) {
+      const angle = random() * Math.PI * 2
+      const radiusKm = 1.5 + random() * 5.5
+      const lat = DEPOT.lat + (radiusKm / 111) * Math.cos(angle)
+      const lng = DEPOT.lng + (radiusKm / (111 * Math.cos((DEPOT.lat * Math.PI) / 180))) * Math.sin(angle)
+      const stop = await call('/transport/stops', {
+        method: 'POST',
+        body: JSON.stringify({
+          branchId: branch.id,
+          name,
+          lat: Number(lat.toFixed(5)),
+          lng: Number(lng.toFixed(5)),
+        }),
+      }, token)
+      stopIds.push(stop.id as string)
+    }
+
     for (const gradeLevel of gradeLevels) {
       const feeStructure = await call('/finance/fee-structures', {
         method: 'POST',
@@ -142,6 +196,9 @@ async function seedTenant(plan: SeedPlan): Promise<void> {
           const family = pick(FAMILY_NAMES)
           const parentName = `${pick(GIVEN_NAMES)} ${family}`
           const num = `${plan.tenantLabel.slice(0, 2).toUpperCase()}-${String(studentSeq++).padStart(4, '0')}`
+          // ~70% ride the bus — a realistic mix, and enough that "Riders on
+          // this run" in Bus Routes isn't always zero.
+          const rides = stopIds.length > 0 && random() < 0.7
           const student = await call('/students', {
             method: 'POST',
             body: JSON.stringify({
@@ -151,6 +208,8 @@ async function seedTenant(plan: SeedPlan): Promise<void> {
               classId,
               gender: random() > 0.5 ? 'male' : 'female',
               admissionDate: isoDaysAgo(300),
+              stopId: rides ? pick(stopIds) : '',
+              transportMode: rides ? pick(TRANSPORT_MODES) : 'NONE',
               guardians: [
                 {
                   name: parentName,

@@ -795,6 +795,96 @@ export interface FinanceCounterDoc extends Document {
   seq: number
 }
 
+// ----------------------------------------------------------- transport --
+// Bus routing — depot/buses/stops/routing-rules for one branch. Previously
+// existed only as an opaque JSON blob synced through the generic
+// `/datasets/:key` endpoint (see datasets/routes.ts), with no real branch
+// scoping, permission gating, or audit trail — the last module in the app
+// built that way. This is its real, first-class replacement: `BusDoc` and
+// `StopDoc` are ordinary branch-scoped collections (soft-deactivated, same
+// "archived, never erased" convention as `ParentDoc`/`FeeStructureDoc`), and
+// `TransportSettingsDoc` is a per-branch settings singleton, same shape as
+// `NotificationSettingsDoc`. The actual vehicle-routing computation (which
+// bus visits which stop, in what order) stays entirely client-side — nothing
+// here persists a solved route, only the inputs to computing one.
+
+export interface BusDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  name: string
+  seats: number
+  /** A former bus kept for history — same "archived, never erased"
+   * convention as `ParentDoc.status`/`FeeStructureDoc.active`. Deactivating
+   * a bus unpins every stop pointing at it (see transport/routes.ts). */
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+export interface StopDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  name: string
+  lat: number
+  lng: number
+  /** Hard-pins this stop to one bus — the solver never reassigns it. Null
+   * means the solver picks the bus freely. Validated against a real,
+   * active, same-branch `BusDoc` at write time (transport/routes.ts) —
+   * unlike most cross-references in this codebase, a mismatch here would
+   * silently cross a branch boundary and break a hard solver constraint,
+   * not just look wrong on screen. */
+  pinnedBusId: string | null
+  /** A former stop kept for history. Deactivating one clears `stopId` back
+   * to unassigned on every student who was pointed at it (transport/routes.ts)
+   * — a stale reference here wouldn't just look wrong, it would silently
+   * break that student's routing computation. */
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+/**
+ * One per branch (`${tenantId}:${branchId}`, same idiom as
+ * `NotificationSettingsDoc`) — the depot location and the routing-rule
+ * constants the client-side VRP solver needs (see timetable-ui's
+ * `domain/fleet.ts` `FleetSettings` for the field-by-field rationale each of
+ * these mirrors). A branch with no row yet behaves as if it had the
+ * defaults in transport/settings.ts — same "effective settings" pattern as
+ * `notifications/settings.ts`.
+ */
+export interface TransportSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  depotName: string
+  depotLat: number
+  depotLng: number
+  /** Straight-line distance is multiplied by this to approximate road length. */
+  roadFactor: number
+  averageSpeedKph: number
+  /** Minutes spent stationary at each stop. */
+  dwellMinutes: number
+  /** No child may ride longer than this, from their stop to the school. */
+  maxRideMinutes: number
+  /** Earliest a bus may leave the depot, "HH:MM:SS". */
+  earliestDeparture: string
+  /** First period start, from the timetable calendar. */
+  bellTime: string
+  /** Buses must be parked this many minutes before the bell. */
+  arrivalBufferMinutes: number
+  /** OSRM base url. Empty falls back to straight-line estimates. */
+  osrmUrl: string
+  /** A student's own pin further than this from their assigned stop is
+   * flagged "needs review" and, if `doorToDoorEnabled`, routed to directly. */
+  outlierThresholdMeters: number
+  doorToDoorEnabled: boolean
+  updatedAt: Date
+}
+
 // -------------------------------------------------------- notifications --
 // Delivery is a queue: an absence sweep (or the manual button) ENQUEUES one
 // `NotificationJobDoc` per (student, guardian, channel, date); a separate
@@ -1013,6 +1103,9 @@ export interface TenantContext {
   payments: TenantScope<PaymentDoc>
   receipts: TenantScope<ReceiptDoc>
   financeCounters: TenantScope<FinanceCounterDoc>
+  buses: TenantScope<BusDoc>
+  stops: TenantScope<StopDoc>
+  transportSettings: TenantScope<TransportSettingsDoc>
 }
 
 /**
@@ -1087,6 +1180,13 @@ export async function withTenant<T>(
         receipts: new TenantScope(db.collection<ReceiptDoc>('receipts'), tenantId, session),
         financeCounters: new TenantScope(
           db.collection<FinanceCounterDoc>('financeCounters'),
+          tenantId,
+          session,
+        ),
+        buses: new TenantScope(db.collection<BusDoc>('buses'), tenantId, session),
+        stops: new TenantScope(db.collection<StopDoc>('stops'), tenantId, session),
+        transportSettings: new TenantScope(
+          db.collection<TransportSettingsDoc>('transportSettings'),
           tenantId,
           session,
         ),
