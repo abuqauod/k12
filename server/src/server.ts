@@ -33,7 +33,13 @@ export function buildServer() {
   app.register(cors, {
     origin: config.corsOrigins,
     credentials: true,
-    methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
+    // PATCH was missing here — every PATCH route in the app (student/
+    // parent/fee-structure/class edits, and now bus/stop edits) has been
+    // silently failing its cross-origin preflight in the browser this
+    // whole time; nothing caught it because testing PATCH endpoints was
+    // otherwise done server-to-server (curl, scripts), which isn't subject
+    // to CORS at all.
+    methods: ['GET', 'PUT', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
 
   // Fastify's default JSON parser rejects a request whose Content-Type is
