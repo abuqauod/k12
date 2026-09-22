@@ -278,6 +278,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // debounced save effect below skips writing it straight back to the
   // server it just came from. Cleared on that same effect's next run.
   const transportSettingsHydrating = useRef(false)
+  // Which branch `transportSettings` state actually holds data for. Stays
+  // behind `activeBranchId` for the whole window between a branch switch
+  // starting and its settings GET resolving — during which `transportSettings`
+  // still holds the PREVIOUS branch's values. The debounced save effect below
+  // refuses to write while these two disagree, so a slow GET can never lose
+  // a race against a stale PUT for the branch being switched away from (or,
+  // on first load, against writing `DEFAULT_TRANSPORT_SETTINGS` for real data).
+  const transportSettingsBranchRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!user || !activeBranchId) {
@@ -285,6 +293,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStops([])
       setTransportSettings(DEFAULT_TRANSPORT_SETTINGS)
       transportBranchRef.current = null
+      transportSettingsBranchRef.current = null
       return
     }
     let cancelled = false
@@ -303,6 +312,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // The debounced save effect below must not immediately write this
         // fetched value straight back to the server it just came from.
         transportSettingsHydrating.current = true
+        transportSettingsBranchRef.current = activeBranchId
         setTransportSettings(settingsResult.data)
       }
       setTransportLoading(false)
@@ -412,6 +422,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
     if (!activeBranchId) return
+    // `transportSettings` state still holds the branch we last fetched it
+    // for, not necessarily `activeBranchId` — e.g. mid branch-switch, before
+    // the new branch's GET has resolved. Writing here would PUT (a full
+    // replace) the wrong branch's data onto `activeBranchId`'s settings row.
+    if (transportSettingsBranchRef.current !== activeBranchId) return
     const branchId = activeBranchId
     const timer = setTimeout(() => {
       void apiUpdateTransportSettings(getAccessToken, branchId, transportSettings)
