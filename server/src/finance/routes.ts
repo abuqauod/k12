@@ -267,6 +267,8 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
       createdBy: request.auth!.sub,
     }
     const created = await withTenant(tenantId, async (ctx) => {
+      const branch = await ctx.branches.findOne({ _id: doc.branchId })
+      if (!branch) return { error: 'UNKNOWN_BRANCH' as const }
       const clash = await ctx.feeStructures.findOne({
         branchId: doc.branchId,
         academicYearId: doc.academicYearId,
@@ -286,7 +288,9 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
       })
       return { doc }
     })
-    if ('error' in created) return reply.code(409).send({ error: created.error })
+    if ('error' in created) {
+      return reply.code(created.error === 'UNKNOWN_BRANCH' ? 404 : 409).send({ error: created.error })
+    }
     return reply.code(201).send(feeStructureResponse(created.doc))
   })
 
