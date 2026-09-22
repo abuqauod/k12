@@ -1,6 +1,5 @@
-import { sampleFleet, haversineKm } from './fleet'
+import { haversineKm } from './fleet'
 import type { BusStop } from './fleet'
-import { SAMPLE_COHORTS } from './classes'
 
 /**
  * Transport registration. The morning and afternoon runs carry different
@@ -321,69 +320,3 @@ export function buildDoorToDoorStops(
   return { stops: allStops, demand }
 }
 
-/* ------------------------------------------------------------------ sample */
-
-const GIVEN = [
-  ['Omar', 'عمر'], ['Layla', 'ليلى'], ['Yousef', 'يوسف'], ['Sara', 'سارة'],
-  ['Ahmad', 'أحمد'], ['Noor', 'نور'], ['Karim', 'كريم'], ['Dana', 'دانا'],
-  ['Tariq', 'طارق'], ['Rania', 'رانيا'], ['Zaid', 'زيد'], ['Maha', 'مها'],
-]
-const FAMILY = [
-  ['Haddad', 'حداد'], ['Nasser', 'ناصر'], ['Khalil', 'خليل'], ['Masri', 'المصري'],
-  ['Odeh', 'عودة'], ['Salti', 'الصلتي'], ['Rimawi', 'الريماوي'], ['Zaben', 'الزبن'],
-]
-function mulberry32(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-const phone = (random: () => number) =>
-  `+962 7${Math.floor(random() * 3) + 7} ${String(Math.floor(random() * 900) + 100)} ${String(
-    Math.floor(random() * 9000) + 1000,
-  )}`
-
-/**
- * One student per seat the demo stops implied, so the registry and the routing
- * agree from the first load. Modes are mixed because a real school always has
- * children who only ride one way.
- */
-export function sampleStudents(): Student[] {
-  const random = mulberry32(0x2b0d)
-  const fleet = sampleFleet()
-  const students: Student[] = []
-  let n = 1
-
-  for (const stop of fleet.stops) {
-    for (let i = 0; i < stop.studentCount; i++) {
-      const [given, givenAr] = GIVEN[Math.floor(random() * GIVEN.length)]!
-      const [family, familyAr] = FAMILY[Math.floor(random() * FAMILY.length)]!
-      const roll = random()
-      const mode: TransportMode = roll < 0.72 ? 'TWO_WAY' : roll < 0.88 ? 'MORNING' : 'EVENING'
-      const cohort = SAMPLE_COHORTS[Math.floor(random() * SAMPLE_COHORTS.length)]!
-
-      students.push({
-        id: `S-${String(n).padStart(4, '0')}`,
-        studentNumber: `2026${String(n).padStart(4, '0')}`,
-        givenName: given!,
-        familyName: family!,
-        givenNameAr: givenAr,
-        familyNameAr: familyAr,
-        classId: cohort.classId,
-        studentGroup: cohort.label,
-        stopId: stop.id,
-        transportMode: mode,
-        primaryPhone: phone(random),
-        secondaryPhone: phone(random),
-        active: true,
-      })
-      n++
-    }
-  }
-
-  return students
-}
