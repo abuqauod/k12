@@ -110,6 +110,10 @@ export const TRANSPORT_MODES: TransportMode[] = ['TWO_WAY', 'MORNING', 'EVENING'
  * enough digits to be a real number.
  */
 export function isValidPhone(value: string): boolean {
+  // Defensive: `value` is typed as always a string, but a handful of
+  // legacy records genuinely have no phone at all (see studentsApi.ts's
+  // `fromWire` for the fuller fix) — missing is invalid, not a crash.
+  if (!value) return false
   const digits = value.replace(/[^\d]/g, '')
   return digits.length >= 8 && digits.length <= 15
 }
