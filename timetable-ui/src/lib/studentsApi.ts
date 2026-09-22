@@ -36,14 +36,31 @@ async function parse<T>(response: Response): Promise<StudentsResult<T>> {
 
 /** The wire shape a student comes back as — `id`, not `_id`, and the SIS
  * fields are always present (unlike the domain type, which makes them
- * optional so old transport-only records still parse). */
-interface WireStudent extends Omit<Student, 'id' | 'active'> {
+ * optional so old transport-only records still parse). In practice a
+ * handful of legacy records predate the fields the server now always
+ * fills in (`givenName`/`familyName`/`primaryPhone`/`secondaryPhone`/
+ * `stopId`/`transportMode`/`studentGroup`/`studentNumber`) and come back
+ * with them missing entirely — `Partial` here, not the stricter shape the
+ * type name implies, so TypeScript catches every place that needs a
+ * fallback rather than trusting a contract the real data doesn't keep. */
+interface WireStudent extends Partial<Omit<Student, 'id' | 'active'>> {
   id: string
   status: StudentStatus
 }
 
 function fromWire(w: WireStudent): Student {
-  return { ...w, active: w.status === 'enrolled' }
+  return {
+    ...w,
+    studentNumber: w.studentNumber ?? '',
+    givenName: w.givenName ?? '',
+    familyName: w.familyName ?? '',
+    studentGroup: w.studentGroup ?? '',
+    stopId: w.stopId ?? '',
+    transportMode: w.transportMode ?? 'NONE',
+    primaryPhone: w.primaryPhone ?? '',
+    secondaryPhone: w.secondaryPhone ?? '',
+    active: w.status === 'enrolled',
+  }
 }
 
 export async function listStudents(
