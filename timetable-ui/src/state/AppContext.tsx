@@ -4,13 +4,24 @@ import type { Problem, Score, Solution } from '../domain/types'
 import { DEFAULT_WEIGHTS } from '../domain/types'
 import { DEFAULT_CALENDAR, normalizeProblem } from '../domain/calendar'
 import { sampleProblem } from '../domain/sample'
-import type { FleetProblem } from '../domain/fleet'
-import { sampleFleet } from '../domain/fleet'
+import type { Bus, BusStop, FleetProblem, TransportSettings } from '../domain/fleet'
+import { assembleFleetProblem } from '../domain/fleet'
 import type { Student } from '../domain/students'
-import { sampleStudents } from '../domain/students'
 import type { Branch } from '../domain/branches'
 import { listBranches } from '../lib/branchesApi'
 import { listStudents } from '../lib/studentsApi'
+import {
+  createBus as apiCreateBus,
+  createStop as apiCreateStop,
+  deactivateBus,
+  deactivateStop,
+  getTransportSettings,
+  listBuses,
+  listStops,
+  updateBus as apiUpdateBus,
+  updateStop as apiUpdateStop,
+  updateTransportSettings as apiUpdateTransportSettings,
+} from '../lib/transportApi'
 import { useSolver } from '../lib/useSolver'
 import type { SolverProgress } from '../lib/useSolver'
 import { clearDataset, loadDataset, saveDataset } from '../lib/storage'
@@ -18,15 +29,32 @@ import {
   isConfigured,
   loadSyncSettings,
   pullDataset,
-  pullDocument,
   pushDataset,
-  pushDocument,
   saveSyncSettings,
 } from '../lib/sync'
 import type { SyncSettings, SyncStatus } from '../lib/sync'
 import { useAuth } from '../auth/AuthContext'
 
 export type Theme = 'auto' | 'light' | 'dark'
+
+/** A branch with no transport-settings row yet behaves as if it had these —
+ * mirrors the server's own `DEFAULT_TRANSPORT_SETTINGS`
+ * (server/src/transport/settings.ts) so the two can't drift. */
+const DEFAULT_TRANSPORT_SETTINGS: TransportSettings = {
+  depotName: '',
+  depotLat: 0,
+  depotLng: 0,
+  roadFactor: 1.35,
+  averageSpeedKph: 32,
+  dwellMinutes: 1.5,
+  maxRideMinutes: 45,
+  earliestDeparture: '06:30:00',
+  bellTime: '08:30:00',
+  arrivalBufferMinutes: 15,
+  osrmUrl: '',
+  outlierThresholdMeters: 500,
+  doorToDoorEnabled: true,
+}
 
 interface AppValue {
   problem: Problem
@@ -47,8 +75,25 @@ interface AppValue {
   importProblem: (file: File, onDone: (message: string) => void) => void
   theme: Theme
   setTheme: (theme: Theme) => void
+  /** Assembled from `buses`/`stops`/`transportSettings` plus the live
+   * roster's per-stop counts — the shape the map and the VRP solver
+   * consume. Read this for display/solving; mutate via the functions
+   * below (each writes through to the server), or `setBuses`/`setStops`
+   * for an instant-feedback local patch a caller then debounce-saves with
+   * `updateBus`/`updateStop` — same split as `students`/`setStudents`. */
   fleet: FleetProblem
-  setFleet: (next: FleetProblem) => void
+  transportLoading: boolean
+  buses: Bus[]
+  setBuses: (next: Bus[]) => void
+  stops: BusStop[]
+  setStops: (next: BusStop[]) => void
+  createBus: (input: { name: string; seats: number }) => Promise<void>
+  updateBus: (id: string, patch: { name?: string; seats?: number }) => Promise<void>
+  removeBus: (id: string) => Promise<void>
+  createStop: (input: { name: string; lat: number; lng: number; pinnedBusId?: string | null }) => Promise<void>
+  updateStop: (id: string, patch: { name?: string; lat?: number; lng?: number; pinnedBusId?: string | null }) => Promise<void>
+  removeStop: (id: string) => Promise<void>
+  updateTransportSettings: (patch: Partial<TransportSettings>) => void
   students: Student[]
   setStudents: (next: Student[]) => void
   /** The school's campuses. Empty until loaded (or if the server is
@@ -71,53 +116,7 @@ interface AppValue {
 
 const AppContext = createContext<AppValue | null>(null)
 const THEME_KEY = 'timetable.theme'
-/** Pre-branch-scoping key — a school used to have exactly one fleet
- * regardless of how many campuses it had. Kept only as a one-time seed: a
- * branch with no fleet of its own yet reads this once (see
- * `legacyFleetSeed`/`pullFleet` below) rather than starting from the sample
- * data and losing whatever routing setup already existed. */
-const LEGACY_FLEET_KEY = 'timetable.fleet'
-const LEGACY_FLEET_DATASET_KEY = 'fleet'
 const STUDENTS_KEY = 'timetable.students'
-
-/** Each branch (campus) gets its own bus depot, fleet and stops — a shared
- * fleet across campuses would show one school's buses overlaid on another
- * campus's map. Keyed by branch id; `null` (branch not yet known, e.g. the
- * moment right after sign-in) falls back to a `'default'` bucket so the app
- * never has no fleet to show. */
-function fleetStorageKey(branchId: string | null): string {
-  return `timetable.fleet.${branchId ?? 'default'}`
-}
-function fleetRevisionKey(branchId: string | null): string {
-  return `timetable.fleet.revision.${branchId ?? 'default'}`
-}
-/** See server/src/datasets/routes.ts for why `:key` can hold any JSON shape
- * — this reuses the same generic document store, one document per branch
- * instead of one for the whole tenant. A hyphen, not a colon: the server
- * validates `:key` against `/^[A-Za-z0-9_-]+$/` (datasets/routes.ts's
- * `keyParam`), which rejects colons — a `fleet:<branchId>` key 400s as
- * INVALID_KEY on every real request. */
-function fleetDatasetKey(branchId: string | null): string {
-  return `fleet-${branchId ?? 'default'}`
-}
-
-function readRevision(key: string): number {
-  try {
-    const raw = localStorage.getItem(key)
-    const n = raw ? Number(raw) : 1
-    return Number.isFinite(n) && n > 0 ? n : 1
-  } catch {
-    return 1
-  }
-}
-
-function writeRevision(key: string, revision: number): void {
-  try {
-    localStorage.setItem(key, String(revision))
-  } catch {
-    // Preference simply will not persist.
-  }
-}
 
 function readJson<T>(key: string, fallback: () => T, valid: (value: unknown) => boolean): T {
   try {
@@ -143,15 +142,15 @@ function readTheme(): Theme {
 }
 
 /**
- * Whether `problem`/`fleet` have ever been reconciled with the server on
- * this device — the signal the auto-hydration effects below use to decide
- * it's safe to silently replace the bundled sample data with the real
- * thing. Deliberately NOT "is there anything in localStorage": the autosave
- * effects below persist the CURRENT state (sample included) on first mount
+ * Whether `problem` has ever been reconciled with the server on this
+ * device — the signal the auto-hydration effect below uses to decide it's
+ * safe to silently replace the bundled sample data with the real thing.
+ * Deliberately NOT "is there anything in localStorage": the autosave
+ * effect below persists the CURRENT state (sample included) on first mount
  * regardless, so presence alone can't distinguish "never synced" from
  * "synced once, or never touched." This flag is only ever set by an actual
  * successful push or pull (manual or automatic), and once set, the
- * auto-hydration effects never fire again for that key — from then on the
+ * auto-hydration effect never fires again for that key — from then on the
  * existing manual Sync/Pull buttons and dirty-tracking are what manage a
  * real local draft, exactly as before this existed.
  */
@@ -173,40 +172,20 @@ function markEverSynced(schoolId: string): void {
     // Best effort — a failed write just means this can't skip a future retry.
   }
 }
-function fleetEverSyncedKey(branchId: string | null): string {
-  return `timetable.fleet.everSynced.${branchId ?? 'default'}`
-}
-function hasFleetEverSynced(branchId: string | null): boolean {
-  try {
-    return localStorage.getItem(fleetEverSyncedKey(branchId)) === 'true'
-  } catch {
-    return true
-  }
-}
-function markFleetEverSynced(branchId: string | null): void {
-  try {
-    localStorage.setItem(fleetEverSyncedKey(branchId), 'true')
-  } catch {
-    // Best effort.
-  }
-}
 
 /**
- * The actual safety check the auto-hydration effects rely on: `hasEverSynced`
- * only knows whether a round-trip ever completed, not whether the CURRENT
- * local state is still untouched — a device can have `hasEverSynced ===
- * false` while sitting on a real, valuable, never-successfully-synced local
- * draft (edited fully offline, or every sync attempt failed). Both generators
- * are pure and deterministic (fixed-seed PRNGs, no Date.now/Math.random), so
- * a fresh call always serializes identically to the one nothing has ever
- * touched — this is the one case where auto-replacing local state is
- * provably safe.
+ * The actual safety check the `problem` auto-hydration effect relies on:
+ * `hasEverSynced` only knows whether a round-trip ever completed, not
+ * whether the CURRENT local state is still untouched — a device can have
+ * `hasEverSynced === false` while sitting on a real, valuable,
+ * never-successfully-synced local draft (edited fully offline, or every
+ * sync attempt failed). `sampleProblem` is pure and deterministic (no
+ * Date.now/Math.random), so a fresh call always serializes identically to
+ * the one nothing has ever touched — this is the one case where
+ * auto-replacing local state is provably safe.
  */
 function isPristineProblem(problem: Problem): boolean {
   return JSON.stringify(problem) === JSON.stringify(normalizeProblem(sampleProblem()))
-}
-function isPristineFleet(fleet: FleetProblem): boolean {
-  return JSON.stringify(fleet) === JSON.stringify(sampleFleet())
 }
 
 const ACTIVE_BRANCH_KEY = 'timetable.activeBranch'
@@ -226,8 +205,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dirty, setDirty] = useState(false)
   const [theme, setThemeState] = useState<Theme>(readTheme)
 
-  // Declared before `fleet` so its initial value is available to read the
-  // right per-branch storage key on first render.
   const [branches, setBranches] = useState<Branch[]>([])
   const [activeBranchId, setActiveBranchIdState] = useState<string | null>(() => {
     try {
@@ -246,36 +223,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  /** A branch with no fleet of its own yet reads the old tenant-wide blob
-   * once, so switching from the pre-branch-scoping shape doesn't lose an
-   * existing routing setup — each branch seeds independently from it and
-   * then diverges as it's edited. Absent legacy data, the bundled sample. */
-  const legacyFleetSeed = () =>
-    readJson<FleetProblem | null>(
-      LEGACY_FLEET_KEY,
-      () => null,
-      (v) => Array.isArray((v as FleetProblem)?.stops),
-    )
-
-  const loadFleet = (branchId: string | null): FleetProblem => {
-    // Merge over the defaults rather than replacing them: a fleet saved before
-    // a settings field existed must not load that field as undefined.
-    const base = sampleFleet()
-    const stored = readJson<FleetProblem | null>(
-      fleetStorageKey(branchId),
-      legacyFleetSeed,
-      (v) => Array.isArray((v as FleetProblem)?.stops),
-    )
-    return stored
-      ? { ...base, ...stored, settings: { ...base.settings, ...stored.settings } }
-      : base
-  }
-
-  const [fleet, setFleetState] = useState<FleetProblem>(() => loadFleet(activeBranchId))
   const [students, setStudentsState] = useState<Student[]>(() =>
-    readJson(STUDENTS_KEY, sampleStudents, (v) => Array.isArray(v)),
+    readJson(STUDENTS_KEY, () => [], (v) => Array.isArray(v)),
   )
-  const [fleetRevision, setFleetRevision] = useState(() => readRevision(fleetRevisionKey(activeBranchId)))
 
   const reloadBranches = useCallback(async () => {
     const token = await getAccessToken()
@@ -302,40 +252,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     else setBranches([])
   }, [user, reloadBranches])
 
-  // Which branch the current `fleet` state actually belongs to — updated in
-  // lockstep with `setFleetState` (never on its own), so the autosave effect
-  // below can always pair fleet content with its correct storage key, even
-  // on the render where `activeBranchId` has changed but `fleet` hasn't been
-  // swapped in yet. Without this, that in-between render would write the
-  // OLD branch's fleet under the NEW branch's key (self-correcting one
-  // render later, but a real transient bad write — see fleetBranchRef writes
-  // below for where it's kept in sync).
-  const fleetBranchRef = useRef(activeBranchId)
-
-  // Switching campuses swaps in that campus's own fleet — buses and stops
-  // for one branch have no business appearing on another's map. Skips the
-  // very first render: the `fleet`/`fleetRevision` initializers above
-  // already loaded the right branch's data for that render.
-  const firstBranchRender = useRef(true)
-  useEffect(() => {
-    if (firstBranchRender.current) {
-      firstBranchRender.current = false
-      return
-    }
-    setFleetState(loadFleet(activeBranchId))
-    setFleetRevision(readRevision(fleetRevisionKey(activeBranchId)))
-    fleetBranchRef.current = activeBranchId
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBranchId])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(fleetStorageKey(fleetBranchRef.current), JSON.stringify(fleet))
-    } catch {
-      // Preference simply will not persist.
-    }
-  }, [fleet])
-
   useEffect(() => {
     try {
       localStorage.setItem(STUDENTS_KEY, JSON.stringify(students))
@@ -343,6 +259,180 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Preference simply will not persist.
     }
   }, [students])
+
+  // ---------------------------------------------------------------- transport
+  // Buses, stops and settings for the active branch — real, server-backed
+  // resources (server/src/transport/routes.ts), not a locally-editable
+  // draft: every mutation below writes straight through, same as the real
+  // students roster. No blob, no sample fallback, no offline draft to lose.
+  const [buses, setBuses] = useState<Bus[]>([])
+  const [stops, setStops] = useState<BusStop[]>([])
+  const [transportSettings, setTransportSettings] = useState<TransportSettings>(DEFAULT_TRANSPORT_SETTINGS)
+  const [transportLoading, setTransportLoading] = useState(false)
+  // Which branch `buses`/`stops`/`transportSettings` actually belong to —
+  // guards every mutation below against firing against a branch the UI has
+  // already navigated away from (a slow request resolving after the user
+  // switched campuses).
+  const transportBranchRef = useRef<string | null>(null)
+  // Set right before a freshly-fetched settings row is applied, so the
+  // debounced save effect below skips writing it straight back to the
+  // server it just came from. Cleared on that same effect's next run.
+  const transportSettingsHydrating = useRef(false)
+  // Which branch `transportSettings` state actually holds data for. Stays
+  // behind `activeBranchId` for the whole window between a branch switch
+  // starting and its settings GET resolving — during which `transportSettings`
+  // still holds the PREVIOUS branch's values. The debounced save effect below
+  // refuses to write while these two disagree, so a slow GET can never lose
+  // a race against a stale PUT for the branch being switched away from (or,
+  // on first load, against writing `DEFAULT_TRANSPORT_SETTINGS` for real data).
+  const transportSettingsBranchRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!user || !activeBranchId) {
+      setBuses([])
+      setStops([])
+      setTransportSettings(DEFAULT_TRANSPORT_SETTINGS)
+      transportBranchRef.current = null
+      transportSettingsBranchRef.current = null
+      return
+    }
+    let cancelled = false
+    transportBranchRef.current = activeBranchId
+    setTransportLoading(true)
+    void (async () => {
+      const [busesResult, stopsResult, settingsResult] = await Promise.all([
+        listBuses(getAccessToken, activeBranchId),
+        listStops(getAccessToken, activeBranchId),
+        getTransportSettings(getAccessToken, activeBranchId),
+      ])
+      if (cancelled) return
+      if (busesResult.kind === 'ok') setBuses(busesResult.data)
+      if (stopsResult.kind === 'ok') setStops(stopsResult.data)
+      if (settingsResult.kind === 'ok') {
+        // The debounced save effect below must not immediately write this
+        // fetched value straight back to the server it just came from.
+        transportSettingsHydrating.current = true
+        transportSettingsBranchRef.current = activeBranchId
+        setTransportSettings(settingsResult.data)
+      }
+      setTransportLoading(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, activeBranchId, getAccessToken])
+
+  const studentCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const student of students) {
+      if (!student.active || student.transportMode === 'NONE' || !student.stopId) continue
+      counts.set(student.stopId, (counts.get(student.stopId) ?? 0) + 1)
+    }
+    return counts
+  }, [students])
+
+  const fleet = useMemo(
+    () => assembleFleetProblem(buses, stops, transportSettings, studentCounts),
+    [buses, stops, transportSettings, studentCounts],
+  )
+
+  const createBus = useCallback(
+    async (input: { name: string; seats: number }) => {
+      if (!activeBranchId) return
+      const result = await apiCreateBus(getAccessToken, { branchId: activeBranchId, ...input })
+      if (result.kind === 'ok' && transportBranchRef.current === activeBranchId) {
+        setBuses((current) => [...current, result.data])
+      }
+    },
+    [activeBranchId, getAccessToken],
+  )
+
+  const updateBus = useCallback(
+    async (id: string, patch: { name?: string; seats?: number }) => {
+      const branchId = activeBranchId
+      const result = await apiUpdateBus(getAccessToken, id, patch)
+      if (result.kind === 'ok' && transportBranchRef.current === branchId) {
+        setBuses((current) => current.map((b) => (b.id === id ? result.data : b)))
+      }
+    },
+    [activeBranchId, getAccessToken],
+  )
+
+  const removeBus = useCallback(
+    async (id: string) => {
+      const branchId = activeBranchId
+      const result = await deactivateBus(getAccessToken, id)
+      if (result.kind === 'ok' && transportBranchRef.current === branchId) {
+        setBuses((current) => current.filter((b) => b.id !== id))
+        // The server unpins every stop pointed at this bus in the same
+        // transaction as the deactivation — mirror that locally rather
+        // than re-fetching the whole stop list for one field.
+        setStops((current) => current.map((s) => (s.pinnedBusId === id ? { ...s, pinnedBusId: null } : s)))
+      }
+    },
+    [activeBranchId, getAccessToken],
+  )
+
+  const createStop = useCallback(
+    async (input: { name: string; lat: number; lng: number; pinnedBusId?: string | null }) => {
+      if (!activeBranchId) return
+      const result = await apiCreateStop(getAccessToken, { branchId: activeBranchId, ...input })
+      if (result.kind === 'ok' && transportBranchRef.current === activeBranchId) {
+        setStops((current) => [...current, result.data])
+      }
+    },
+    [activeBranchId, getAccessToken],
+  )
+
+  const updateStop = useCallback(
+    async (id: string, patch: { name?: string; lat?: number; lng?: number; pinnedBusId?: string | null }) => {
+      const branchId = activeBranchId
+      const result = await apiUpdateStop(getAccessToken, id, patch)
+      if (result.kind === 'ok' && transportBranchRef.current === branchId) {
+        setStops((current) => current.map((s) => (s.id === id ? result.data : s)))
+      }
+    },
+    [activeBranchId, getAccessToken],
+  )
+
+  const removeStop = useCallback(
+    async (id: string) => {
+      const branchId = activeBranchId
+      const result = await deactivateStop(getAccessToken, id)
+      if (result.kind === 'ok' && transportBranchRef.current === branchId) {
+        setStops((current) => current.filter((s) => s.id !== id))
+      }
+    },
+    [activeBranchId, getAccessToken],
+  )
+
+  /** Updates the shared local copy instantly (typing feels the same as the
+   * old local-only draft did) — the debounced effect below is what actually
+   * persists it, same split as `problem`'s own autosave. */
+  const updateTransportSettingsFn = useCallback((patch: Partial<TransportSettings>) => {
+    setTransportSettings((current) => ({ ...current, ...patch }))
+  }, [])
+
+  // Debounced save, mirroring the `problem` autosave effect further down:
+  // a burst of typing (or a settings row just being fetched) writes once,
+  // 600ms after it settles, not on every keystroke.
+  useEffect(() => {
+    if (transportSettingsHydrating.current) {
+      transportSettingsHydrating.current = false
+      return
+    }
+    if (!activeBranchId) return
+    // `transportSettings` state still holds the branch we last fetched it
+    // for, not necessarily `activeBranchId` — e.g. mid branch-switch, before
+    // the new branch's GET has resolved. Writing here would PUT (a full
+    // replace) the wrong branch's data onto `activeBranchId`'s settings row.
+    if (transportSettingsBranchRef.current !== activeBranchId) return
+    const branchId = activeBranchId
+    const timer = setTimeout(() => {
+      void apiUpdateTransportSettings(getAccessToken, branchId, transportSettings)
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [transportSettings, activeBranchId, getAccessToken])
 
   const [syncSettings, setSyncSettingsState] = useState<SyncSettings>(loadSyncSettings)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
@@ -457,53 +547,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reader.readAsText(file)
   }, [])
 
-  /**
-   * The fleet rides along with every "Sync now" / "Pull from server", under
-   * its own dataset key — one document per branch (`fleet-<branchId>`)
-   * rather than the timetable's own, since a campus's bus routing has
-   * nothing to do with how many timetable drafts the school keeps. Best-
-   * effort: a conflict or error here is folded into the main sync's status
-   * message rather than blocking it or opening a second conflict UI — the
-   * next pull picks up whatever didn't push. The roster no longer rides
-   * along here — see the comment on `fleetDatasetKey` above.
-   */
-  const pushFleet = useCallback(async (): Promise<string | null> => {
-    const fleetResult = await pushDocument(
-      syncSettings,
-      fleetDatasetKey(activeBranchId),
-      fleet,
-      fleetRevision,
-      getAccessToken,
-    )
-    if (fleetResult.kind === 'pushed' && fleetResult.revision) {
-      setFleetRevision(fleetResult.revision)
-      writeRevision(fleetRevisionKey(activeBranchId), fleetResult.revision)
-      markFleetEverSynced(activeBranchId)
-      return null
-    }
-    if (fleetResult.kind !== 'pushed') {
-      return `fleet: ${fleetResult.kind === 'conflict' ? 'SERVER_AHEAD' : (fleetResult.message ?? 'UNKNOWN')}`
-    }
-    return null
-  }, [syncSettings, fleet, fleetRevision, activeBranchId, getAccessToken])
-
-  const pullFleet = useCallback(async (): Promise<void> => {
-    let fleetResult = await pullDocument<FleetProblem>(syncSettings, fleetDatasetKey(activeBranchId), getAccessToken)
-    // Same one-time migration as the local read: a branch that has never
-    // pushed its own fleet yet reads the old tenant-wide document once,
-    // rather than pulling nothing and silently reverting to the sample.
-    if (fleetResult.kind === 'empty') {
-      fleetResult = await pullDocument<FleetProblem>(syncSettings, LEGACY_FLEET_DATASET_KEY, getAccessToken)
-    }
-    if (fleetResult.kind === 'pulled' && fleetResult.data) {
-      const server = fleetResult.data
-      setFleetState((base) => ({ ...base, ...server, settings: { ...base.settings, ...server.settings } }))
-      setFleetRevision(fleetResult.revision ?? 1)
-      writeRevision(fleetRevisionKey(activeBranchId), fleetResult.revision ?? 1)
-      markFleetEverSynced(activeBranchId)
-    }
-  }, [syncSettings, activeBranchId, getAccessToken])
-
   /** Push local work up. A 409 means someone else saved first. */
   const syncNow = useCallback(async () => {
     if (!isConfigured(syncSettings)) {
@@ -511,17 +554,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
     setSyncStatus((c) => ({ ...c, state: 'syncing', message: null }))
-    const [result, fleetStudentsNote] = await Promise.all([
-      pushDataset(syncSettings, problem, revision, getAccessToken),
-      pushFleet(),
-    ])
+    const result = await pushDataset(syncSettings, problem, revision, getAccessToken)
     if (result.kind === 'pushed') {
       markEverSynced(syncSettings.schoolId)
       setSyncStatus({
         state: 'synced',
         lastSyncedAt: result.updatedAt ?? new Date().toISOString(),
         serverRevision: result.revision ?? null,
-        message: fleetStudentsNote,
+        message: null,
       })
     } else if (result.kind === 'conflict') {
       setSyncStatus((c) => ({
@@ -533,7 +573,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setSyncStatus((c) => ({ ...c, state: 'error', message: result.message ?? 'UNKNOWN' }))
     }
-  }, [syncSettings, problem, revision, getAccessToken, pushFleet])
+  }, [syncSettings, problem, revision, getAccessToken])
 
   /** Take the server copy, discarding local edits. */
   const pullFromServer = useCallback(async () => {
@@ -542,7 +582,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
     setSyncStatus((c) => ({ ...c, state: 'syncing', message: null }))
-    const [result] = await Promise.all([pullDataset(syncSettings, getAccessToken), pullFleet()])
+    const result = await pullDataset(syncSettings, getAccessToken)
     if (result.kind === 'pulled' && result.problem) {
       setProblemState(result.problem)
       setRevision(result.revision ?? 1)
@@ -558,7 +598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       setSyncStatus((c) => ({ ...c, state: 'error', message: result.message ?? 'UNKNOWN' }))
     }
-  }, [syncSettings, getAccessToken, pullFleet])
+  }, [syncSettings, getAccessToken])
 
   /**
    * Auto-hydration: a device/tenant pairing that has never completed a real
@@ -582,11 +622,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * everSynced, so a later retry (next reload) can still pick up real data
    * once it exists.
    *
-   * Keyed by schoolId (like `fleetAutoPulled` is by branch), not a plain
-   * boolean: `syncSettings.schoolId` can change mid-session (Settings has a
-   * free-text field for it) — a boolean would permanently suppress the
-   * first-ever attempt for a newly-entered school once the very first
-   * schoolId's attempt had already run.
+   * Keyed by schoolId, not a plain boolean: `syncSettings.schoolId` can
+   * change mid-session (Settings has a free-text field for it) — a boolean
+   * would permanently suppress the first-ever attempt for a newly-entered
+   * school once the very first schoolId's attempt had already run.
    */
   const problemAutoPulled = useRef<Set<string>>(new Set())
   useEffect(() => {
@@ -605,39 +644,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })()
   }, [user, syncSettings, getAccessToken, problem])
 
-  /** Same idea as the `problem` auto-pull above, but per branch — a branch
-   * that has never synced its own fleet (and has no legacy tenant-wide
-   * fleet to fall back to) otherwise shows `sampleFleet()`'s fake stops and
-   * buses indefinitely. Reuses `pullFleet`, which already marks
-   * `everSynced` on a real pull. Same pristine-check reasoning as `problem`
-   * above — `hasFleetEverSynced` alone can't tell "nothing to lose" from
-   * "real unsynced routing edits sitting here." */
-  const fleetAutoPulled = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    if (!user || !activeBranchId) return
-    // `fleet` lags `activeBranchId` by one render right after a branch
-    // switch (the branch-switch effect above hasn't committed its
-    // `setFleetState` yet) — deciding from a stale, wrong-branch `fleet`
-    // here would both check the wrong data AND (worse) permanently mark
-    // this branch "attempted" before its real fleet was ever examined.
-    // Wait for `fleetBranchRef` to confirm `fleet` actually belongs to this
-    // branch; the effect re-runs once it does, since `fleet` is a dep.
-    if (fleetBranchRef.current !== activeBranchId) return
-    if (fleetAutoPulled.current.has(activeBranchId)) return
-    fleetAutoPulled.current.add(activeBranchId)
-    if (!isConfigured(syncSettings) || hasFleetEverSynced(activeBranchId)) return
-    if (!isPristineFleet(fleet)) return
-    void pullFleet()
-  }, [user, activeBranchId, syncSettings, pullFleet, fleet])
-
   /**
    * The bus-routing roster (`students`) has no offline-draft concept — every
    * edit already goes straight to the server (see studentsApi.ts), so unlike
-   * `problem`/`fleet` there's no local work to risk discarding, and this can
-   * just always fetch. Previously only StudentsPage did this fetch, so a
-   * page that reads `students` without ever visiting Students first (Bus
-   * Routes' roster) could show `sampleStudents()`'s fake roster to a signed-
-   * in admin indefinitely.
+   * `problem` there's no local work to risk discarding, and this can just
+   * always fetch. Previously only StudentsPage did this fetch, so a page
+   * that reads `students` without ever visiting Students first (Bus Routes'
+   * roster) could show stale or empty data indefinitely.
    */
   useEffect(() => {
     if (!user) return
@@ -674,7 +687,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       theme,
       setTheme,
       fleet,
-      setFleet: setFleetState,
+      transportLoading,
+      buses,
+      setBuses,
+      stops,
+      setStops,
+      createBus,
+      updateBus,
+      removeBus,
+      createStop,
+      updateStop,
+      removeStop,
+      updateTransportSettings: updateTransportSettingsFn,
       students,
       setStudents: setStudentsState,
       branches,
@@ -706,6 +730,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       theme,
       setTheme,
       fleet,
+      transportLoading,
+      buses,
+      stops,
+      createBus,
+      updateBus,
+      removeBus,
+      createStop,
+      updateStop,
+      removeStop,
+      updateTransportSettingsFn,
       students,
       branches,
       activeBranchId,

@@ -24,12 +24,11 @@ export interface NewClass {
   academicYearId?: string | null
 }
 
-/** Demo-only cohort labels shared by the offline sample generators
- * (`sample.ts`'s `CURRICULUM`, `students.ts`'s `sampleStudents`) — kept in
- * one place so the two can't drift the way they used to: both files
- * previously hand-kept their own copy of the same six labels in sync by
- * hand. These `classId`s only exist within the bundled demo data; they
- * never correspond to a real `SchoolClass` a signed-in tenant would have. */
+/** Demo-only cohort labels for the offline Timetable sample generator
+ * (`sample.ts`'s `CURRICULUM`) and the lesson editor's before-a-branch-
+ * loads fallback (`DataPanel.tsx`). These `classId`s only exist within that
+ * bundled demo data; they never correspond to a real `SchoolClass` a
+ * signed-in tenant would have. */
 export const SAMPLE_COHORTS: Array<{ classId: string; label: string }> = [
   { classId: 'SAMPLE-KG1-A', label: 'KG1-A' },
   { classId: 'SAMPLE-KG2-A', label: 'KG2-A' },

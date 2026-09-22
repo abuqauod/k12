@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { sampleFleet } from '../domain/fleet'
 import type { FleetProblem } from '../domain/fleet'
 import type { RunDirection } from '../domain/students'
 import {
@@ -22,9 +21,6 @@ import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 
 const BUDGETS = [3000, 8000, 20000]
-
-let busCounter = 0
-let stopCounter = 0
 
 const WIDTHS_KEY = 'fleet.layout'
 // Wider than the timetable's side panels — the stops editor table (name,
@@ -60,7 +56,22 @@ function readWidths(): PanelWidths {
 
 export function RoutesPage() {
   const { t, n } = useI18n()
-  const { fleet, setFleet, students, setStudents } = useApp()
+  const {
+    fleet,
+    transportLoading,
+    buses,
+    setBuses,
+    stops,
+    setStops,
+    createBus: apiCreateBus,
+    updateBus: apiUpdateBus,
+    removeBus: apiRemoveBus,
+    createStop: apiCreateStop,
+    updateStop: apiUpdateStop,
+    removeStop: apiRemoveStop,
+    students,
+    setStudents,
+  } = useApp()
   const { getAccessToken } = useAuth()
   const { solution, progress, solving, error, run, stop } = useFleetSolver()
 
@@ -215,52 +226,76 @@ export function RoutesPage() {
   const totalStudents = students.filter((s) => s.active && s.transportMode !== 'NONE').length
   const totalSeats = fleet.buses.reduce((sum, bus) => sum + bus.seats, 0)
 
-  const addBus = () => {
-    busCounter += 1
-    const id = `BUS-NEW-${Date.now().toString(36)}-${busCounter}`
-    setFleet({ ...fleet, buses: [...fleet.buses, { id, name: t('fleet.newBus'), seats: 30 }] })
+  // Debounced per-row save for the bus/stop tables' text and number cells —
+  // rapid keystrokes coalesce into one PATCH per row, not one per
+  // character. The local `setBuses`/`setStops` call gives instant feedback
+  // (typing feels the same as the old local-only draft did); the API call
+  // is what actually persists it. Same idiom as StudentsPage.tsx's own
+  // per-row debounced save.
+  const busTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const busPending = useRef<Record<string, Partial<{ name: string; seats: number }>>>({})
+  const scheduleBusSave = (id: string, changes: Partial<{ name: string; seats: number }>) => {
+    busPending.current[id] = { ...busPending.current[id], ...changes }
+    clearTimeout(busTimers.current[id])
+    busTimers.current[id] = setTimeout(() => {
+      const pending = busPending.current[id]
+      delete busPending.current[id]
+      if (pending) void apiUpdateBus(id, pending)
+    }, 600)
+  }
+  const patchBus = (id: string, changes: Partial<{ name: string; seats: number }>) => {
+    setBuses(buses.map((b) => (b.id === id ? { ...b, ...changes } : b)))
+    scheduleBusSave(id, changes)
   }
 
-  const removeBus = (busId: string) => {
-    setFleet({
-      ...fleet,
-      buses: fleet.buses.filter((b) => b.id !== busId),
-      // A stop pinned to the bus being removed would otherwise point at a
-      // bus that no longer exists — fall back to auto-assign.
-      stops: fleet.stops.map((s) => (s.pinnedBusId === busId ? { ...s, pinnedBusId: null } : s)),
-    })
+  const stopTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const stopPending = useRef<Record<string, Partial<{ name: string; lat: number; lng: number }>>>({})
+  const scheduleStopSave = (id: string, changes: Partial<{ name: string; lat: number; lng: number }>) => {
+    stopPending.current[id] = { ...stopPending.current[id], ...changes }
+    clearTimeout(stopTimers.current[id])
+    stopTimers.current[id] = setTimeout(() => {
+      const pending = stopPending.current[id]
+      delete stopPending.current[id]
+      if (pending) void apiUpdateStop(id, pending)
+    }, 600)
+  }
+  // `pinnedBusId` is a discrete select, not continuous typing — no
+  // debounce, and no local pre-merge with any pending text edit needed.
+  const patchStop = (id: string, changes: Partial<{ name: string; lat: number; lng: number; pinnedBusId: string | null }>) => {
+    setStops(stops.map((s) => (s.id === id ? { ...s, ...changes } : s)))
+    if ('pinnedBusId' in changes) void apiUpdateStop(id, { pinnedBusId: changes.pinnedBusId })
+    else scheduleStopSave(id, changes)
+  }
+
+  useEffect(
+    () => () => {
+      // Flush anything still pending rather than lose it on navigation.
+      for (const id of Object.keys(busTimers.current)) {
+        clearTimeout(busTimers.current[id])
+        const pending = busPending.current[id]
+        if (pending) void apiUpdateBus(id, pending)
+      }
+      for (const id of Object.keys(stopTimers.current)) {
+        clearTimeout(stopTimers.current[id])
+        const pending = stopPending.current[id]
+        if (pending) void apiUpdateStop(id, pending)
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+
+  const addBus = () => void apiCreateBus({ name: t('fleet.newBus'), seats: 30 })
+
+  const handleRemoveBus = (busId: string) => {
+    void apiRemoveBus(busId)
     if (focusBusId === busId) setFocusBusId(null)
   }
 
-  const addStop = () => {
-    stopCounter += 1
-    const id = `ST-NEW-${Date.now().toString(36)}-${stopCounter}`
-    setFleet({
-      ...fleet,
-      stops: [
-        ...fleet.stops,
-        {
-          id,
-          name: t('fleet.newStop'),
-          lat: fleet.depot.lat,
-          lng: fleet.depot.lng,
-          studentCount: 0,
-          pinnedBusId: null,
-        },
-      ],
-    })
-  }
+  const addStop = () =>
+    void apiCreateStop({ name: t('fleet.newStop'), lat: fleet.depot.lat, lng: fleet.depot.lng })
 
-  const patchStop = (stopId: string, changes: Partial<(typeof fleet.stops)[number]>) => {
-    setFleet({
-      ...fleet,
-      stops: fleet.stops.map((s) => (s.id === stopId ? { ...s, ...changes } : s)),
-    })
-  }
-
-  const removeStop = (stopId: string) => {
-    setFleet({ ...fleet, stops: fleet.stops.filter((s) => s.id !== stopId) })
-  }
+  const handleRemoveStop = (stopId: string) => void apiRemoveStop(stopId)
 
   return (
     <div className="app">
@@ -341,18 +376,6 @@ export function RoutesPage() {
               {t('fleet.optimise')}
             </button>
           )}
-
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={() => {
-              setFleet(sampleFleet())
-              setMatrix(null)
-              setFocusBusId(null)
-            }}
-          >
-            {t('header.reset')}
-          </button>
         </div>
       </header>
 
@@ -370,6 +393,7 @@ export function RoutesPage() {
         }
       >
         <aside className="column column--left">
+          {transportLoading && <p className="card__hint">{t('fleet.loading')}</p>}
           <div className="panel">
             <div className="panel__head">
               <h3 className="panel__title">{t('fleet.fleetTitle')}</h3>
@@ -460,14 +484,7 @@ export function RoutesPage() {
                       <input
                         className="cell-input"
                         value={bus.name}
-                        onChange={(event) =>
-                          setFleet({
-                            ...fleet,
-                            buses: fleet.buses.map((b) =>
-                              b.id === bus.id ? { ...b, name: event.target.value } : b,
-                            ),
-                          })
-                        }
+                        onChange={(event) => patchBus(bus.id, { name: event.target.value })}
                       />
                     </td>
                     <td>
@@ -477,14 +494,7 @@ export function RoutesPage() {
                         min={1}
                         value={bus.seats}
                         onChange={(event) =>
-                          setFleet({
-                            ...fleet,
-                            buses: fleet.buses.map((b) =>
-                              b.id === bus.id
-                                ? { ...b, seats: Math.max(1, Number(event.target.value) || 1) }
-                                : b,
-                            ),
-                          })
+                          patchBus(bus.id, { seats: Math.max(1, Number(event.target.value) || 1) })
                         }
                       />
                     </td>
@@ -492,7 +502,7 @@ export function RoutesPage() {
                       <button
                         type="button"
                         className="icon-btn"
-                        onClick={() => removeBus(bus.id)}
+                        onClick={() => handleRemoveBus(bus.id)}
                         aria-label={`${t('fleet.removeBus')} ${bus.name}`}
                       >
                         ×
@@ -576,7 +586,7 @@ export function RoutesPage() {
                         <button
                           type="button"
                           className="icon-btn"
-                          onClick={() => removeStop(stop.id)}
+                          onClick={() => handleRemoveStop(stop.id)}
                           aria-label={`${t('fleet.removeStop')} ${stop.name}`}
                         >
                           ×

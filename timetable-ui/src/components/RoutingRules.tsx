@@ -15,13 +15,21 @@ import { LocationPicker } from './LocationPicker'
  */
 export function RoutingRulesEditor({ showBellCheck = true }: { showBellCheck?: boolean }) {
   const { t } = useI18n()
-  const { fleet, setFleet, problem, branches, activeBranchId } = useApp()
+  const { fleet, updateTransportSettings, problem, branches, activeBranchId } = useApp()
 
-  const patch = (changes: Partial<typeof fleet.settings>) =>
-    setFleet({ ...fleet, settings: { ...fleet.settings, ...changes } })
+  // `updateTransportSettings` updates the shared local copy instantly (so
+  // typing feels the same as before) and debounces the actual save itself
+  // — see state/AppContext.tsx's transport-settings save effect, same
+  // shape as the timetable `problem`'s own autosave debounce.
+  const patch = (changes: Partial<typeof fleet.settings>) => void updateTransportSettings(changes)
 
-  const patchDepot = (changes: Partial<typeof fleet.depot>) =>
-    setFleet({ ...fleet, depot: { ...fleet.depot, ...changes } })
+  const patchDepot = (changes: Partial<{ name: string; lat: number; lng: number }>) => {
+    const mapped: Partial<{ depotName: string; depotLat: number; depotLng: number }> = {}
+    if (changes.name !== undefined) mapped.depotName = changes.name
+    if (changes.lat !== undefined) mapped.depotLat = changes.lat
+    if (changes.lng !== undefined) mapped.depotLng = changes.lng
+    void updateTransportSettings(mapped)
+  }
 
   // Draft text, decoupled from `fleet.depot.lat/lng`, for the same reason as
   // the student location fields: an in-progress "-" or "35." keystroke must

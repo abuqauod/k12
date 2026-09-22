@@ -138,78 +138,35 @@ export const FLEET_CONSTRAINT_META: Record<
   BUSES_USED: { level: 'SOFT', labelKey: 'fleet.constraint.buses' },
 }
 
-/* ------------------------------------------------------------------ sample */
+/* --------------------------------------------------------------- assembly */
+// `FleetProblem` — the shape the VRP solver and the map consume — is now
+// assembled from the real transport backend's separate resources (buses,
+// stops, per-branch settings) plus the live student roster, rather than
+// being a single JSON blob that could hold bundled fake data. See
+// state/AppContext.tsx for where this is called.
 
-const SCHOOL: Depot = {
-  id: 'DEPOT',
-  name: 'Northgate International School',
-  lat: 31.9539,
-  lng: 35.9106,
+/** A branch's full transport settings row from the API — `FleetSettings`
+ * plus the depot fields, which travel together over the wire (one PUT
+ * /branches/:id/transport-settings) but are kept as separate `depot`/
+ * `settings` objects in `FleetProblem`, matching how the solver and the map
+ * have always consumed them. */
+export interface TransportSettings extends FleetSettings {
+  depotName: string
+  depotLat: number
+  depotLng: number
 }
 
-/** Deterministic, so the demo map looks the same on every load. */
-function mulberry32(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-const NEIGHBOURHOODS = [
-  'Abdoun', 'Sweifieh', 'Deir Ghbar', 'Um Uthaina', 'Khalda', 'Tla al-Ali',
-  'Jubeiha', 'Shmeisani', 'Rabieh', 'Dabouq', 'Marj al-Hamam', 'Naour',
-  'Wadi Saqra', 'Jabal Amman', 'Weibdeh', 'Medina', 'Gardens', 'Sports City',
-  'Mecca St', 'Zahran', 'Airport Rd', 'Bayader', 'Hummar', 'Sahab',
-]
-
-export function sampleFleet(): FleetProblem {
-  const random = mulberry32(0x51e3)
-  const stops: BusStop[] = NEIGHBOURHOODS.map((name, index) => {
-    // Scatter stops in a ring 1.5–7 km around the school.
-    const angle = (index / NEIGHBOURHOODS.length) * Math.PI * 2 + random() * 0.5
-    const radiusKm = 1.5 + random() * 5.5
-    const latOffset = (radiusKm / 111) * Math.cos(angle)
-    const lngOffset = (radiusKm / (111 * Math.cos((SCHOOL.lat * Math.PI) / 180))) * Math.sin(angle)
-    return {
-      id: `ST-${String(index + 1).padStart(2, '0')}`,
-      name,
-      lat: Number((SCHOOL.lat + latOffset).toFixed(5)),
-      lng: Number((SCHOOL.lng + lngOffset).toFixed(5)),
-      studentCount: 4 + Math.floor(random() * 15),
-    }
-  })
-
-  // Sized against the ~250 students the stops generate, with roughly 10%
-  // headroom. A fleet with fewer seats than students can never be feasible,
-  // and the panel says so before you waste a solve on it.
-  const buses: Bus[] = [
-    { id: 'BUS-1', name: 'Bus 1', seats: 45 },
-    { id: 'BUS-2', name: 'Bus 2', seats: 45 },
-    { id: 'BUS-3', name: 'Bus 3', seats: 45 },
-    { id: 'BUS-4', name: 'Bus 4', seats: 32 },
-    { id: 'BUS-5', name: 'Bus 5', seats: 32 },
-    { id: 'BUS-6', name: 'Bus 6', seats: 32 },
-    { id: 'BUS-7', name: 'Bus 7', seats: 24 },
-    { id: 'BUS-8', name: 'Bus 8', seats: 24 },
-  ]
-
+export function assembleFleetProblem(
+  buses: Bus[],
+  stops: BusStop[],
+  settings: TransportSettings,
+  studentCounts: Map<string, number>,
+): FleetProblem {
   return {
-    depot: SCHOOL,
+    depot: { id: 'DEPOT', name: settings.depotName, lat: settings.depotLat, lng: settings.depotLng },
     buses,
-    stops,
-    settings: {
-      roadFactor: 1.35,
-      averageSpeedKph: 32,
-      dwellMinutes: 1.5,
-      maxRideMinutes: 45,
-      earliestDeparture: '06:30:00',
-      bellTime: '08:30:00',
-      arrivalBufferMinutes: 15,
-      osrmUrl: 'http://localhost:5001',
-    },
+    stops: stops.map((stop) => ({ ...stop, studentCount: studentCounts.get(stop.id) ?? 0 })),
+    settings,
   }
 }
 
