@@ -1,15 +1,72 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import { schoolDays } from '../domain/calendar'
 import { coverage, hhmm, naturalCompare, unique } from '../lib/view'
+import { auditStudents } from '../domain/students'
+import { listInvoices } from '../lib/financeApi'
+import { formatMinorUnits } from '../domain/finance'
+
+interface InvoiceSummary {
+  outstanding: number
+  overdue: number
+  openTotal: number
+}
 
 export function DashboardPage() {
   const { t, n, day, lang } = useI18n()
-  const { user } = useAuth()
-  const { problem, solution, solving, progress, solve, stop } = useApp()
+  const { user, getAccessToken } = useAuth()
+  const { problem, solution, solving, progress, solve, stop, students, buses, stops, activeBranchId, transportLoading } =
+    useApp()
+
+  const activeStudents = useMemo(() => students.filter((s) => s.active), [students])
+  const studentsNeedingAttention = useMemo(
+    () => new Set(auditStudents(students).map((issue) => issue.studentId)).size,
+    [students],
+  )
+  const studentsWithoutStop = useMemo(
+    () => activeStudents.filter((s) => s.transportMode !== 'NONE' && !s.stopId).length,
+    [activeStudents],
+  )
+
+  const [invoiceSummary, setInvoiceSummary] = useState<InvoiceSummary | null>(null)
+  const [financeLoading, setFinanceLoading] = useState(false)
+  const [financeError, setFinanceError] = useState(false)
+
+  useEffect(() => {
+    if (!activeBranchId) {
+      setInvoiceSummary(null)
+      setFinanceError(false)
+      return
+    }
+    let cancelled = false
+    setFinanceLoading(true)
+    setFinanceError(false)
+    void (async () => {
+      const [openResult, partialResult] = await Promise.all([
+        listInvoices(getAccessToken, { branchId: activeBranchId, status: 'open' }),
+        listInvoices(getAccessToken, { branchId: activeBranchId, status: 'partially_paid' }),
+      ])
+      if (cancelled) return
+      setFinanceLoading(false)
+      if (openResult.kind !== 'ok' || partialResult.kind !== 'ok') {
+        setFinanceError(true)
+        return
+      }
+      const invoices = [...openResult.data, ...partialResult.data]
+      const today = new Date().toISOString().slice(0, 10)
+      setInvoiceSummary({
+        outstanding: invoices.length,
+        overdue: invoices.filter((inv) => inv.dueDate && inv.dueDate < today).length,
+        openTotal: openResult.data.reduce((sum, inv) => sum + inv.total, 0),
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeBranchId, getAccessToken])
 
   const teachers = useMemo(
     () => unique(problem.lessons.map((lesson) => lesson.teacher)).sort(naturalCompare),
@@ -65,6 +122,80 @@ export function DashboardPage() {
           )}
         </div>
       </header>
+
+      <section className="card">
+        <h2 className="card__title">{t('dash.overview.title')}</h2>
+        <p className="card__hint">{t('dash.overview.subtitle')}</p>
+        {!activeBranchId ? (
+          <p className="card__empty">{t('dash.overview.noBranch')}</p>
+        ) : (
+          <div className="card-row">
+            <section className="card">
+              <h3 className="card__subtitle">{t('dash.overview.students.title')}</h3>
+              <div className="stat-row">
+                <span>{t('dash.overview.students.active')}</span>
+                <b>{n(activeStudents.length)}</b>
+              </div>
+              <div className="stat-row">
+                <span>{t('dash.overview.students.attention')}</span>
+                <b style={{ color: studentsNeedingAttention > 0 ? 'var(--bad)' : undefined }}>
+                  {n(studentsNeedingAttention)}
+                </b>
+              </div>
+            </section>
+
+            <section className="card">
+              <h3 className="card__subtitle">{t('dash.overview.transport.title')}</h3>
+              {transportLoading ? (
+                <p className="card__hint">{t('dash.overview.transport.loading')}</p>
+              ) : (
+                <>
+                  <div className="stat-row">
+                    <span>{t('dash.overview.transport.buses')}</span>
+                    <b>{n(buses.length)}</b>
+                  </div>
+                  <div className="stat-row">
+                    <span>{t('dash.overview.transport.stops')}</span>
+                    <b>{n(stops.length)}</b>
+                  </div>
+                  <div className="stat-row">
+                    <span>{t('dash.overview.transport.noStop')}</span>
+                    <b style={{ color: studentsWithoutStop > 0 ? 'var(--bad)' : undefined }}>
+                      {n(studentsWithoutStop)}
+                    </b>
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="card">
+              <h3 className="card__subtitle">{t('dash.overview.finance.title')}</h3>
+              {financeLoading ? (
+                <p className="card__hint">{t('dash.overview.finance.loading')}</p>
+              ) : financeError || !invoiceSummary ? (
+                <p className="card__empty">{t('dash.overview.finance.error')}</p>
+              ) : (
+                <>
+                  <div className="stat-row">
+                    <span>{t('dash.overview.finance.outstanding')}</span>
+                    <b>{n(invoiceSummary.outstanding)}</b>
+                  </div>
+                  <div className="stat-row">
+                    <span>{t('dash.overview.finance.overdue')}</span>
+                    <b style={{ color: invoiceSummary.overdue > 0 ? 'var(--bad)' : undefined }}>
+                      {n(invoiceSummary.overdue)}
+                    </b>
+                  </div>
+                  <div className="stat-row">
+                    <span>{t('dash.overview.finance.openTotal')}</span>
+                    <b>{formatMinorUnits(invoiceSummary.openTotal)}</b>
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
+        )}
+      </section>
 
       <section className="kpi-row">
         {kpis.map((kpi) => (
