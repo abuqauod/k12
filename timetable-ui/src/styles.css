@@ -240,11 +240,11 @@ select {
   /* Also applied to router <Link>s, which need the anchor defaults cleared. */
   color: var(--ink);
   text-decoration: none;
-  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  transition: filter 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--surface-2);
+  filter: brightness(1.06);
   border-color: var(--line-strong);
   transform: translateY(-1px);
   box-shadow: 0 4px 10px -6px rgba(15, 14, 12, 0.25);
@@ -286,10 +286,6 @@ select {
 .btn--ghost {
   border-color: transparent;
   background: transparent;
-}
-
-.btn--ghost:hover:not(:disabled) {
-  background: var(--surface-2);
 }
 
 .btn--sm {
