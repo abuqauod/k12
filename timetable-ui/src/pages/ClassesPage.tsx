@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { byGrade } from '../domain/classes'
 import type { SchoolClass } from '../domain/classes'
 import {
@@ -26,6 +27,28 @@ export function ClassesPage() {
   const [newSections, setNewSections] = useState('')
   const [newCapacity, setNewCapacity] = useState(30)
   const [busy, setBusy] = useState(false)
+
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
+
+  // Deep-link from GlobalSearch: ?class=<id> scrolls to and briefly
+  // highlights that row (Classes has no detail dialog to open instead).
+  useEffect(() => {
+    const id = searchParams.get('class')
+    if (!id || !classes.some((c) => c.id === id)) return
+    setSearchParams(
+      (prev) => {
+        prev.delete('class')
+        return prev
+      },
+      { replace: true },
+    )
+    rowRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightId(id)
+    const timer = setTimeout(() => setHighlightId(null), 1600)
+    return () => clearTimeout(timer)
+  }, [classes, searchParams, setSearchParams])
 
   const branchName = branches.find((b) => b.id === activeBranchId)?.name ?? ''
 
@@ -210,7 +233,14 @@ export function ClassesPage() {
               </thead>
               <tbody>
                 {group.sections.map((klass) => (
-                  <tr key={klass.id} style={{ opacity: klass.active ? 1 : 0.55 }}>
+                  <tr
+                    key={klass.id}
+                    ref={(el) => {
+                      rowRefs.current[klass.id] = el
+                    }}
+                    className={klass.id === highlightId ? 'row--highlight' : undefined}
+                    style={{ opacity: klass.active ? 1 : 0.55 }}
+                  >
                     <td>
                       <input
                         className="cell-input"

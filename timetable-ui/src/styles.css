@@ -485,6 +485,13 @@ select {
   background: var(--surface-2);
 }
 
+/* Jumped to from GlobalSearch — a brief tint that fades back out, so the
+   row a search result pointed at is findable without staying marked. */
+.row--highlight {
+  background: var(--accent-soft);
+  transition: background 1.6s ease;
+}
+
 .table .cell-input {
   width: 100%;
   border: 1px solid transparent;
