@@ -481,15 +481,24 @@ select {
   vertical-align: middle;
 }
 
+.table tbody tr {
+  transition: background 1.6s ease;
+}
+
 .table tbody tr:hover {
   background: var(--surface-2);
+  /* Overrides the slow fade above — hover feedback stays instant; only the
+     GlobalSearch highlight below uses the slow fade-out. */
+  transition: background 120ms ease;
 }
 
 /* Jumped to from GlobalSearch — a brief tint that fades back out, so the
-   row a search result pointed at is findable without staying marked. */
+   row a search result pointed at is findable without staying marked. The
+   fade-out transition lives on the base rule above: it has to be in effect
+   on the ruleset the row reverts TO once JS removes this class, not on this
+   one, or removing the class snaps the color back instead of fading it. */
 .row--highlight {
   background: var(--accent-soft);
-  transition: background 1.6s ease;
 }
 
 .table .cell-input {

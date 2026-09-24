@@ -48,6 +48,8 @@ export function AppShell() {
   const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [searchOpen, setSearchOpen] = useState(false)
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent)
+  const shortcutLabel = isMac ? '⌘K' : 'Ctrl+K'
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -139,13 +141,16 @@ export function AppShell() {
         <button
           type="button"
           className="btn btn--sm btn--block"
-          title={collapsed ? t('search.trigger') : undefined}
+          title={collapsed ? t('search.trigger') : t('search.shortcutHint', { shortcut: shortcutLabel })}
           onClick={() => setSearchOpen(true)}
         >
           <span className="sidebar__icon" aria-hidden="true">
             ⌕
           </span>
-          <span className="sidebar__label">{t('search.trigger')}</span>
+          <span className="sidebar__label" style={{ flex: 1, textAlign: 'start' }}>
+            {t('search.trigger')}
+          </span>
+          {!collapsed && <kbd className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{shortcutLabel}</kbd>}
         </button>
 
         <nav className="sidebar__nav" aria-label={t('nav.menu')}>
