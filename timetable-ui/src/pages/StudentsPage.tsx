@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { Student, TransportMode } from '../domain/students'
 import { TRANSPORT_MODES, auditStudents, isValidPhone } from '../domain/students'
 import type { NewStudent } from '../lib/studentsApi'
@@ -42,6 +43,22 @@ export function StudentsPage() {
   const [pendingSaves, setPendingSaves] = useState(0)
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Deep-link from GlobalSearch: ?student=<id> opens that student's detail
+  // dialog, then the param is dropped so it doesn't reopen on a later visit.
+  useEffect(() => {
+    const id = searchParams.get('student')
+    if (!id) return
+    setDetailId(id)
+    setSearchParams(
+      (prev) => {
+        prev.delete('student')
+        return prev
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
 
   const classLabel = useMemo(() => new Map(classes.map((c) => [c.id, c.label])), [classes])
 

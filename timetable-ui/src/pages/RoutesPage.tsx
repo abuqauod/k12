@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { FleetProblem } from '../domain/fleet'
 import type { RunDirection } from '../domain/students'
 import {
@@ -77,6 +77,38 @@ export function RoutesPage() {
 
   const [budget, setBudget] = useState(8000)
   const [focusBusId, setFocusBusId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [highlightStopId, setHighlightStopId] = useState<string | null>(null)
+  const stopRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
+
+  // Deep-links from GlobalSearch: ?bus=<id> reuses the existing focus-bus
+  // state; ?stop=<id> scrolls to and briefly highlights that stop's row
+  // (stops have no separate detail view to focus instead).
+  useEffect(() => {
+    const busId = searchParams.get('bus')
+    const stopId = searchParams.get('stop')
+    if (!busId && !stopId) return
+    // Wait for the fleet to actually contain the target before consuming
+    // the param — otherwise a slow-loading fleet would silently drop the
+    // deep link the first time this effect runs.
+    const busReady = !busId || fleet.buses.some((b) => b.id === busId)
+    const stopReady = !stopId || fleet.stops.some((s) => s.id === stopId)
+    if (!busReady || !stopReady) return
+    if (busId) setFocusBusId(busId)
+    if (stopId) {
+      stopRowRefs.current[stopId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightStopId(stopId)
+      setTimeout(() => setHighlightStopId(null), 1600)
+    }
+    setSearchParams(
+      (prev) => {
+        prev.delete('bus')
+        prev.delete('stop')
+        return prev
+      },
+      { replace: true },
+    )
+  }, [fleet.buses, fleet.stops, searchParams, setSearchParams])
   const [direction, setDirection] = useState<RunDirection>('MORNING')
   const [matrix, setMatrix] = useState<TravelMatrix | null>(null)
   const [matrixKey, setMatrixKey] = useState<string | null>(null)
@@ -534,7 +566,13 @@ export function RoutesPage() {
                 </thead>
                 <tbody>
                   {fleet.stops.map((stop) => (
-                    <tr key={stop.id}>
+                    <tr
+                      key={stop.id}
+                      ref={(el) => {
+                        stopRowRefs.current[stop.id] = el
+                      }}
+                      className={stop.id === highlightStopId ? 'row--highlight' : undefined}
+                    >
                       <td>
                         <input
                           className="cell-input"

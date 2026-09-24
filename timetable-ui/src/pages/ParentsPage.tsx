@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { Parent, ParentStatus } from '../domain/parents'
 import { archiveParent, listParents, reactivateParent } from '../lib/parentsApi'
 import { listClasses } from '../lib/classesApi'
@@ -29,6 +30,22 @@ export function ParentsPage() {
 
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Deep-link from GlobalSearch: ?parent=<id> opens that parent's detail
+  // dialog, then the param is dropped so it doesn't reopen on a later visit.
+  useEffect(() => {
+    const id = searchParams.get('parent')
+    if (!id) return
+    setOpenId(id)
+    setSearchParams(
+      (prev) => {
+        prev.delete('parent')
+        return prev
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     if (!branchId) {

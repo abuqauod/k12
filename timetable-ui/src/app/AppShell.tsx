@@ -5,6 +5,7 @@ import { useApp } from '../state/AppContext'
 import { useI18n } from '../i18n/I18nContext'
 import { BrandMark } from '../components/BrandMark'
 import { LanguageToggle } from '../components/LanguageToggle'
+import { GlobalSearch } from '../components/GlobalSearch'
 import type { TranslationKey } from '../i18n/translations'
 
 interface NavEntry {
@@ -46,6 +47,20 @@ export function AppShell() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent)
+  const shortcutLabel = isMac ? '⌘K' : 'Ctrl+K'
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((current) => {
@@ -123,6 +138,21 @@ export function AppShell() {
           </button>
         </div>
 
+        <button
+          type="button"
+          className="btn btn--sm btn--block"
+          title={collapsed ? t('search.trigger') : t('search.shortcutHint', { shortcut: shortcutLabel })}
+          onClick={() => setSearchOpen(true)}
+        >
+          <span className="sidebar__icon" aria-hidden="true">
+            ⌕
+          </span>
+          <span className="sidebar__label" style={{ flex: 1, textAlign: 'start' }}>
+            {t('search.trigger')}
+          </span>
+          {!collapsed && <kbd className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{shortcutLabel}</kbd>}
+        </button>
+
         <nav className="sidebar__nav" aria-label={t('nav.menu')}>
           <p className="sidebar__section">{t('nav.section.plan')}</p>
           {NAV.slice(0, NAV_SPLIT).map(renderLink)}
@@ -190,6 +220,8 @@ export function AppShell() {
         )}
         <Outlet />
       </div>
+
+      {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
     </div>
   )
 }
