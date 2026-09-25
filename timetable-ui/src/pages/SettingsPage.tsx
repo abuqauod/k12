@@ -12,8 +12,10 @@ import {
   listMembers,
   removeMember,
   setMemberBranches,
+  getRoleCatalog,
+  ROLE_KEYS,
 } from '../lib/memberships'
-import type { Member, MemberRole } from '../lib/memberships'
+import type { Member, MemberRole, RoleCatalog, RoleChoice } from '../lib/memberships'
 import {
   getNotificationSettings,
   getSchoolCalendar,
@@ -43,11 +45,11 @@ const BASE_TABS: Array<{ id: SettingsTab; key: TranslationKey }> = [
 
 export function SettingsPage() {
   const { t } = useI18n()
-  const { user } = useAuth()
+  const { can } = useAuth()
   const [tab, setTab] = useState<SettingsTab>('account')
-  // Staff management is an admin+ concern — a scheduler/viewer has no use
-  // for it and the API would refuse them anyway (requireRole('admin')).
-  const canManageTeam = user?.role === 'owner' || user?.role === 'admin'
+  // Staff management needs memberships.manage — the same scope the API
+  // enforces, resolved server-side (SAMS 1.8).
+  const canManageTeam = can('memberships.manage')
   const tabs = canManageTeam
     ? [
         ...BASE_TABS,
@@ -97,7 +99,7 @@ const DATASET_FILE = 'timetable-problem.json'
 
 function AccountTab() {
   const { t, n, lang, setLang } = useI18n()
-  const { user } = useAuth()
+  const { user, roleKey } = useAuth()
   const { theme, setTheme, problem, resetSample, importProblem } = useApp()
   const fileRef = useRef<HTMLInputElement>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -164,7 +166,7 @@ function AccountTab() {
           </div>
           <div className="stat-row">
             <span>{t('settings.role')}</span>
-            <b>{user ? t(`settings.role.${user.role}` as TranslationKey) : ''}</b>
+            <b>{user ? t(`settings.role.${roleKey ?? user.role}` as TranslationKey) : ''}</b>
           </div>
         </section>
 
@@ -372,17 +374,59 @@ function CalendarSettingsTab() {
 
 const MEMBER_ROLES: MemberRole[] = ['owner', 'admin', 'scheduler', 'viewer']
 
+/** Ranks and named presets in one picker (SAMS 1.8). Owner is offered only
+ * to an owner — the server refuses it to anyone else anyway. */
+function RoleSelect(props: {
+  value: RoleChoice
+  onChange: (next: RoleChoice) => void
+  allowOwner: boolean
+  disabled?: boolean
+}) {
+  const { t } = useI18n()
+  return (
+    <select
+      className="select"
+      value={props.value}
+      disabled={props.disabled}
+      onChange={(event) => props.onChange(event.target.value as RoleChoice)}
+    >
+      <optgroup label={t('team.group.ranks')}>
+        {MEMBER_ROLES.filter((r) => r !== 'owner' || props.allowOwner || props.value === 'owner').map((r) => (
+          <option key={r} value={r}>
+            {t(`settings.role.${r}`)}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label={t('team.group.presets')}>
+        {ROLE_KEYS.map((k) => (
+          <option key={k} value={k}>
+            {t(`settings.role.${k}`)}
+          </option>
+        ))}
+      </optgroup>
+    </select>
+  )
+}
+
+/** A preset confined to branches defaults to the active branch. */
+const BRANCH_CONFINED: RoleChoice[] = ['branch_admin']
+
 function TeamSettingsTab() {
   const { t } = useI18n()
   const { user, getAccessToken } = useAuth()
-  const { branches } = useApp()
+  const { branches, activeBranchId } = useApp()
+  const [catalog, setCatalog] = useState<RoleCatalog | null>(null)
   const [members, setMembers] = useState<Member[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<MemberRole>('scheduler')
+  const [role, setRole] = useState<RoleChoice>('scheduler')
   const [busy, setBusy] = useState(false)
   const [inviteMsg, setInviteMsg] = useState<{ text: string; kind: 'success' | 'error' } | null>(null)
   const [rowError, setRowError] = useState<{ userId: string; text: string } | null>(null)
+
+  const selectedScopes =
+    catalog &&
+    (catalog.presets.find((p) => p.key === role)?.scopes ?? catalog.ranks.find((r) => r.rank === role)?.scopes ?? null)
 
   const refresh = async () => {
     const token = await getAccessToken()
@@ -397,6 +441,9 @@ function TeamSettingsTab() {
   }
 
   useEffect(() => {
+    void getRoleCatalog(getAccessToken).then((result) => {
+      if (result.kind === 'ok') setCatalog(result.data)
+    })
     void refresh()
     // Load once when this tab mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -412,7 +459,8 @@ function TeamSettingsTab() {
       setBusy(false)
       return
     }
-    const result = await inviteMember(getAccessToken, email.trim(), role)
+    const branchIds = BRANCH_CONFINED.includes(role) && activeBranchId ? [activeBranchId] : undefined
+    const result = await inviteMember(getAccessToken, email.trim(), role, branchIds)
     setBusy(false)
     if (result.kind === 'ok') {
       const outcome = result.data.outcome
@@ -428,8 +476,10 @@ function TeamSettingsTab() {
       return
     }
     const key: TranslationKey =
-      result.error === 'FORBIDDEN'
+      result.error === 'FORBIDDEN' || result.error === 'SCOPE_ESCALATION'
         ? 'team.errorForbidden'
+        : result.error === 'BRANCHES_REQUIRED'
+          ? 'team.branchAdminHint'
         : result.error === 'EMAIL_NOT_CONFIGURED'
           ? 'team.errorEmailNotConfigured'
           : result.error === 'EMAIL_SEND_FAILED'
@@ -438,11 +488,13 @@ function TeamSettingsTab() {
     setInviteMsg({ text: t(key), kind: 'error' })
   }
 
-  const setRoleFor = async (member: Member, nextRole: MemberRole) => {
+  const setRoleFor = async (member: Member, nextRole: RoleChoice) => {
     setRowError(null)
     const token = await getAccessToken()
     if (!token) return
-    const result = await changeMemberRole(getAccessToken, member.userId, nextRole)
+    const branchIds =
+      BRANCH_CONFINED.includes(nextRole) && !member.branchIds && activeBranchId ? [activeBranchId] : undefined
+    const result = await changeMemberRole(getAccessToken, member.userId, nextRole, branchIds)
     if (result.kind === 'ok') {
       void refresh()
       return
@@ -450,9 +502,11 @@ function TeamSettingsTab() {
     const text =
       result.error === 'CANNOT_DEMOTE_LAST_OWNER'
         ? t('team.errorLastOwner')
-        : result.error === 'FORBIDDEN'
+        : result.error === 'FORBIDDEN' || result.error === 'SCOPE_ESCALATION'
           ? t('team.errorForbidden')
-          : t('login.errorNetwork')
+          : result.error === 'BRANCHES_REQUIRED'
+            ? t('team.branchAdminHint')
+            : t('login.errorNetwork')
     setRowError({ userId: member.userId, text })
   }
 
@@ -510,18 +564,12 @@ function TeamSettingsTab() {
                     <td>{member.email ?? '—'}</td>
                     <td>{member.displayName ?? '—'}</td>
                     <td>
-                      <select
-                        className="select"
-                        value={member.role}
+                      <RoleSelect
+                        value={member.roleKey ?? member.role}
                         disabled={isSelf}
-                        onChange={(event) => void setRoleFor(member, event.target.value as MemberRole)}
-                      >
-                        {MEMBER_ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {t(`settings.role.${r}`)}
-                          </option>
-                        ))}
-                      </select>
+                        allowOwner={user?.role === 'owner'}
+                        onChange={(next) => void setRoleFor(member, next)}
+                      />
                     </td>
                     {branches.length > 1 && (
                       <td>
@@ -595,17 +643,20 @@ function TeamSettingsTab() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
-          <select className="select" value={role} onChange={(event) => setRole(event.target.value as MemberRole)}>
-            {MEMBER_ROLES.filter((r) => r !== 'owner' || user?.role === 'owner').map((r) => (
-              <option key={r} value={r}>
-                {t(`settings.role.${r}`)}
-              </option>
-            ))}
-          </select>
+          <RoleSelect value={role} onChange={setRole} allowOwner={user?.role === 'owner'} />
           <button type="submit" className="btn btn--sm btn--primary" disabled={busy || !email.trim()}>
             {busy ? t('team.inviting') : t('team.invite')}
           </button>
         </form>
+        {BRANCH_CONFINED.includes(role) && <p className="card__hint">{t('team.branchAdminHint')}</p>}
+        {selectedScopes && (
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer' }}>{t('team.scopes', { n: selectedScopes.length })}</summary>
+            <p className="card__hint" style={{ fontFamily: 'var(--font-mono, monospace)' }}>
+              {selectedScopes.join(' · ')}
+            </p>
+          </details>
+        )}
         {inviteMsg && (
           <p className={inviteMsg.kind === 'success' ? 'login__success' : 'login__error'} style={{ marginTop: 8 }}>
             {inviteMsg.text}

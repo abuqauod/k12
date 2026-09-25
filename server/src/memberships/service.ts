@@ -1,5 +1,6 @@
 import { withoutTenant, withTenant } from '../db.js'
 import type { MembershipDoc } from '../db.js'
+import { recordAudit } from '../audit.js'
 
 /**
  * Shared by the self-service API (`/memberships`, tenantId from the
@@ -11,6 +12,8 @@ import type { MembershipDoc } from '../db.js'
 export interface MemberSummary {
   userId: string
   role: MembershipDoc['role']
+  /** Named preset (SAMS 1.8), or null for a plain rank. */
+  roleKey: MembershipDoc['roleKey']
   email: string | null
   displayName: string | null
   active: boolean
@@ -30,6 +33,7 @@ export async function listMembers(tenantId: string): Promise<MemberSummary[]> {
     return {
       userId: m.userId,
       role: m.role,
+      roleKey: m.roleKey ?? null,
       email: user?.email ?? null,
       displayName: user?.displayName ?? null,
       active: user?.active ?? false,
@@ -48,11 +52,22 @@ export async function setMemberBranches(
   tenantId: string,
   userId: string,
   branchIds: string[] | null,
+  actorId: string | null = null,
 ): Promise<'ok' | 'not_found'> {
-  const result = await withoutTenant((db) =>
-    db.memberships.updateOne({ _id: `${tenantId}:${userId}` }, { $set: { branchIds } }),
-  )
-  return result.matchedCount === 0 ? 'not_found' : 'ok'
+  return withTenant(tenantId, async (ctx) => {
+    const before = await ctx.memberships.findOne({ userId })
+    if (!before) return 'not_found'
+    await ctx.memberships.findOneAndUpdate({ userId }, { $set: { branchIds } })
+    await recordAudit(ctx.auditLog, {
+      actorId,
+      action: 'membership.branches',
+      entity: 'membership',
+      entityId: userId,
+      before: { branchIds: before.branchIds ?? null },
+      after: { branchIds },
+    })
+    return 'ok' as const
+  })
 }
 
 export type RoleChangeResult = 'ok' | 'not_found' | 'last_owner'
@@ -66,6 +81,11 @@ export async function changeMemberRole(
   tenantId: string,
   userId: string,
   role: MembershipDoc['role'],
+  /** Null clears any preset — a plain rank change. */
+  roleKey: MembershipDoc['roleKey'] = null,
+  actorId: string | null = null,
+  /** Set together with a preset that must be branch-confined. */
+  branchIds?: string[] | null,
 ): Promise<RoleChangeResult> {
   return withTenant(tenantId, async (ctx) => {
     const target = await ctx.memberships.findOne({ userId })
@@ -76,7 +96,18 @@ export async function changeMemberRole(
       if (owners.length <= 1) return 'last_owner'
     }
 
-    await ctx.memberships.findOneAndUpdate({ userId }, { $set: { role } })
+    await ctx.memberships.findOneAndUpdate(
+      { userId },
+      { $set: { role, roleKey, ...(branchIds !== undefined ? { branchIds } : {}) } },
+    )
+    await recordAudit(ctx.auditLog, {
+      actorId,
+      action: 'membership.role',
+      entity: 'membership',
+      entityId: userId,
+      before: { role: target.role, roleKey: target.roleKey ?? null, branchIds: target.branchIds ?? null },
+      after: { role, roleKey, branchIds: branchIds !== undefined ? branchIds : (target.branchIds ?? null) },
+    })
     return 'ok'
   })
 }

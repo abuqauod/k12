@@ -11,6 +11,7 @@ import {
   requireActiveSubscription,
   requirePermission,
 } from '../auth/guard.js'
+import type { PermissionScope } from '../auth/scopes.js'
 import { recordAudit } from '../audit.js'
 import { createInitialEnrollment, resolveAcademicYearId } from '../enrollments/service.js'
 
@@ -136,9 +137,9 @@ async function requireStudentBranchAccess(
 
 export function registerStudentRoutes(app: FastifyInstance): void {
   const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('students.read')] }
-  const writeGuard = {
-    preHandler: [authenticate, requireActiveSubscription, requirePermission('students.write')],
-  }
+  const scoped = (scope: PermissionScope) => ({
+    preHandler: [authenticate, requireActiveSubscription, requirePermission(scope)],
+  })
 
   app.get('/students', readGuard, async (request, reply) => {
     const parsed = listQuery.safeParse(request.query)
@@ -175,7 +176,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     return reply.send(toResponse(access.student))
   })
 
-  app.post('/students', writeGuard, async (request, reply) => {
+  app.post('/students', scoped('students.create'), async (request, reply) => {
     const parsed = studentBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
     const guardians = withGuardianIds(parsed.data.guardians)
@@ -251,7 +252,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     }
   })
 
-  app.patch('/students/:id', writeGuard, async (request, reply) => {
+  app.patch('/students/:id', scoped('students.update'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = updateStudentBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })

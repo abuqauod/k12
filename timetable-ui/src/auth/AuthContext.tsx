@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from 'react'
 import * as authApi from '../lib/authApi'
 import type { AuthTenant, AuthUser, TenantChoice } from '../lib/authApi'
+import { fetchMyAccess, type RoleKey } from '../lib/memberships'
 
 export type { AuthTenant, AuthUser, TenantChoice }
 
@@ -29,6 +30,14 @@ interface AuthValue {
    * expire mid-session.
    */
   getAccessToken: (force?: boolean) => Promise<string | null>
+  /** The caller's named preset, if any (SAMS 1.8). */
+  roleKey: RoleKey | null
+  /**
+   * Whether the server grants the caller `scope` — resolved by the server
+   * (`GET /auth/me`), so the UI hides exactly what the API would refuse.
+   * False until that answer arrives; the server enforces either way.
+   */
+  can: (scope: string) => boolean
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -148,7 +157,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (initial) void getAccessToken()
   }, [initial, getAccessToken])
 
-  const value: AuthValue = { user, tenant, signIn, signOut, getAccessToken }
+  const [access, setAccess] = useState<{ roleKey: RoleKey | null; scopes: ReadonlySet<string> } | null>(null)
+  const userId = user?.id
+  const tenantId = tenant?.id
+  useEffect(() => {
+    // Never answer can() from a previous user's or tenant's scopes.
+    setAccess(null)
+    if (!userId) return
+    let cancelled = false
+    void fetchMyAccess(getAccessToken).then((result) => {
+      if (cancelled) return
+      setAccess(result.kind === 'ok' ? { roleKey: result.data.roleKey, scopes: new Set(result.data.scopes) } : null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [userId, tenantId, getAccessToken])
+
+  const can = useCallback((scope: string) => (userId ? (access?.scopes.has(scope) ?? false) : false), [access, userId])
+  const roleKey = userId ? (access?.roleKey ?? null) : null
+
+  const value: AuthValue = { user, tenant, signIn, signOut, getAccessToken, roleKey, can }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
