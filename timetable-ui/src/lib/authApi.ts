@@ -70,7 +70,7 @@ export async function login(
 ): Promise<LoginResult> {
   if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
   try {
-    const response = await post('/auth/login', { email, password, tenantSlug })
+    const response = await post('/auth/login', { email, password, tenantSlug, context: 'app' })
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown>
 
     if (response.status === 200) {

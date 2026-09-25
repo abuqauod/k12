@@ -16,6 +16,9 @@ const loginBody = z.object({
   password: z.string().min(1),
   /** Optional when the user belongs to exactly one school. */
   tenantSlug: z.string().optional(),
+  /** 'app' = the school app, which always needs a school session. Absent
+   * (the vendor console) keeps the platform-admin session behavior. */
+  context: z.enum(['app', 'console']).optional(),
 })
 
 const refreshBody = z.object({ refreshToken: z.string().min(1) })
@@ -69,7 +72,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   app.post('/auth/login', async (request, reply) => {
     const parsed = loginBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    const { password, tenantSlug } = parsed.data
+    const { password, tenantSlug, context } = parsed.data
     const email = parsed.data.email.toLowerCase()
 
     if (await isLockedOut(email)) {
@@ -91,7 +94,10 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
     // The vendor's own account: no single school's context, so tenant
     // selection doesn't apply. See UserDoc.platformAdmin.
-    if (user.platformAdmin) {
+    // A platform admin who is also a member of a school gets a normal school
+    // session when signing into the school app — a tenant-less session there
+    // made every school request fail with NO_TENANT_CONTEXT.
+    if (user.platformAdmin && context !== 'app') {
       const { refreshTokenId: _refreshTokenId, ...tokens } = await issueSession({
         userId: user._id,
         email,

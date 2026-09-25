@@ -308,6 +308,17 @@ select {
   justify-content: center;
 }
 
+/* Irreversible actions (e.g. permanent delete). */
+.btn--danger {
+  border-color: transparent;
+  background: var(--bad);
+  color: #fff;
+}
+
+.btn--danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
 .btn--ghost {
   border-color: transparent;
   background: transparent;

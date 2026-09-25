@@ -46,7 +46,10 @@ const STORAGE_KEY = 'timetable.session'
 function readStoredSession(): StoredSession | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as StoredSession) : null
+    const session = raw ? (JSON.parse(raw) as StoredSession) : null
+    // A session without a school (issued to a platform admin before the app
+    // asked for a school session) can do nothing here — start over instead.
+    return session?.tenant ? session : null
   } catch {
     return null
   }

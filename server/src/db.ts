@@ -1158,6 +1158,12 @@ export class TenantScope<T extends Document> {
   deleteOne(filter: Filter<T>) {
     return this.col.deleteOne(this.scope(filter), { session: this.session })
   }
+
+  /** Scoped bulk delete — same forced tenant filter; for removing a record's
+   * dependent rows together with it (e.g. a mistakenly created student). */
+  deleteMany(filter: Filter<T>) {
+    return this.col.deleteMany(this.scope(filter), { session: this.session })
+  }
 }
 
 export interface TenantContext {
