@@ -12,6 +12,8 @@ export interface Parent {
   address: string | null
   city: string | null
   preferredContactMethod: PreferredContactMethod
+  /** Language of messages to this parent, e.g. absence alerts (SAMS 2.3). */
+  preferredLanguage: 'en' | 'ar'
   status: ParentStatus
   occupation: string | null
   employer: string | null
@@ -117,6 +119,7 @@ export function emptyParent(): Omit<Parent, 'id' | 'linkedStudentCount' | 'creat
     address: null,
     city: null,
     preferredContactMethod: 'phone',
+    preferredLanguage: 'en' as const,
     status: 'active',
     occupation: null,
     employer: null,

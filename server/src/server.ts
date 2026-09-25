@@ -34,6 +34,11 @@ export function buildServer() {
     logger: { level: isProduction ? 'info' : 'warn' },
     bodyLimit: config.maxBodyBytes,
     trustProxy: true,
+    // Fastify's default is 100 characters per path parameter. Parent links
+    // made by the guardian backfill have ids of about 130
+    // (`tenant:bf:student:guardian`), which made them impossible to edit or
+    // remove (414) — and since SAMS 2.3 those links decide absence alerts.
+    maxParamLength: 256,
   })
 
   app.register(cors, {

@@ -112,6 +112,9 @@ export interface FamilyMember {
   emergencyContact: boolean
   authorizedPickup: boolean
   financialResponsibility: boolean
+  /** Which absence alerts this parent gets for this child (SAMS 2.3). */
+  communicationPermissions: { email: boolean; sms: boolean }
+  preferredLanguage: 'en' | 'ar'
 }
 
 export async function getFamily(getToken: TokenGetter, id: string): Promise<StudentsResult<FamilyMember[]>> {

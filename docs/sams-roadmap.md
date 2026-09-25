@@ -157,6 +157,15 @@ first because every later phase depends on them.
   `ParentStudentLinkDoc.communicationPermissions`; backfill any embedded
   guardian not yet represented as a link; stop writing the embedded array.
   Removes the documented dual-model debt.
+- **Built**: `retireEmbeddedGuardians` (migrate.ts) moves every guardian
+  onto a parent link, then renames the list to `legacyGuardians` (history,
+  never read). Hand-made links are left alone; links from the earlier
+  backfill take the guardian's current opt-ins. Phones match on their last
+  nine digits. Parents gain a preferred language. The student API refuses a
+  guardian list (`GUARDIANS_MOVED`). Absence-alert channels are switched
+  per child on the parent. Also fixed: backfilled link ids (~130 chars)
+  were over Fastify's 100-character path parameter limit, so those links
+  could not be edited or removed.
 
 ### 2.4 Enrollment expansion
 - Add `pending` status, withdrawal reason codes (lookup), re-enrollment as a

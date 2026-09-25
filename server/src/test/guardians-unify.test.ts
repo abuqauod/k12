@@ -103,6 +103,17 @@ describe('migration', () => {
     assert.deepEqual(omarLink.communicationPermissions, { email: false, sms: true })
     assert.equal(omarLink.active, false)
     assert.equal(omarLink.relationshipType, 'father')
+
+    // A migrated link (a long `…:bf:…` id) can be edited like any other.
+    assert.ok(monaLink._id.length > 100)
+    const edited = await call(
+      fx.app,
+      fx.tokens.admin,
+      'PATCH',
+      `/parents/${mona._id}/links/${encodeURIComponent(monaLink._id)}`,
+      { communicationPermissions: { email: true, sms: true } },
+    )
+    assert.equal(edited.status, 200, edited.error)
   })
 
   test('matches an existing parent by phone and leaves a hand-made link as it is', async () => {

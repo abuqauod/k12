@@ -14,43 +14,6 @@ export type StudentStatus = 'enrolled' | 'graduated' | 'withdrawn' | 'inquiry'
 
 export type GuardianLanguage = 'en' | 'ar'
 
-export interface Guardian {
-  /** Stable id from the server; absent only on a guardian the form just
-   * added and hasn't saved yet. */
-  id?: string
-  name: string
-  relationship: string
-  phone: string
-  secondaryPhone: string | null
-  email: string | null
-  /** The contact a school calls first — a display hint, not how notification
-   * recipients are chosen. */
-  isPrimary: boolean
-  /** Language this guardian's absence notifications are written in. */
-  preferredLanguage: GuardianLanguage
-  /** Per-channel opt-in — a guardian with neither is never messaged. */
-  notifyByEmail: boolean
-  notifyBySms: boolean
-  /** A former guardian kept for history; excluded from notifications. */
-  active: boolean
-}
-
-/** A blank guardian for the "add" button. */
-export function emptyGuardian(): Guardian {
-  return {
-    name: '',
-    relationship: 'guardian',
-    phone: '',
-    secondaryPhone: null,
-    email: null,
-    isPrimary: false,
-    preferredLanguage: 'en',
-    notifyByEmail: true,
-    notifyBySms: false,
-    active: true,
-  }
-}
-
 export interface Student {
   id: string
   studentNumber: string
@@ -91,7 +54,6 @@ export interface Student {
   admissionDate?: string | null
   address?: string | null
   medicalNotes?: string | null
-  guardians?: Guardian[]
   // ------------------------------------------------------- profile (2.2) —
   preferredName?: string | null
   nationality?: string | null

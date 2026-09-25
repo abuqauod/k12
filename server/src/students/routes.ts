@@ -271,6 +271,9 @@ export function registerStudentRoutes(app: FastifyInstance): void {
             emergencyContact: link.emergencyContact,
             authorizedPickup: link.authorizedPickup,
             financialResponsibility: link.financialResponsibility,
+            // Who gets absence alerts, and in which language (SAMS 2.3).
+            communicationPermissions: link.communicationPermissions,
+            preferredLanguage: parent.preferredLanguage ?? 'en',
           },
         ]
       })
