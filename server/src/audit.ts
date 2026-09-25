@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AuditLogDoc, TenantScope } from './db.js'
+import { currentRequestContext } from './requestContext.js'
 
 /**
  * One place to append to `auditLog`. For a sensitive mutation (an
@@ -29,8 +30,11 @@ export async function recordAudit(
     before?: unknown
     after?: unknown
     meta?: Record<string, unknown>
+    /** Required by the route on sensitive actions (void, withdraw, delete). */
+    reason?: string | null
   },
 ): Promise<void> {
+  const context = currentRequestContext()
   const meta: Record<string, unknown> = { ...(entry.meta ?? {}) }
   if ('before' in entry) meta.before = entry.before ?? null
   if ('after' in entry) meta.after = entry.after ?? null
@@ -42,6 +46,9 @@ export async function recordAudit(
     entityId: entry.entityId,
     branchId: entry.branchId ?? null,
     meta,
+    ip: context.ip,
+    userAgent: context.userAgent,
+    reason: entry.reason ?? context.reason ?? null,
     createdAt: new Date(),
   })
 }

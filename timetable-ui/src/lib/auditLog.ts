@@ -11,6 +11,10 @@ export interface AuditEntry {
   entityId: string | null
   branchId: string | null
   meta: Record<string, unknown>
+  /** SAMS 1.12 — null on older rows and background jobs. */
+  ip?: string | null
+  userAgent?: string | null
+  reason?: string | null
   createdAt: string
 }
 

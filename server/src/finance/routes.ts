@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { readReason, setAuditReason } from '../requestContext.js'
 import type { FeeStructureDoc, InvoiceDoc, PaymentDoc, ReceiptDoc } from '../db.js'
 import {
   authenticate,
@@ -490,6 +491,9 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
 
   app.post('/finance/invoices/:id/void', scoped('finance.invoice.void'), async (request, reply) => {
     const { id } = request.params as { id: string }
+    const reason = readReason(request.body)
+    if (!reason) return reply.code(400).send({ error: 'REASON_REQUIRED' })
+    setAuditReason(reason)
     const tenantId = request.auth!.tenantId!
     const access = await requireInvoiceBranchAccess(request, id, tenantId)
     if (!access.ok) return reply.code(access.status).send({ error: access.error })
@@ -551,6 +555,9 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
 
   app.post('/finance/payments/:id/void', scoped('finance.payment.void'), async (request, reply) => {
     const { id } = request.params as { id: string }
+    const reason = readReason(request.body)
+    if (!reason) return reply.code(400).send({ error: 'REASON_REQUIRED' })
+    setAuditReason(reason)
     const tenantId = request.auth!.tenantId!
     const payment = await withTenant(tenantId, (ctx) => ctx.payments.findOne({ _id: id }))
     if (!payment) return reply.code(404).send({ error: 'UNKNOWN_PAYMENT' })

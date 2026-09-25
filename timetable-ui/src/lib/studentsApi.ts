@@ -143,11 +143,12 @@ export async function deleteStudent(
   getToken: TokenGetter,
   id: string,
   password: string,
+  reason: string,
 ): Promise<StudentsResult<null>> {
   try {
     const response = await call(
       `/students/${encodeURIComponent(id)}`,
-      { method: 'DELETE', body: JSON.stringify({ password }) },
+      { method: 'DELETE', body: JSON.stringify({ password, reason }) },
       getToken,
     )
     if (response.status === 204) return { kind: 'ok', data: null }

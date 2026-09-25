@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Parent, ParentStatus } from '../domain/parents'
 import { archiveParent, listParents, reactivateParent } from '../lib/parentsApi'
+import { ReasonDialog } from '../components/ReasonDialog'
 import { listClasses } from '../lib/classesApi'
 import type { SchoolClass } from '../domain/classes'
 import { ParentDetailDialog } from '../components/ParentDetailDialog'
@@ -86,10 +87,20 @@ export function ParentsPage() {
     void refresh()
   }, [refresh])
 
+  // Archiving asks why (SAMS 1.12); reactivating is routine.
+  const [archiving, setArchiving] = useState<Parent | null>(null)
   const toggleArchive = async (parent: Parent) => {
-    const action = parent.status === 'archived' ? reactivateParent : archiveParent
-    const result = await action(getAccessToken, parent.id)
+    if (parent.status !== 'archived') return setArchiving(parent)
+    const result = await reactivateParent(getAccessToken, parent.id)
     if (result.kind === 'ok') void refresh()
+  }
+  const confirmArchive = async (reason: string): Promise<string | null> => {
+    if (!archiving) return null
+    const result = await archiveParent(getAccessToken, archiving.id, reason)
+    if (result.kind !== 'ok') return t('parents.error.generic')
+    setArchiving(null)
+    void refresh()
+    return null
   }
 
   return (
@@ -203,6 +214,14 @@ export function ParentsPage() {
           onSaved={() => {
             void refresh()
           }}
+        />
+      )}
+      {archiving && (
+        <ReasonDialog
+          title={`${t('parents.archive')} · ${archiving.fullName}`}
+          confirmLabel={t('parents.archive')}
+          onConfirm={confirmArchive}
+          onClose={() => setArchiving(null)}
         />
       )}
     </div>

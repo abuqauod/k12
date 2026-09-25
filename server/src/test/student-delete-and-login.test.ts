@@ -63,7 +63,7 @@ async function student(branchId = fx.branchA): Promise<string> {
 }
 
 const del = (token: string, id: string, password?: string) =>
-  call(fx.app, token, 'DELETE', `/students/${id}`, password === undefined ? {} : { password })
+  call(fx.app, token, 'DELETE', `/students/${id}`, password === undefined ? {} : { password, reason: "Duplicate record" })
 
 before(async () => {
   fx = await createFixture()

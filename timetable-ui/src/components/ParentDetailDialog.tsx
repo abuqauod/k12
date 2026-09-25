@@ -3,6 +3,7 @@ import type { DuplicateCandidate, LinkedStudentSummary, Parent, PreferredContact
 import { formatMinorUnits } from '../domain/finance'
 import { PREFERRED_CONTACT_METHODS, emptyLink, emptyParent } from '../domain/parents'
 import type { NewLink, NewParent } from '../lib/parentsApi'
+import { ReasonDialog } from './ReasonDialog'
 import { createParent, createParentLink, deactivateParentLink, getParent, updateParent } from '../lib/parentsApi'
 import { listClasses } from '../lib/classesApi'
 import { listStudents, getStudent } from '../lib/studentsApi'
@@ -155,10 +156,16 @@ export function ParentDetailDialog({
     await load()
   }
 
-  const removeLink = async (linkId: string) => {
-    if (!id) return
-    await deactivateParentLink(getAccessToken, id, linkId)
+  // Removing a relationship asks why first (SAMS 1.12).
+  const [removingLink, setRemovingLink] = useState<string | null>(null)
+  const removeLink = (linkId: string) => setRemovingLink(linkId)
+  const confirmRemoveLink = async (reason: string): Promise<string | null> => {
+    if (!id || !removingLink) return null
+    const res = await deactivateParentLink(getAccessToken, id, removingLink, reason)
+    if (res.kind !== 'ok') return errorText(res.error)
+    setRemovingLink(null)
     await load()
+    return null
   }
 
   const openStudentProfile = async (studentId: string) => {
@@ -447,7 +454,7 @@ export function ParentDetailDialog({
                             >
                               {s.givenName} {s.familyName}
                             </button>
-                            <button type="button" className="icon-btn" aria-label={t('parents.link.remove')} onClick={() => void removeLink(s.linkId)}>
+                            <button type="button" className="icon-btn" aria-label={t('parents.link.remove')} onClick={() => removeLink(s.linkId)}>
                               ×
                             </button>
                           </div>
@@ -500,6 +507,14 @@ export function ParentDetailDialog({
             />
           )
         })()}
+      {removingLink && (
+        <ReasonDialog
+          title={t('parents.link.remove')}
+          confirmLabel={t('parents.link.remove')}
+          onConfirm={confirmRemoveLink}
+          onClose={() => setRemovingLink(null)}
+        />
+      )}
     </div>
   )
 }

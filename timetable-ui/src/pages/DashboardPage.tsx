@@ -9,6 +9,8 @@ import { coverage, hhmm, naturalCompare, unique } from '../lib/view'
 import { auditStudents } from '../domain/students'
 import { listInvoices } from '../lib/financeApi'
 import { listAuditLog } from '../lib/auditLog'
+import { getDashboardSummary } from '../lib/dashboardApi'
+import type { DashboardSummary } from '../lib/dashboardApi'
 import type { AuditEntry } from '../lib/auditLog'
 import { formatMinorUnits } from '../domain/finance'
 
@@ -28,6 +30,9 @@ const ICON = {
   plus: 'M12 5v14M5 12h14',
   cash: 'M3 7h18v10H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
   check: 'M4 12l5 5L20 6',
+  family: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8 2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 20v-1a5 5 0 0 1 10 0v1M14 20v-.5a4 4 0 0 1 7-2.6',
+  enroll: 'M4 6l8-3 8 3-8 3-8-3Zm3 2.2V13c0 1.7 2.2 3 5 3s5-1.3 5-3V8.2',
+  approve: 'M9 12l2 2 4-4M12 3l7 3v6c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6l7-3Z',
 }
 
 function Icon({ d }: { d: string }) {
@@ -104,6 +109,22 @@ export function DashboardPage() {
 
   const canFinance = can('finance.read')
   const canAudit = can('audit.read')
+
+  // Server-side counts (SAMS 1.12): parents, this year's enrollment, and
+  // approvals waiting on this user — each present only if permitted.
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    void getDashboardSummary(getAccessToken, activeBranchId).then((result) => {
+      if (cancelled) return
+      setSummaryLoading(false)
+      setSummary(result.kind === 'ok' ? result.data : null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [getAccessToken, activeBranchId])
 
   const [invoiceSummary, setInvoiceSummary] = useState<InvoiceSummary | null>(null)
   const [financeLoading, setFinanceLoading] = useState(false)
@@ -283,6 +304,46 @@ export function DashboardPage() {
               tone={studentsWithoutStop > 0 ? 'warn' : 'neutral'}
               hint={t('dash.overview.transport.hint', { stops: n(stops.length), n: n(studentsWithoutStop) })}
             />
+            {(summaryLoading || summary?.parents) && (
+              <StatTile
+                to="/parents"
+                icon={ICON.family}
+                label={t('dash.parents.title')}
+                loading={summaryLoading}
+                value={n(summary?.parents?.total ?? 0)}
+                tone={(summary?.parents?.incomplete ?? 0) > 0 ? 'warn' : 'neutral'}
+                hint={
+                  summary?.parents &&
+                  t('dash.parents.hint', {
+                    multi: n(summary.parents.multiChild),
+                    incomplete: n(summary.parents.incomplete),
+                  })
+                }
+              />
+            )}
+            {summary?.enrollments && (
+              <StatTile
+                to="/students"
+                icon={ICON.enroll}
+                label={t('dash.enrollments.title', { year: summary.enrollments.academicYear ?? '—' })}
+                value={n(summary.enrollments.active)}
+                tone={summary.enrollments.withdrawals > 0 ? 'warn' : 'neutral'}
+                hint={t('dash.enrollments.hint', {
+                  withdrawals: n(summary.enrollments.withdrawals),
+                  transfers: n(summary.enrollments.transfers),
+                })}
+              />
+            )}
+            {summary?.approvals && (
+              <StatTile
+                to="/approvals"
+                icon={ICON.approve}
+                label={t('dash.approvals.title')}
+                value={n(summary.approvals.pendingToDecide)}
+                tone={summary.approvals.pendingToDecide > 0 ? 'warn' : 'ok'}
+                hint={t(summary.approvals.pendingToDecide > 0 ? 'dash.approvals.waiting' : 'dash.approvals.none')}
+              />
+            )}
           </div>
         )}
       </section>

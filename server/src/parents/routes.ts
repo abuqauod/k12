@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { readReason, setAuditReason } from '../requestContext.js'
 import type { ParentDoc, ParentStudentLinkDoc, TenantContext } from '../db.js'
 import {
   authenticate,
@@ -375,6 +376,9 @@ export function registerParentRoutes(app: FastifyInstance): void {
 
   app.post('/parents/:id/archive', adminGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
+    const reason = readReason(request.body)
+    if (!reason) return reply.code(400).send({ error: 'REASON_REQUIRED' })
+    setAuditReason(reason)
     const tenantId = request.auth!.tenantId!
     if (await hiddenFromCaller(request, tenantId, id)) return reply.code(403).send(BRANCH_FORBIDDEN)
     const now = new Date()
@@ -500,6 +504,9 @@ export function registerParentRoutes(app: FastifyInstance): void {
 
   app.post('/parents/:parentId/links/:linkId/deactivate', adminGuard, async (request, reply) => {
     const { parentId, linkId } = request.params as { parentId: string; linkId: string }
+    const reason = readReason(request.body)
+    if (!reason) return reply.code(400).send({ error: 'REASON_REQUIRED' })
+    setAuditReason(reason)
     const tenantId = request.auth!.tenantId!
     if (await hiddenFromCaller(request, tenantId, parentId)) return reply.code(403).send(BRANCH_FORBIDDEN)
     if (await linkOutsideCaller(request, tenantId, linkId)) return reply.code(403).send(BRANCH_FORBIDDEN)

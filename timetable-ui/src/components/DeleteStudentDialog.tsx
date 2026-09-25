@@ -6,6 +6,7 @@ import { deleteStudent } from '../lib/studentsApi'
 
 const ERRORS: Record<string, TranslationKey> = {
   INVALID_PASSWORD: 'students.delete.error.password',
+  REASON_REQUIRED: 'students.delete.error.reason',
   TOO_MANY_ATTEMPTS: 'students.delete.error.locked',
   HAS_FINANCIAL_HISTORY: 'students.delete.error.finance',
   BRANCH_FORBIDDEN: 'students.delete.error.forbidden',
@@ -31,6 +32,7 @@ export function DeleteStudentDialog({
   const { t } = useI18n()
   const { getAccessToken } = useAuth()
   const [password, setPassword] = useState('')
+  const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -46,10 +48,10 @@ export function DeleteStudentDialog({
 
   const confirm = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!password) return
+    if (!password || reason.trim().length < 3) return
     setBusy(true)
     setError(null)
-    const result = await deleteStudent(getAccessToken, studentId, password)
+    const result = await deleteStudent(getAccessToken, studentId, password, reason.trim())
     setBusy(false)
     if (result.kind === 'ok') {
       onDeleted()
@@ -83,6 +85,16 @@ export function DeleteStudentDialog({
             {t('students.delete.hint')}
           </p>
           <label className="field">
+            <span>{t('students.delete.reason')}</span>
+            <textarea
+              className="input"
+              rows={2}
+              maxLength={500}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+          <label className="field">
             <span>{t('students.delete.password')}</span>
             <input
               ref={inputRef}
@@ -106,7 +118,7 @@ export function DeleteStudentDialog({
             <button type="button" className="btn btn--sm" onClick={onClose} disabled={busy}>
               {t('students.delete.cancel')}
             </button>
-            <button type="submit" className="btn btn--sm btn--danger" disabled={busy || !password} aria-busy={busy}>
+            <button type="submit" className="btn btn--sm btn--danger" disabled={busy || !password || reason.trim().length < 3} aria-busy={busy}>
               {t('students.delete.submit')}
             </button>
           </div>

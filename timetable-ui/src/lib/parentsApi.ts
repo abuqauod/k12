@@ -123,9 +123,13 @@ export async function updateParent(
   }
 }
 
-export async function archiveParent(getToken: TokenGetter, id: string): Promise<ParentsResult<Parent>> {
+export async function archiveParent(getToken: TokenGetter, id: string, reason: string): Promise<ParentsResult<Parent>> {
   try {
-    const response = await call(`/parents/${encodeURIComponent(id)}/archive`, { method: 'POST' }, getToken)
+    const response = await call(
+      `/parents/${encodeURIComponent(id)}/archive`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+      getToken,
+    )
     return parse(response)
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
@@ -182,11 +186,12 @@ export async function deactivateParentLink(
   getToken: TokenGetter,
   parentId: string,
   linkId: string,
+  reason: string,
 ): Promise<ParentsResult<ParentStudentLink>> {
   try {
     const response = await call(
       `/parents/${encodeURIComponent(parentId)}/links/${encodeURIComponent(linkId)}/deactivate`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ reason }) },
       getToken,
     )
     return parse(response)

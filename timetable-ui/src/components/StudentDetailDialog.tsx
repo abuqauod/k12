@@ -183,6 +183,11 @@ export function StudentDetailDialog({
   }
 
   const doWithdraw = async () => {
+    // A withdrawal must say why (the server requires it and audits it).
+    if (wStatus === 'withdrawn' && reason.trim().length < 3) {
+      setActionErr(t('enroll.error.REASON_REQUIRED'))
+      return
+    }
     setBusy(true)
     setActionErr(null)
     const token = await getAccessToken()

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { FeeStructure, Invoice, InvoiceStatus } from '../domain/finance'
 import { formatMinorUnits } from '../domain/finance'
 import { listFeeStructures, listInvoices } from '../lib/financeApi'
@@ -29,6 +30,20 @@ export function FinancePage() {
 
   const [editingStructure, setEditingStructure] = useState<FeeStructure | null | 'new'>(null)
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null)
+  // ?invoice=<id> (from global search) opens that invoice once, then clears.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const linked = searchParams.get('invoice')
+    if (!linked) return
+    setOpenInvoiceId(linked)
+    setSearchParams(
+      (prev) => {
+        prev.delete('invoice')
+        return prev
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     void listAcademicYears(getAccessToken).then((res) => {

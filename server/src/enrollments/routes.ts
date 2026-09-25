@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { readReason, setAuditReason } from '../requestContext.js'
 import type { EnrollmentDoc } from '../db.js'
 import {
   authenticate,
@@ -118,6 +119,12 @@ export function registerEnrollmentRoutes(app: FastifyInstance): void {
     const { studentId } = request.params as { studentId: string }
     const parsed = withdrawBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    // A withdrawal must say why (SAMS 1.12); a graduation is routine.
+    if (parsed.data.status === 'withdrawn') {
+      const reason = readReason(request.body)
+      if (!reason) return reply.code(400).send({ error: 'REASON_REQUIRED' })
+      setAuditReason(reason)
+    }
 
     const tenantId = request.auth!.tenantId!
     const current = await withTenant(tenantId, (ctx) =>

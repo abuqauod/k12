@@ -179,6 +179,16 @@ export function LogsPage() {
                     <td className="mono" style={{ fontSize: 12 }}>
                       {[entry.entity, entry.entityId].filter(Boolean).join(' · ')}
                       {Object.keys(entry.meta).length > 0 && ` — ${JSON.stringify(entry.meta)}`}
+                      {entry.reason && (
+                        <div className="log__reason">
+                          {t('logs.reason')}: {entry.reason}
+                        </div>
+                      )}
+                      {entry.ip && (
+                        <div className="log__origin" title={entry.userAgent ?? undefined}>
+                          {entry.ip}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

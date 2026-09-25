@@ -4,7 +4,7 @@ import { authorizedFetch, type TokenGetter } from './http'
 /** Client for `/search` — a small, tenant-scoped fan-out search across
  * students, parents, classes, buses and stops. */
 
-export type SearchResultType = 'student' | 'parent' | 'class' | 'bus' | 'stop'
+export type SearchResultType = 'student' | 'parent' | 'class' | 'bus' | 'stop' | 'enrollment' | 'invoice' | 'payment'
 
 export interface SearchResult {
   type: SearchResultType

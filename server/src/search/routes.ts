@@ -3,7 +3,13 @@ import { z } from 'zod'
 import { withTenant } from '../db.js'
 import { parentsHiddenFromBranches } from '../parents/service.js'
 import type { BusDoc, ParentDoc, SchoolClassDoc, StopDoc, StudentDoc, TenantContext } from '../db.js'
-import { authenticate, callerBranchIds, requireActiveSubscription, requirePermission } from '../auth/guard.js'
+import {
+  authenticate,
+  callerBranchIds,
+  callerHasPermission,
+  requireActiveSubscription,
+  requirePermission,
+} from '../auth/guard.js'
 
 /**
  * A single, small, tenant-scoped fan-out search across the handful of
@@ -24,7 +30,7 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-export type SearchResultType = 'student' | 'parent' | 'class' | 'bus' | 'stop'
+export type SearchResultType = 'student' | 'parent' | 'class' | 'bus' | 'stop' | 'enrollment' | 'invoice' | 'payment'
 
 export interface SearchResult {
   type: SearchResultType
@@ -130,6 +136,79 @@ async function runSearch(
   ]
 }
 
+/**
+ * Administrative records (SAMS 1.12): enrollments, invoices, payments. Each
+ * type only runs when the caller holds its read scope, and stays inside
+ * the same branch filter as everything else.
+ */
+async function runRecordSearch(
+  ctx: TenantContext,
+  pattern: { $regex: string; $options: string },
+  branchFilter: { branchId?: string | { $in: string[] } },
+  allow: { enrollments: boolean; finance: boolean },
+): Promise<SearchResult[]> {
+  const results: SearchResult[] = []
+
+  if (allow.enrollments) {
+    // Any status — a withdrawn student is exactly who an admin looks up here.
+    const students = await ctx.students
+      .find({ ...branchFilter, $or: [{ givenName: pattern }, { familyName: pattern }, { studentNumber: pattern }] })
+      .limit(PER_TYPE_LIMIT)
+      .toArray()
+    for (const student of students) {
+      const [latest] = await ctx.enrollments.find({ studentId: student._id }).sort({ startDate: -1 }).limit(1).toArray()
+      if (!latest) continue
+      results.push({
+        type: 'enrollment',
+        id: student._id,
+        label: `${student.givenName} ${student.familyName}`.trim(),
+        meta: `${student.studentNumber} · ${latest.status}`,
+        branchId: latest.branchId,
+      })
+    }
+  }
+
+  if (allow.finance) {
+    const invoices = await ctx.invoices
+      .find({ ...branchFilter, invoiceNumber: pattern })
+      .limit(PER_TYPE_LIMIT)
+      .toArray()
+    for (const invoice of invoices) {
+      results.push({
+        type: 'invoice',
+        id: invoice._id,
+        label: invoice.invoiceNumber,
+        meta: invoice.status,
+        branchId: invoice.branchId,
+      })
+    }
+
+    // Payments carry no branch of their own: they follow their invoice.
+    const payments = await ctx.payments
+      .find({ $or: [{ reference: pattern }, { payerName: pattern }] })
+      .limit(PER_TYPE_LIMIT * 4)
+      .toArray()
+    const owners = await ctx.invoices
+      .find({ _id: { $in: payments.map((p) => p.invoiceId) }, ...branchFilter })
+      .toArray()
+    const byId = new Map(owners.map((i) => [i._id, i]))
+    for (const payment of payments) {
+      const invoice = byId.get(payment.invoiceId)
+      if (!invoice) continue
+      results.push({
+        type: 'payment',
+        id: invoice._id,
+        label: payment.reference || payment.payerName,
+        meta: `${invoice.invoiceNumber} · ${payment.voidedAt ? 'void' : payment.method}`,
+        branchId: invoice.branchId,
+      })
+      if (results.filter((r) => r.type === 'payment').length >= PER_TYPE_LIMIT) break
+    }
+  }
+
+  return results
+}
+
 export function registerSearchRoutes(app: FastifyInstance): void {
   const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('search.read')] }
 
@@ -150,14 +229,19 @@ export function registerSearchRoutes(app: FastifyInstance): void {
     const pattern = { $regex: escapeRegex(q), $options: 'i' }
     // Parents have no branch of their own; they follow their children's.
     const parentScope = branchId ? [branchId] : allowed
-    const results = await withTenant(request.auth!.tenantId!, async (ctx) =>
-      runSearch(
+    const allow = {
+      enrollments: await callerHasPermission(request, 'enrollments.read'),
+      finance: await callerHasPermission(request, 'finance.read'),
+    }
+    const results = await withTenant(request.auth!.tenantId!, async (ctx) => [
+      ...(await runSearch(
         ctx,
         pattern,
         branchFilter,
         parentScope ? await parentsHiddenFromBranches(ctx, parentScope) : undefined,
-      ),
-    )
+      )),
+      ...(await runRecordSearch(ctx, pattern, branchFilter, allow)),
+    ])
     return reply.send({ results })
   })
 }
