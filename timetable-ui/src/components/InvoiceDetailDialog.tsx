@@ -5,7 +5,9 @@ import { listLookups, lookupLabel } from '../lib/settingsApi'
 import type { LookupItem } from '../lib/settingsApi'
 import {
   addInvoiceLineItem,
+  confirmPayment,
   getInvoice,
+  rejectPayment,
   listPayments,
   listReceipts,
   recordPayment,
@@ -22,11 +24,15 @@ import { ApprovalCard } from './ApprovalCard'
 import { ReasonDialog } from './ReasonDialog'
 import { listApprovalTypes, listApprovals, requestApproval } from '../lib/approvalsApi'
 import type { Approval } from '../lib/approvalsApi'
+import { AdjustmentsSection, InstallmentsSection, RefundsSection } from './finance/InvoiceSections'
 
 const DISCOUNT_TYPE = 'finance.lineDiscount'
+/** Approval types raised against an invoice and shown on it. */
+const INVOICE_APPROVAL_TYPES = [DISCOUNT_TYPE, 'finance.invoiceDiscount']
 
 /** One invoice: its line items (add/remove, discount admin-gated), its
- * payment history (record/void), and a printable receipt view. */
+ * discounts and scholarships, installment plan, payment history
+ * (record/confirm/void), refunds, and a printable receipt view. */
 export function InvoiceDetailDialog({
   invoiceId,
   getAccessToken,
@@ -86,8 +92,8 @@ export function InvoiceDetailDialog({
       listApprovals(getAccessToken, { entity: 'invoice', entityId: invoiceId }),
       listApprovalTypes(getAccessToken),
     ])
-    if (list.kind === 'ok') setApprovals(list.data.filter((a) => a.type === DISCOUNT_TYPE))
-    if (types.kind === 'ok') setCanDecideDiscount(types.data.some((x) => x.type === DISCOUNT_TYPE && x.canDecide))
+    if (list.kind === 'ok') setApprovals(list.data.filter((a) => INVOICE_APPROVAL_TYPES.includes(a.type)))
+    if (types.kind === 'ok') setCanDecideDiscount(types.data.some((x) => INVOICE_APPROVAL_TYPES.includes(x.type) && x.canDecide))
   }
   useEffect(() => {
     void loadApprovals()
@@ -217,7 +223,17 @@ export function InvoiceDetailDialog({
   const [reference, setReference] = useState('')
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10))
   const [payerName, setPayerName] = useState('')
+  const [awaiting, setAwaiting] = useState(false)
   const [recording, setRecording] = useState(false)
+  const canConfirm = can('finance.payment.confirm')
+  const decide = async (paymentId: string, confirm: boolean, reason?: string) => {
+    const res = confirm ? await confirmPayment(getAccessToken, paymentId) : await rejectPayment(getAccessToken, paymentId, reason ?? '')
+    if (res.kind !== 'ok') return t('billing.error.generic')
+    await load()
+    onChanged()
+    return null
+  }
+  const [rejecting, setRejecting] = useState<string | null>(null)
 
   const submitPayment = async () => {
     const amountMinor = parseMinorUnits(amount)
@@ -231,6 +247,7 @@ export function InvoiceDetailDialog({
       paidAt,
       payerName: payerName.trim(),
       notes: null,
+      awaitingConfirmation: awaiting,
     }
     const res = await recordPayment(getAccessToken, invoiceId, body)
     setRecording(false)
@@ -238,6 +255,7 @@ export function InvoiceDetailDialog({
       setAmount('')
       setReference('')
       setPayerName('')
+      setAwaiting(false)
       await load()
       onChanged()
     } else {
@@ -286,6 +304,26 @@ export function InvoiceDetailDialog({
             </span>
             <b>{formatMinorUnits(invoice.total)}</b>
           </div>
+          {!isVoid && invoice.paidTotal !== undefined && (
+            <div className="money-strip">
+              <span>
+                {t('fin.col.paid')} <b className="mono">{formatMinorUnits(invoice.paidTotal)}</b>
+              </span>
+              <span>
+                {t('fin.outstanding')} <b className="mono">{formatMinorUnits(invoice.outstanding ?? 0)}</b>
+              </span>
+              {(invoice.overdue ?? 0) > 0 && (
+                <span className="money-strip__bad">
+                  {t('fin.overdue')} <b className="mono">{formatMinorUnits(invoice.overdue ?? 0)}</b>
+                </span>
+              )}
+              {invoice.dueDate && (
+                <span>
+                  {t('fin.col.due')} <b>{invoice.dueDate}</b>
+                </span>
+              )}
+            </div>
+          )}
 
           <section>
             <h3 className="card__subtitle" style={{ marginTop: 0 }}>{t('billing.lineItems')}</h3>
@@ -394,6 +432,24 @@ export function InvoiceDetailDialog({
             )}
           </section>
 
+          <AdjustmentsSection
+            invoice={invoice}
+            onChanged={(inv) => {
+              setInvoice(inv)
+              void load()
+              onChanged()
+            }}
+            onRequested={() => void loadApprovals()}
+          />
+
+          <InstallmentsSection
+            invoice={invoice}
+            onChanged={(inv) => {
+              setInvoice(inv)
+              onChanged()
+            }}
+          />
+
           <section>
             <h3 className="card__subtitle" style={{ marginTop: 0 }}>{t('billing.payments')}</h3>
             {payments.length === 0 ? (
@@ -410,14 +466,32 @@ export function InvoiceDetailDialog({
                 </thead>
                 <tbody>
                   {payments.map((payment) => {
-                    const receipt = receipts.find((r) => r.paymentId === payment.id)
+                    // A receipt covering several invoices lists this payment in its split.
+                    const receipt = receipts.find((r) => r.paymentId === payment.id || r.allocations.some((a) => a.paymentId === payment.id))
                     return (
-                      <tr key={payment.id} style={payment.voidedAt ? { opacity: 0.5 } : undefined}>
+                      <tr key={payment.id} style={payment.voidedAt || payment.confirmation === 'rejected' ? { opacity: 0.5 } : undefined}>
                         <td>{payment.paidAt}</td>
                         <td className="mono">{formatMinorUnits(payment.amount)}</td>
-                        <td>{methodLabel(payment.method)}</td>
+                        <td>
+                          {methodLabel(payment.method)}
+                          {payment.confirmation !== 'confirmed' && (
+                            <span className={`chip ${payment.confirmation === 'pending' ? 'chip--warn' : 'chip--bad'}`} style={{ marginInlineStart: 6 }}>
+                              {t(`fin.confirmation.${payment.confirmation}` as TranslationKey)}
+                            </span>
+                          )}
+                        </td>
                         <td>
                           <div className="row-actions">
+                            {canConfirm && payment.confirmation === 'pending' && !payment.voidedAt && (
+                              <>
+                                <button type="button" className="btn btn--sm" onClick={() => void decide(payment.id, true)}>
+                                  {t('fin.confirm')}
+                                </button>
+                                <button type="button" className="btn btn--sm btn--ghost" onClick={() => setRejecting(payment.id)}>
+                                  {t('fin.reject')}
+                                </button>
+                              </>
+                            )}
                             {receipt && (
                               <button type="button" className="icon-btn" onClick={() => setViewReceipt(receipt)} aria-label={t('billing.receipt.view')}>
                                 🧾
@@ -452,12 +526,18 @@ export function InvoiceDetailDialog({
                 <input className="input input--sm" style={{ maxWidth: 140 }} placeholder={t('billing.reference')} value={reference} onChange={(e) => setReference(e.target.value)} />
                 <input type="date" className="input input--sm" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
                 <input className="input input--sm" style={{ minWidth: 120 }} placeholder={t('billing.payerName')} value={payerName} onChange={(e) => setPayerName(e.target.value)} />
+                <label className="checkbox-inline">
+                  <input type="checkbox" checked={awaiting} onChange={(e) => setAwaiting(e.target.checked)} />
+                  {t('fin.awaitingConfirmation')}
+                </label>
                 <button type="button" className="btn btn--sm btn--primary" disabled={recording} onClick={() => void submitPayment()}>
                   {t('billing.recordPayment')}
                 </button>
               </div>
             )}
           </section>
+
+          <RefundsSection invoice={invoice} methods={methods} methodLabel={methodLabel} onChanged={() => void load().then(onChanged)} />
 
           {error && <p className="login__error">{error}</p>}
 
@@ -484,6 +564,13 @@ export function InvoiceDetailDialog({
               <div className="stat-row"><span>{t('billing.col.date')}</span><b>{viewReceipt.issueDate}</b></div>
               <div className="stat-row"><span>{t('billing.payerName')}</span><b>{viewReceipt.payerName}</b></div>
               <div className="stat-row"><span>{t('billing.col.method')}</span><b>{methodLabel(viewReceipt.method)}</b></div>
+              {viewReceipt.allocations.length > 1 &&
+                viewReceipt.allocations.map((a) => (
+                  <div key={a.paymentId} className="stat-row">
+                    <span className="mono">{a.invoiceNumber}</span>
+                    <span className="mono">{formatMinorUnits(a.amount)}</span>
+                  </div>
+                ))}
               <div className="stat-row"><span>{t('billing.col.amount')}</span><b>{formatMinorUnits(viewReceipt.amount)}</b></div>
               <button type="button" className="btn btn--sm btn--primary" style={{ marginTop: 8 }} onClick={() => window.print()}>
                 {t('billing.receipt.print')}
@@ -491,6 +578,18 @@ export function InvoiceDetailDialog({
             </div>
           </div>
         </div>
+      )}
+      {rejecting && (
+        <ReasonDialog
+          title={t('fin.reject')}
+          confirmLabel={t('fin.reject')}
+          onConfirm={async (reason) => {
+            const err = await decide(rejecting, false, reason)
+            if (!err) setRejecting(null)
+            return err
+          }}
+          onClose={() => setRejecting(null)}
+        />
       )}
       {asking && (
         <ReasonDialog

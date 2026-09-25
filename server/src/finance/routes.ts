@@ -671,7 +671,8 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.send({
       invoices: open
         .filter((o) => allowed === null || allowed.includes(o.invoice.branchId))
-        .map((o) => ({ ...invoiceResponse(o.invoice), outstanding: o.outstanding })),
+        // `outstanding` here also leaves out payments awaiting confirmation.
+        .map((o) => ({ ...invoiceResponse(o.invoice, o.paid), outstanding: o.outstanding })),
     })
   })
 

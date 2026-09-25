@@ -528,6 +528,8 @@ export async function recordPayment(
 
 export interface OpenInvoice {
   invoice: InvoiceDoc
+  /** Counted payments less paid refunds (`invoicePaidTotals`). */
+  paid: number
   /** Total less counted payments, paid refunds and payments awaiting
    * confirmation — what a new payment may still cover. */
   outstanding: number
@@ -549,6 +551,7 @@ export async function openInvoices(ctx: TenantContext, studentId: string): Promi
   return invoices
     .map((invoice) => ({
       invoice,
+      paid: paid.get(invoice._id) ?? 0,
       outstanding: invoice.total - (paid.get(invoice._id) ?? 0) - (pendingBy.get(invoice._id) ?? 0),
     }))
     .filter((o) => o.outstanding > 0)

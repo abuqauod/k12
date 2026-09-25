@@ -10,7 +10,7 @@ import { registerApprovalType } from '../approvals/registry.js'
 import { cancelPendingFor, insertRequest } from '../approvals/service.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
 import { COUNTED, nextSequence, refreshStatus } from './service.js'
-import { branchFilter, FinanceAbort, isFailure, scoped, sendFailure, transact } from './common.js'
+import { branchFilter, FinanceAbort, isFailure, money, scoped, sendFailure, transact } from './common.js'
 
 /**
  * SAMS 3.3: refunds — money handed back against an invoice, in three
@@ -99,7 +99,7 @@ registerApprovalType<Record<string, never>>({
       ok: true,
       branchId: refund.branchId,
       dedupeKey: `refund:${id}`,
-      summary: `${refund.refundNumber} · ${invoice?.invoiceNumber ?? ''} · ${refund.amount}`,
+      summary: `${refund.refundNumber} · ${invoice?.invoiceNumber ?? ''} · ${money(refund.amount)}`,
     }
   },
   async onApproved(ctx, request, actorId) {

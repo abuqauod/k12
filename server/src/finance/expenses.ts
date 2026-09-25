@@ -10,7 +10,7 @@ import { registerApprovalType } from '../approvals/registry.js'
 import { cancelPendingFor, insertRequest } from '../approvals/service.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
 import { nextSequence } from './service.js'
-import { branchFilter, FinanceAbort, isFailure, scoped, sendFailure, transact } from './common.js'
+import { branchFilter, FinanceAbort, isFailure, money, scoped, sendFailure, transact } from './common.js'
 
 /**
  * SAMS 3.5: what the school spends. An expense is recorded against a
@@ -107,7 +107,7 @@ registerApprovalType<Record<string, never>>({
       ok: true,
       branchId: doc.branchId,
       dedupeKey: `expense:${id}`,
-      summary: `${doc.expenseNumber} · ${doc.description.slice(0, 60)} · ${doc.amount}`,
+      summary: `${doc.expenseNumber} · ${doc.description.slice(0, 60)} · ${money(doc.amount)}`,
     }
   },
   async onApproved(ctx, request, actorId) {

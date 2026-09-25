@@ -78,9 +78,15 @@ export async function branchFilter(
 
 export const todayIso = () => new Date().toISOString().slice(0, 10)
 
-/** "10%" or the amount in minor units, for approval summaries. */
+/** Minor units as the UI shows them ("850.00"), for approval summaries. */
+export function money(minor: number): string {
+  const abs = Math.abs(minor)
+  return `${minor < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
+}
+
+/** "10%" or the amount, for approval summaries. */
 export const describeValue = (type: 'amount' | 'percent', value: number) =>
-  type === 'percent' ? `${value}%` : String(value)
+  type === 'percent' ? `${value}%` : money(value)
 
 export async function studentName(ctx: TenantContext, studentId: string): Promise<string> {
   const s = await ctx.students.findOne({ _id: studentId })

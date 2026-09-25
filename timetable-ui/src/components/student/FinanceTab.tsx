@@ -7,10 +7,13 @@ import { useAuth } from '../../auth/AuthContext'
 import { useI18n } from '../../i18n/I18nContext'
 import type { TranslationKey } from '../../i18n/translations'
 import { InvoiceDetailDialog } from '../InvoiceDetailDialog'
+import { StudentPaymentCard } from '../finance/StudentPaymentCard'
+import { ScholarshipsPanel } from '../finance/ScholarshipsPanel'
 
 /**
  * The student's live financial summary (SAMS 2.2), computed by Finance on
- * every read, never stored on the student, plus their invoices.
+ * every read, never stored on the student; their invoices; one payment
+ * spread over them (3.4); and their scholarships (3.2).
  */
 export function FinanceTab({ student }: { student: Student }) {
   const { t } = useI18n()
@@ -21,6 +24,8 @@ export function FinanceTab({ student }: { student: Student }) {
   const [generating, setGenerating] = useState(false)
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null)
   const [error, setError] = useState(false)
+  // Bumped after a payment so the payment card and the invoices agree.
+  const [version, setVersion] = useState(0)
 
   const load = useCallback(async () => {
     const [b, i] = await Promise.all([
@@ -49,6 +54,7 @@ export function FinanceTab({ student }: { student: Student }) {
     await generateInvoice(getAccessToken, { studentId: student.id, feeStructureId })
     setGenerating(false)
     await load()
+    setVersion((v) => v + 1)
   }
 
   const tile = (label: TranslationKey, amount: number | undefined, tone = 'neutral') => (
@@ -104,6 +110,7 @@ export function FinanceTab({ student }: { student: Student }) {
                   <th>{t('billing.col.number')}</th>
                   <th>{t('billing.col.date')}</th>
                   <th>{t('billing.col.total')}</th>
+                  <th>{t('fin.outstanding')}</th>
                   <th>{t('billing.col.status')}</th>
                   <th style={{ width: 44 }} />
                 </tr>
@@ -114,6 +121,14 @@ export function FinanceTab({ student }: { student: Student }) {
                     <td className="mono">{invoice.invoiceNumber}</td>
                     <td>{invoice.issueDate}</td>
                     <td>{formatMinorUnits(invoice.total)}</td>
+                    <td>
+                      {invoice.status === 'void' ? '—' : formatMinorUnits(invoice.outstanding ?? 0)}
+                      {(invoice.overdue ?? 0) > 0 && (
+                        <span className="chip chip--bad" style={{ marginInlineStart: 6 }}>
+                          {t('fin.overdue')}
+                        </span>
+                      )}
+                    </td>
                     <td>{t(`billing.status.${invoice.status}` as TranslationKey)}</td>
                     <td>
                       <button
@@ -133,11 +148,20 @@ export function FinanceTab({ student }: { student: Student }) {
         )}
       </section>
 
+      {can('finance.payment.create') && (
+        <StudentPaymentCard key={version} studentId={student.id} onPaid={() => void load()} />
+      )}
+
+      <ScholarshipsPanel studentId={student.id} />
+
       {openInvoiceId && (
         <InvoiceDetailDialog
           invoiceId={openInvoiceId}
           getAccessToken={getAccessToken}
-          onClose={() => setOpenInvoiceId(null)}
+          onClose={() => {
+            setOpenInvoiceId(null)
+            setVersion((v) => v + 1)
+          }}
           onChanged={() => void load()}
         />
       )}

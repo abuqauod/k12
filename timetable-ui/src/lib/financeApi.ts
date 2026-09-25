@@ -2,7 +2,13 @@ import { loadSyncSettings } from './sync'
 import { authorizedFetch, type TokenGetter } from './http'
 import type {
   DiscountType,
+  DiscountTypeDef,
+  Expense,
   FeeStructure,
+  FinanceSummary,
+  Refund,
+  Scholarship,
+  Vendor,
   FeeStructureLineItem,
   Invoice,
   InvoiceStatus,
@@ -241,13 +247,15 @@ export interface NewPayment {
   paidAt: string
   payerName: string
   notes: string | null
+  /** SAMS 3.4: count it only once confirmed (cheques, transfers). */
+  awaitingConfirmation?: boolean
 }
 
 export async function recordPayment(
   getToken: TokenGetter,
   invoiceId: string,
   payment: NewPayment,
-): Promise<FinanceResult<{ payment: Payment; receipt: Receipt; invoice: Invoice }>> {
+): Promise<FinanceResult<{ payment: Payment; receipt: Receipt | null; invoice: Invoice }>> {
   try {
     const response = await call(
       `/finance/invoices/${encodeURIComponent(invoiceId)}/payments`,
@@ -312,3 +320,112 @@ export async function getStudentBalance(getToken: TokenGetter, studentId: string
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }
 }
+
+// ------------------------------------------------------------ Phase 3 --
+// Installments, discounts, scholarships, refunds, allocation, confirmations,
+// expenses and reports share one small request helper.
+
+async function send<T>(getToken: TokenGetter, method: string, path: string, body?: unknown): Promise<FinanceResult<T>> {
+  try {
+    const init: RequestInit = { method }
+    if (body !== undefined) init.body = JSON.stringify(body)
+    return parse<T>(await call(path, init, getToken))
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+const qs = (params: Record<string, string | undefined | null | boolean>) => {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '' && v !== false) q.set(k, String(v))
+  const s = q.toString()
+  return s ? `?${s}` : ''
+}
+const enc = encodeURIComponent
+
+async function unwrap<K extends string, T>(res: Promise<FinanceResult<Record<K, T>>>, key: K): Promise<FinanceResult<T>> {
+  const r = await res
+  return r.kind === 'ok' ? { kind: 'ok', data: r.data[key] } : r
+}
+
+/** SAMS 3.1: an even split, explicit dates, or `[]` to clear the plan. */
+export const setInstallments = (
+  getToken: TokenGetter,
+  invoiceId: string,
+  plan: { split: { count: number; firstDueDate: string; intervalMonths: number } } | { installments: { dueDate: string; amount: number }[] },
+) => send<Invoice>(getToken, 'PUT', `/finance/invoices/${enc(invoiceId)}/installments`, plan)
+
+// 3.2 discount types and scholarships
+export const listDiscountTypes = (getToken: TokenGetter, includeInactive = false) =>
+  unwrap(send<{ discountTypes: DiscountTypeDef[] }>(getToken, 'GET', `/finance/discount-types${qs({ includeInactive })}`), 'discountTypes')
+export const createDiscountType = (getToken: TokenGetter, body: { name: string; nameAr: string | null; type: DiscountType; value: number }) =>
+  send<DiscountTypeDef>(getToken, 'POST', '/finance/discount-types', body)
+export const updateDiscountType = (getToken: TokenGetter, id: string, patch: Partial<Pick<DiscountTypeDef, 'name' | 'nameAr' | 'value' | 'active'>>) =>
+  send<DiscountTypeDef>(getToken, 'PATCH', `/finance/discount-types/${enc(id)}`, patch)
+export const applyDiscount = (getToken: TokenGetter, invoiceId: string, discountTypeId: string) =>
+  send<Invoice>(getToken, 'POST', `/finance/invoices/${enc(invoiceId)}/adjustments`, { discountTypeId })
+export const removeAdjustment = (getToken: TokenGetter, invoiceId: string, adjustmentId: string, reason: string) =>
+  send<Invoice>(getToken, 'DELETE', `/finance/invoices/${enc(invoiceId)}/adjustments/${enc(adjustmentId)}`, { reason })
+
+export const listScholarships = (
+  getToken: TokenGetter,
+  params: { studentId?: string; branchId?: string; academicYearId?: string; status?: string } = {},
+) => unwrap(send<{ scholarships: Scholarship[] }>(getToken, 'GET', `/finance/scholarships${qs(params)}`), 'scholarships')
+export const requestScholarship = (
+  getToken: TokenGetter,
+  body: { studentId: string; academicYearId?: string; name: string; type: DiscountType; value: number; reason: string },
+) => send<Scholarship & { approvalId: string }>(getToken, 'POST', '/finance/scholarships', body)
+export const revokeScholarship = (getToken: TokenGetter, id: string, reason: string) =>
+  send<Scholarship & { invoicesUpdated: number }>(getToken, 'POST', `/finance/scholarships/${enc(id)}/revoke`, { reason })
+
+// 3.3 refunds
+export const listRefunds = (
+  getToken: TokenGetter,
+  params: { invoiceId?: string; studentId?: string; branchId?: string; status?: string } = {},
+) => send<{ refunds: Refund[]; refundable?: number }>(getToken, 'GET', `/finance/refunds${qs(params)}`)
+export const requestRefund = (getToken: TokenGetter, invoiceId: string, body: { amount: number; reason: string }) =>
+  send<Refund & { approvalId: string }>(getToken, 'POST', `/finance/invoices/${enc(invoiceId)}/refunds`, body)
+export const payRefund = (getToken: TokenGetter, id: string, body: { paidAt: string; method: string; reference: string | null }) =>
+  send<Refund>(getToken, 'POST', `/finance/refunds/${enc(id)}/pay`, body)
+export const cancelRefund = (getToken: TokenGetter, id: string) =>
+  send<Refund>(getToken, 'POST', `/finance/refunds/${enc(id)}/cancel`, {})
+
+// 3.4 allocation and confirmations
+export type OpenInvoice = Invoice & { outstanding: number }
+export const listOpenInvoices = (getToken: TokenGetter, studentId: string) =>
+  unwrap(send<{ invoices: OpenInvoice[] }>(getToken, 'GET', `/finance/students/${enc(studentId)}/open-invoices`), 'invoices')
+export const recordStudentPayment = (
+  getToken: TokenGetter,
+  studentId: string,
+  body: NewPayment & { allocations?: { invoiceId: string; amount: number }[] },
+) => send<{ payments: Payment[]; receipt: Receipt | null; invoices: Invoice[] }>(getToken, 'POST', `/finance/students/${enc(studentId)}/payments`, body)
+export const listPendingPayments = (getToken: TokenGetter, branchId?: string) =>
+  unwrap(send<{ payments: Payment[] }>(getToken, 'GET', `/finance/payments${qs({ confirmation: 'pending', branchId })}`), 'payments')
+export const confirmPayment = (getToken: TokenGetter, id: string) =>
+  send<{ payments: Payment[]; receipt: Receipt | null }>(getToken, 'POST', `/finance/payments/${enc(id)}/confirm`, {})
+export const rejectPayment = (getToken: TokenGetter, id: string, reason: string) =>
+  send<{ payments: Payment[] }>(getToken, 'POST', `/finance/payments/${enc(id)}/reject`, { reason })
+
+// 3.5 vendors and expenses
+export const listVendors = (getToken: TokenGetter, includeInactive = false) =>
+  unwrap(send<{ vendors: Vendor[] }>(getToken, 'GET', `/finance/vendors${qs({ includeInactive })}`), 'vendors')
+export const createVendor = (getToken: TokenGetter, body: Partial<Omit<Vendor, 'id' | 'active'>> & { name: string }) =>
+  send<Vendor>(getToken, 'POST', '/finance/vendors', body)
+export const updateVendor = (getToken: TokenGetter, id: string, patch: Partial<Omit<Vendor, 'id'>>) =>
+  send<Vendor>(getToken, 'PATCH', `/finance/vendors/${enc(id)}`, patch)
+export const listExpenses = (
+  getToken: TokenGetter,
+  params: { branchId?: string; status?: string; categoryCode?: string; from?: string; to?: string } = {},
+) => unwrap(send<{ expenses: Expense[] }>(getToken, 'GET', `/finance/expenses${qs(params)}`), 'expenses')
+export const createExpense = (
+  getToken: TokenGetter,
+  body: { branchId: string; categoryCode: string; vendorId: string | null; description: string; amount: number; expenseDate: string; reference: string | null },
+) => send<Expense & { approvalId: string }>(getToken, 'POST', '/finance/expenses', body)
+export const payExpense = (getToken: TokenGetter, id: string, body: { paidAt: string; method: string; reference: string | null }) =>
+  send<Expense>(getToken, 'POST', `/finance/expenses/${enc(id)}/pay`, body)
+export const cancelExpense = (getToken: TokenGetter, id: string) =>
+  send<Expense>(getToken, 'POST', `/finance/expenses/${enc(id)}/cancel`, {})
+
+// 3.6 reports
+export const getFinanceSummary = (getToken: TokenGetter, params: { branchId?: string; from: string; to: string; academicYearId?: string }) =>
+  send<FinanceSummary>(getToken, 'GET', `/finance/reports/summary${qs(params)}`)
