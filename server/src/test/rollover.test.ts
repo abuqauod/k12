@@ -62,9 +62,10 @@ before(async () => {
   await klass('g3a', Y.now, 'Grade 3', 'A')
   await klass('g3b', Y.now, 'Grade 3', 'B')
   await klass('g6a', Y.now, 'Grade 6', 'A')
-  await klass('n4a', Y.next, 'Grade 4', 'A 27')
+  // Same names as this year's classes: allowed, the year differs.
+  await klass('n4a', Y.next, 'Grade 4', 'A')
   await klass('n4b', Y.next, 'Grade 4', 'B')
-  await klass('n3a', Y.next, 'Grade 3', 'A 27')
+  await klass('n3a', Y.next, 'Grade 3', 'A')
   await klass('bOther', Y.now, 'Grade 3', 'A', fx.branchB)
   for (const [key, cls] of [
     ['promoteA', 'g3a'],
@@ -90,10 +91,19 @@ describe('proposal', () => {
     assert.equal(res.status, 200, res.error)
     const rows = new Map((res.body as Proposal).rows.map((r) => [r.studentId, r]))
     assert.equal(rows.get(S.promoteB!)?.suggested.toClassId, C.n4b, 'section B → Grade 4 B')
-    assert.equal(rows.get(S.promoteA!)?.suggested.toClassId, null, 'no "Grade 4 A": two Grade 4 classes, so a choice is needed')
+    assert.equal(rows.get(S.promoteA!)?.suggested.toClassId, C.n4a, 'section A → Grade 4 A')
     assert.equal(rows.get(S.grad!)?.suggested.toClassId, null, 'no Grade 7 class')
     assert.ok(rows.get(S.planned!)?.existing, 'already has a place next year')
     assert.ok(!rows.has(S.otherBranch!), 'another branch is not in this run')
+  })
+})
+
+describe('class names', () => {
+  test('repeat across years, never within one', async () => {
+    const body = { branchId: fx.branchA, gradeLevel: 'Grade 5', name: 'C', capacity: 20 }
+    assert.equal((await post('/classes', { ...body, academicYearId: Y.now })).status, 201)
+    assert.equal((await post('/classes', { ...body, academicYearId: Y.next })).status, 201)
+    assert.equal((await post('/classes', { ...body, academicYearId: Y.next })).error, 'CLASS_EXISTS')
   })
 })
 

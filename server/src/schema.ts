@@ -69,9 +69,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('branches').createIndex({ tenantId: 1, code: 1 }, { unique: true })
   await db.collection('branches').createIndex({ tenantId: 1 })
 
+  // A class name is unique per branch, grade and academic year (SAMS 2.6):
+  // next year's "Grade 2 A" must be creatable while this year's exists.
+  // Replaces the older index that ignored the year.
   await db
     .collection('classes')
-    .createIndex({ tenantId: 1, branchId: 1, gradeLevel: 1, name: 1 }, { unique: true })
+    .dropIndex('tenantId_1_branchId_1_gradeLevel_1_name_1')
+    .catch(() => undefined)
+  await db
+    .collection('classes')
+    .createIndex(
+      { tenantId: 1, branchId: 1, academicYearId: 1, gradeLevel: 1, name: 1 },
+      { unique: true, name: 'class_name_per_year' },
+    )
   await db.collection('classes').createIndex({ tenantId: 1, branchId: 1 })
 
   await db.collection('students').createIndex({ tenantId: 1, branchId: 1, classId: 1 })

@@ -200,6 +200,12 @@ first because every later phase depends on them.
 - Bulk move eligible students to the next academic year (promote / hold back
   / graduate / withdraw), with a preview before commit; creates new
   enrollment rows only.
+- **Built**: plan (proposal with suggestions → preview → all-or-nothing
+  commit: planned places for promote/hold, graduate/withdraw close the old
+  year on its last day), then "start the new year" activates every planned
+  place and closes old rows as `completed`. Class names are now unique per
+  academic year (the old index ignored the year, so next year's "Grade 2 A"
+  couldn't be created).
 
 ---
 

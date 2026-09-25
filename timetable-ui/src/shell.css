@@ -2379,3 +2379,8 @@ tr.is-muted td {
   gap: var(--space-2);
   font-size: var(--text-sm);
 }
+
+/* ============================================= year end (SAMS 2.6) ====== */
+.row--error td {
+  background: var(--bad-soft);
+}
