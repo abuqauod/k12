@@ -8,8 +8,12 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   # Always run on every push to main / manual dispatch — no path filtering.
   deploy-ui:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +41,7 @@ jobs:
           rm: true
 
   deploy-server:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: SSH and deploy server

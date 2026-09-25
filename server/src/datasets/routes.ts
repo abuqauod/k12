@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import type { TenantContext } from '../db.js'
-import { authenticate, requireActiveSubscription, requireRole } from '../auth/guard.js'
+import { authenticate, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 
 /**
  * Shape check only — the document itself is the client's domain model and is
@@ -36,7 +36,7 @@ const keyParam = z
   .regex(/^[A-Za-z0-9_-]+$/, 'key must be url-safe')
 
 export function registerDatasetRoutes(app: FastifyInstance): void {
-  const guarded = { preHandler: [authenticate, requireActiveSubscription] }
+  const guarded = { preHandler: [authenticate, requireActiveSubscription, requirePermission('datasets.read')] }
 
   app.get('/datasets/:key', guarded, async (request, reply) => {
     const key = keyParam.safeParse((request.params as { key: string }).key)
@@ -62,7 +62,7 @@ export function registerDatasetRoutes(app: FastifyInstance): void {
    */
   app.put(
     '/datasets/:key',
-    { preHandler: [authenticate, requireActiveSubscription, requireRole('scheduler')] },
+    { preHandler: [authenticate, requireActiveSubscription, requirePermission('datasets.write')] },
     async (request, reply) => {
       const key = keyParam.safeParse((request.params as { key: string }).key)
       if (!key.success) return reply.code(400).send({ error: 'INVALID_KEY' })

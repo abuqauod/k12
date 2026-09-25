@@ -39,7 +39,7 @@ const markBody = z.object({
 })
 
 export function registerAttendanceRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('attendance.read')] }
   const writeGuard = {
     preHandler: [authenticate, requireActiveSubscription, requirePermission('attendance.write')],
   }

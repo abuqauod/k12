@@ -6,7 +6,7 @@ import {
   authenticate,
   callerCanUseBranch,
   requireActiveSubscription,
-  requireRole,
+  requirePermission,
 } from '../auth/guard.js'
 import {
   bulkAssignToClass,
@@ -68,8 +68,8 @@ const ERROR_STATUS: Record<string, number> = {
 }
 
 export function registerEnrollmentRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('admin')] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('enrollments.read')] }
+  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('enrollments.write')] }
 
   app.get('/students/:studentId/enrollments', readGuard, async (request, reply) => {
     const { studentId } = request.params as { studentId: string }

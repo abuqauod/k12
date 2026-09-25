@@ -9,8 +9,8 @@ import {
   callerBranchIds,
   callerCanUseBranch,
   requireActiveSubscription,
-  requireRole,
-  roleAtLeast,
+  requirePermission,
+  callerHasPermission,
 } from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
 import {
@@ -209,9 +209,9 @@ const ERROR_STATUS: Record<string, number> = {
 }
 
 export function registerFinanceRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('scheduler')] }
-  const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('admin')] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('finance.read')] }
+  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('finance.write')] }
+  const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('finance.manage')] }
 
   // ------------------------------------------------------------ fee structures
 
@@ -439,7 +439,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     const { id } = request.params as { id: string }
     const parsed = addLineItemBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (parsed.data.discount && !roleAtLeast(request.auth?.role, 'admin')) {
+    if (parsed.data.discount && !callerHasPermission(request.auth?.role, 'finance.manage')) {
       return reply.code(403).send({ error: 'DISCOUNT_REQUIRES_ADMIN' })
     }
     const tenantId = request.auth!.tenantId!
@@ -457,7 +457,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     const { id, lineItemId } = request.params as { id: string; lineItemId: string }
     const parsed = updateLineItemBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (parsed.data.discount !== undefined && parsed.data.discount !== null && !roleAtLeast(request.auth?.role, 'admin')) {
+    if (parsed.data.discount !== undefined && parsed.data.discount !== null && !callerHasPermission(request.auth?.role, 'finance.manage')) {
       return reply.code(403).send({ error: 'DISCOUNT_REQUIRES_ADMIN' })
     }
     const tenantId = request.auth!.tenantId!

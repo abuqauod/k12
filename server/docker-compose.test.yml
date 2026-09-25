@@ -1,0 +1,43 @@
+# Integration-test stack — runs `npm test` against a throwaway MongoDB.
+# Used by CI (.github/workflows/test.yml) and on any server with Docker:
+#
+#   docker compose -f docker-compose.test.yml run --rm test
+#   docker compose -f docker-compose.test.yml down -v
+#
+# Separate from docker-compose.yml on purpose: no auth, no persistent volume,
+# no published ports — nothing here can touch production data.
+services:
+  mongo-test:
+    image: mongo:7
+    # withTenant uses transactions, which need a replica set (even one node).
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    tmpfs:
+      - /data/db
+    # The healthcheck doubles as the one-time replica-set initiation: it only
+    # reports healthy once the node is PRIMARY.
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status().myState === 1 ? quit(0) : quit(1) } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo-test:27017'}]}); quit(1) }"
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  test:
+    image: node:24-alpine
+    working_dir: /app
+    depends_on:
+      mongo-test:
+        condition: service_healthy
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: mongodb://mongo-test:27017/timetable_test?replicaSet=rs0
+      JWT_SECRET: test-only-secret
+    volumes:
+      - .:/app
+      # Keep the container's own node_modules, never the host's.
+      - /app/node_modules
+    command: sh -c "npm ci --no-audit --no-fund && npm run typecheck && npm test"
