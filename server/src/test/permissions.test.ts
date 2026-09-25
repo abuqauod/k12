@@ -49,6 +49,7 @@ const ROUTES: [Method, string, Role][] = [
   ['PATCH', `/finance/invoices/${X}/line-items/${X}`, 'scheduler'],
   ['DELETE', `/finance/invoices/${X}/line-items/${X}`, 'scheduler'],
   ['POST', `/finance/invoices/${X}/void`, 'admin'],
+  ['PUT', `/finance/invoices/${X}/installments`, 'scheduler'],
   ['GET', '/finance/payments', 'viewer'],
   ['POST', `/finance/invoices/${X}/payments`, 'scheduler'],
   ['POST', `/finance/payments/${X}/void`, 'admin'],

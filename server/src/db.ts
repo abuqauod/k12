@@ -942,6 +942,15 @@ export interface InvoiceLineItem {
   netAmount: number
 }
 
+/** SAMS 3.1: one dated part of an invoice's total. */
+export interface InvoiceInstallment {
+  id: string
+  /** ISO yyyy-mm-dd. */
+  dueDate: string
+  /** Minor units. */
+  amount: number
+}
+
 /**
  * One student, one billing period (one academic year — nothing outside
  * `academicYears/routes.ts` reads `AcademicYearDoc.terms` today, confirmed
@@ -975,6 +984,10 @@ export interface InvoiceDoc extends Document {
   /** Minor units — sum of `lineItems[].netAmount`, denormalized and
    * recomputed on every line-item write in the same transaction. */
   total: number
+  /** SAMS 3.1 installment plan; absent or empty = one payment by dueDate.
+   * Its amounts sum to `total` when set; a later line change that moves
+   * the total leaves the plan flagged as not matching until it is redone. */
+  installments?: InvoiceInstallment[]
   status: InvoiceStatus
   notes: string | null
   createdAt: Date

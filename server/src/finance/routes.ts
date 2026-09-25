@@ -19,6 +19,7 @@ import {
   addLineItem,
   computeStudentBalances,
   generateInvoice,
+  invoicePaidTotals as paidTotals,
   recordPayment,
   removeLineItem,
   updateLineItem,
@@ -27,6 +28,7 @@ import {
 } from './service.js'
 // Registers the finance.lineDiscount approval type (SAMS 1.10).
 import './approvals.js'
+import { MAX_INSTALLMENTS, installmentViews, overdueAmount, planError, splitEvenly } from './installments.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
 
 /**
@@ -108,6 +110,19 @@ const updateLineItemBody = z.object({
   discount: discountBody.optional(),
 })
 
+const installmentsBody = z.union([
+  z.object({
+    installments: z.array(z.object({ dueDate: z.string().date(), amount: z.number().int() })).max(MAX_INSTALLMENTS),
+  }),
+  z.object({
+    split: z.object({
+      count: z.number().int().min(2).max(MAX_INSTALLMENTS),
+      firstDueDate: z.string().date(),
+      intervalMonths: z.number().int().min(1).max(12).default(1),
+    }),
+  }),
+])
+
 const invoiceListQuery = z.object({
   studentId: z.string().optional(),
   branchId: z.string().optional(),
@@ -149,8 +164,19 @@ function feeStructureResponse(doc: FeeStructureDoc) {
   }
 }
 
-function invoiceResponse(doc: InvoiceDoc) {
+const todayIso = () => new Date().toISOString().slice(0, 10)
+
+/** `paid` (non-void payments less paid refunds) adds what depends on it:
+ * each installment's status and the overdue amount (SAMS 3.1). */
+function invoiceResponse(doc: InvoiceDoc, paid?: number) {
+  const plan = doc.installments ?? []
+  const today = todayIso()
   return {
+    installments: paid === undefined ? plan : installmentViews(plan, paid, today),
+    installmentsMatchTotal: plan.length === 0 || plan.reduce((s, p) => s + p.amount, 0) === doc.total,
+    ...(paid === undefined
+      ? {}
+      : { paidTotal: paid, outstanding: doc.status === 'void' ? 0 : doc.total - paid, overdue: overdueAmount(doc, paid, today) }),
     id: doc._id,
     studentId: doc.studentId,
     branchId: doc.branchId,
@@ -399,18 +425,22 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     if (parsed.data.academicYearId) filter.academicYearId = parsed.data.academicYearId
     if (parsed.data.status) filter.status = parsed.data.status
 
-    const rows = await withTenant(request.auth!.tenantId!, (ctx) =>
-      ctx.invoices.find(filter).sort({ issueDate: -1 }).toArray(),
-    )
-    return reply.send({ invoices: rows.map(invoiceResponse) })
+    const { rows, paid } = await withTenant(request.auth!.tenantId!, async (ctx) => {
+      const rows = await ctx.invoices.find(filter).sort({ issueDate: -1 }).toArray()
+      return { rows, paid: await paidTotals(ctx, rows.map((r) => r._id)) }
+    })
+    return reply.send({ invoices: rows.map((r) => invoiceResponse(r, paid.get(r._id) ?? 0)) })
   })
 
   app.get('/finance/invoices/:id', readGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const doc = await withTenant(request.auth!.tenantId!, (ctx) => ctx.invoices.findOne({ _id: id }))
-    if (!doc) return reply.code(404).send({ error: 'NOT_FOUND' })
-    if (!(await callerCanUseBranch(request, doc.branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
-    return reply.send(invoiceResponse(doc))
+    const found = await withTenant(request.auth!.tenantId!, async (ctx) => {
+      const doc = await ctx.invoices.findOne({ _id: id })
+      return doc ? { doc, paid: (await paidTotals(ctx, [id])).get(id) ?? 0 } : null
+    })
+    if (!found) return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (!(await callerCanUseBranch(request, found.doc.branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    return reply.send(invoiceResponse(found.doc, found.paid))
   })
 
   app.post('/finance/invoices', scoped('finance.invoice.create'), async (request, reply) => {
@@ -487,6 +517,48 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     const result = await withTenant(tenantId, (ctx) => removeLineItem(ctx, id, lineItemId, request.auth!.sub))
     if (!result.ok) return reply.code(ERROR_STATUS[result.error] ?? 400).send({ error: result.error })
     return reply.send(invoiceResponse(result.invoice))
+  })
+
+  // SAMS 3.1: set, replace or (with an empty list) clear the plan. Either
+  // explicit installments or an even split; they must add up to the total.
+  app.put('/finance/invoices/:id/installments', scoped('finance.invoice.create'), async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = installmentsBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const tenantId = request.auth!.tenantId!
+    const access = await requireInvoiceBranchAccess(request, id, tenantId)
+    if (!access.ok) return reply.code(access.status).send({ error: access.error })
+    if (access.invoice.status === 'void') return reply.code(409).send({ error: 'INVOICE_VOID' })
+
+    const total = access.invoice.total
+    const plan =
+      'split' in parsed.data
+        ? splitEvenly(total, parsed.data.split.count, parsed.data.split.firstDueDate, parsed.data.split.intervalMonths)
+        : parsed.data.installments.map((p) => ({ id: randomUUID(), ...p }))
+    const invalid = planError(plan, total)
+    if (invalid) return reply.code(400).send({ error: invalid })
+
+    const result = await withTenant(tenantId, async (ctx) => {
+      // Guard on the total seen above: a line change in between re-checks.
+      const updated = await ctx.invoices.findOneAndUpdate(
+        { _id: id, total, status: { $ne: 'void' } },
+        { $set: { installments: plan, updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      )
+      if (!updated) return null
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: plan.length > 0 ? 'invoice.installments.set' : 'invoice.installments.clear',
+        entity: 'invoice',
+        entityId: id,
+        branchId: updated.branchId,
+        before: { installments: access.invoice.installments ?? [] },
+        after: { installments: plan },
+      })
+      return { updated, paid: (await paidTotals(ctx, [id])).get(id) ?? 0 }
+    })
+    if (!result) return reply.code(409).send({ error: 'INVOICE_CHANGED' })
+    return reply.send(invoiceResponse(result.updated, result.paid))
   })
 
   app.post('/finance/invoices/:id/void', scoped('finance.invoice.void'), async (request, reply) => {

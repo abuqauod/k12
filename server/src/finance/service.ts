@@ -273,8 +273,16 @@ function statusFromPaid(total: number, paid: number): InvoiceStatus {
 export const invoicePaidTotal = (ctx: TenantContext, invoiceId: string) => paidTotalFor(ctx, invoiceId)
 
 async function paidTotalFor(ctx: TenantContext, invoiceId: string): Promise<number> {
-  const rows = await ctx.payments.find({ invoiceId, voidedAt: null }).toArray()
-  return rows.reduce((sum, p) => sum + p.amount, 0)
+  return (await invoicePaidTotals(ctx, [invoiceId])).get(invoiceId) ?? 0
+}
+
+/** What each invoice has been paid, batched: non-void payments. */
+export async function invoicePaidTotals(ctx: TenantContext, invoiceIds: string[]): Promise<Map<string, number>> {
+  const totals = new Map<string, number>()
+  if (invoiceIds.length === 0) return totals
+  const rows = await ctx.payments.find({ invoiceId: { $in: invoiceIds }, voidedAt: null }).toArray()
+  for (const p of rows) totals.set(p.invoiceId, (totals.get(p.invoiceId) ?? 0) + p.amount)
+  return totals
 }
 
 export type RecordPaymentResult =
