@@ -116,6 +116,7 @@ export function DashboardPage() {
   const [summaryLoading, setSummaryLoading] = useState(true)
   useEffect(() => {
     let cancelled = false
+    setSummaryLoading(true)
     void getDashboardSummary(getAccessToken, activeBranchId).then((result) => {
       if (cancelled) return
       setSummaryLoading(false)

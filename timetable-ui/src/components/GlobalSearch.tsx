@@ -183,7 +183,8 @@ export function GlobalSearch({ onClose }: Props) {
                     const isActive = flatIndex === activeIndex
                     return (
                       <button
-                        key={`${item.type}-${item.id}`}
+                        // Several payments can point at one invoice id — the index keeps keys unique.
+                        key={`${item.type}-${item.id}-${flatIndex}`}
                         type="button"
                         className="btn"
                         style={{
