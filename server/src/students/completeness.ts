@@ -64,8 +64,8 @@ export async function computeCompleteness(
     if (blank(s.nationalId)) missing.push('nationalId')
     if (blank(s.address)) missing.push('address')
     if (blank(s.primaryPhone)) missing.push('primaryPhone')
-    // A linked parent, or (until 2.3 retires them) an active embedded guardian.
-    if (!linked.has(s._id) && !(s.guardians ?? []).some((g) => g.active)) missing.push('guardian')
+    // An active parent link (SAMS 2.3 moved every guardian onto one).
+    if (!linked.has(s._id)) missing.push('guardian')
     if ((s.emergencyContacts ?? []).length === 0) missing.push('emergencyContact')
     if (!has.has(`${s._id}:birth_certificate`)) missing.push('birthCertificate')
     if (!has.has(`${s._id}:photo`)) missing.push('photo')

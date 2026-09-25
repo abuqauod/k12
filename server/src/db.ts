@@ -347,7 +347,16 @@ export interface StudentDoc extends Document {
   admissionDate: string | null
   address: string | null
   medicalNotes: string | null
-  guardians: Guardian[]
+  /**
+   * The old per-student guardian list. SAMS 2.3 moved every guardian onto
+   * a parent link (`ParentStudentLinkDoc`, backfill.ts's
+   * `retireEmbeddedGuardians`), which renames this to `legacyGuardians`.
+   * Present only on a record the migration hasn't reached yet; nothing
+   * writes it any more.
+   */
+  guardians?: Guardian[]
+  /** The frozen pre-2.3 guardian list, kept as history. Never read by the app. */
+  legacyGuardians?: Guardian[]
   // SAMS 2.2 profile. Optional: records created before 2.2 lack them, and
   // every reader treats a missing field as null / [].
   preferredName?: string | null
@@ -590,6 +599,9 @@ export interface ParentDoc extends Document {
   address: string | null
   city: string | null
   preferredContactMethod: PreferredContactMethod
+  /** Language for messages to this parent (absence notifications). Absent
+   * on records created before SAMS 2.3: read as 'en'. */
+  preferredLanguage?: GuardianLanguage
   /** `archived` is a status flip, never a delete — historical
    * `ParentStudentLinkDoc` rows referencing this id must keep resolving. */
   status: ParentStatus
@@ -1122,6 +1134,8 @@ export interface NotificationJobDoc extends Document {
   tenantId: string
   branchId: string
   studentId: string
+  /** The recipient: a parent's id since SAMS 2.3 (an embedded guardian's
+   * id on older jobs). The name is kept so the log doesn't change shape. */
   guardianId: string
   date: string
   channel: NotifyChannel

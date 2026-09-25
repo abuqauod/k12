@@ -26,7 +26,8 @@ import type { DuplicateCandidate } from './service.js'
 /**
  * Parent/guardian records — the real Parent Management feature (see db.ts's
  * parents section and parents/service.ts's file comment for how this
- * relates to StudentDoc.guardians, which this module never touches).
+ * relates to the old StudentDoc.guardians, retired in SAMS 2.3: every
+ * guardian is now one of these parents and links).
  *
  * Role mapping (a deliberate approximation onto the existing 4-role gate,
  * not a granular permission table — see the PR description for why):
@@ -46,6 +47,8 @@ const parentBody = z.object({
   address: z.string().max(500).nullable().default(null),
   city: z.string().max(120).nullable().default(null),
   preferredContactMethod: z.enum(['phone', 'email', 'sms', 'whatsapp']).default('phone'),
+  /** Language of messages to this parent (SAMS 2.3: absence notifications). */
+  preferredLanguage: z.enum(['en', 'ar']).default('en'),
   occupation: z.string().max(150).nullable().default(null),
   employer: z.string().max(150).nullable().default(null),
   emergencyContactName: z.string().max(200).nullable().default(null),
@@ -98,6 +101,7 @@ function toResponse(doc: ParentDoc, linkedStudentCount = 0) {
     address: doc.address,
     city: doc.city,
     preferredContactMethod: doc.preferredContactMethod,
+    preferredLanguage: doc.preferredLanguage ?? 'en',
     status: doc.status,
     occupation: doc.occupation,
     employer: doc.employer,

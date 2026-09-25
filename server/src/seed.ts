@@ -5,7 +5,7 @@ import { ensureIndexes } from './schema.js'
 import {
   backfillBranchesAndClasses,
   backfillEnrollmentModel,
-  backfillParentsFromGuardians,
+  retireEmbeddedGuardians,
 } from './backfill.js'
 import { createBranchForTenant, listBranchesForTenant } from './branches/service.js'
 import { hashPassword } from './auth/routes.js'
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   console.log('  backfilling structural baseline...')
   await backfillBranchesAndClasses(db)
   await backfillEnrollmentModel(db)
-  await backfillParentsFromGuardians(db)
+  await retireEmbeddedGuardians(db)
 
   // Northgate is a two-campus school, so the demo exercises branches for
   // real. Branch identity is console-provisioned now — this is the seed

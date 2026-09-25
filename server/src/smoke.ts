@@ -195,7 +195,7 @@ async function main() {
   const classAId = classA.body.id as string
   const classBId = classB.body.id as string
 
-  console.log('\n== enrollment, transfer, multiple guardians ==')
+  console.log('\n== enrollment, transfer, two parents ==')
   const student = await call('/students', {
     method: 'POST',
     body: JSON.stringify({
@@ -203,18 +203,21 @@ async function main() {
       givenName: 'Smoke',
       familyName: 'Test',
       classId: classAId,
-      guardians: [
-        { name: 'Parent One', relationship: 'mother', phone: '+962790000001', email: 'p1@example.test', isPrimary: true, notifyByEmail: true, preferredLanguage: 'en' },
-        { name: 'Parent Two', relationship: 'father', phone: '+962790000002', email: 'p2@example.test', notifyByEmail: true, preferredLanguage: 'ar' },
-      ],
     }),
   }, northToken)
   check('creating a student opens an enrollment', student.status === 201, student.body)
   const studentId = student.body.id as string
 
-  const detail = await call(`/students/${studentId}`, {}, northToken)
-  const gs = (detail.body.guardians as Array<{ id?: string; preferredLanguage?: string }>) ?? []
-  check('both guardians are stored with ids and languages', gs.length === 2 && gs.every((g) => typeof g.id === 'string' && g.id.length > 0) && gs.some((g) => g.preferredLanguage === 'ar'), gs)
+  // SAMS 2.3: guardians are parents linked to the student.
+  const refused = await call(`/students/${studentId}`, { method: 'PATCH', body: JSON.stringify({ guardians: [{ name: 'X' }] }) }, northToken)
+  check('the retired guardian list is refused with GUARDIANS_MOVED', refused.status === 400 && refused.body.error === 'GUARDIANS_MOVED', refused.body)
+  for (const [n, relationship, language] of [[1, 'mother', 'en'], [2, 'father', 'ar']] as const) {
+    const parent = await call('/parents', { method: 'POST', body: JSON.stringify({ fullName: `Parent ${n} ${KEY}`, primaryPhone: `+96279000000${n}`, email: `p${n}-${KEY}@example.test`, preferredLanguage: language }) }, northToken)
+    const parentId = (parent.body.parent as { id: string }).id
+    await call(`/parents/${parentId}/links`, { method: 'POST', body: JSON.stringify({ studentId, relationshipType: relationship, communicationPermissions: { email: true, sms: false } }) }, northToken)
+  }
+  const family = await call(`/students/${studentId}/family`, {}, northToken)
+  check('both parents are linked', ((family.body.family as unknown[]) ?? []).length === 2, family.body)
 
   const enr1 = await call(`/students/${studentId}/enrollments`, {}, northToken)
   const rows1 = (enr1.body.enrollments as Array<{ status: string; academicYearId: string }>) ?? []
@@ -267,13 +270,13 @@ async function main() {
     call('/notifications/run', { method: 'POST', body: JSON.stringify({ branchId: branchB, date: day }) }, northToken),
   ])
   const totalEnqueued = (runA.body.enqueued as number ?? 0) + (runB.body.enqueued as number ?? 0)
-  check('concurrent runs enqueue each (student,guardian,channel) job exactly once', runA.status === 200 && runB.status === 200 && totalEnqueued === 2, { a: runA.body, b: runB.body })
+  check('concurrent runs enqueue each (student,parent,channel) job exactly once', runA.status === 200 && runB.status === 200 && totalEnqueued === 2, { a: runA.body, b: runB.body })
 
   const run3 = await call('/notifications/run', { method: 'POST', body: JSON.stringify({ branchId: branchB, date: day }) }, northToken)
   check('a third run enqueues nothing new', (run3.body.enqueued as number) === 0 && (run3.body.alreadyQueued as number) === 2, run3.body)
 
   const notifs = await call(`/notifications?branchId=${branchB}&date=${day}`, {}, northToken)
-  check('the log holds two jobs (two opted-in guardians, one channel)', ((notifs.body.entries as unknown[]) ?? []).length === 2, notifs.body)
+  check('the log holds two jobs (two opted-in parents, one channel)', ((notifs.body.entries as unknown[]) ?? []).length === 2, notifs.body)
 
   console.log('\n== permission + branch authorization ==')
   const schedTransfer = await call(`/students/${studentId}/transfer`, { method: 'POST', body: JSON.stringify({ toClassId: classAId }) }, schedulerToken)

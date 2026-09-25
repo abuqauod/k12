@@ -4,7 +4,7 @@ import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import { readReason, setAuditReason } from '../requestContext.js'
-import type { EmergencyContact, Guardian, StudentDoc, TenantContext } from '../db.js'
+import type { EmergencyContact, StudentDoc, TenantContext } from '../db.js'
 import {
   authenticate,
   callerBranchIds,
@@ -24,7 +24,7 @@ import { createInitialEnrollment, resolveAcademicYearId } from '../enrollments/s
 import { gridFsStore } from '../documents/store.js'
 
 /**
- * The student roster. A student's *demographics, guardians and transport*
+ * The student roster. A student's *demographics, emergency contacts and transport*
  * are edited here; where the student sits (branch / class / academic year)
  * is an enrollment concern and moves through `enrollments/routes.ts`
  * (transfer / withdraw). `branchId`, `classId`, `academicYearId` and
@@ -33,24 +33,8 @@ import { gridFsStore } from '../documents/store.js'
  * from a request body.
  */
 
-const guardianSchema = z.object({
-  /** Optional on input — kept if given (an edit), generated if not (a new
-   * guardian). Lets the client round-trip a guardian without losing its id. */
-  id: z.string().min(1).max(64).optional(),
-  name: z.string().min(1).max(200),
-  relationship: z.string().min(1).max(50),
-  phone: z.string().min(5).max(30),
-  secondaryPhone: z.string().max(30).nullable().default(null),
-  email: z.string().email().nullable().default(null),
-  isPrimary: z.boolean().default(false),
-  preferredLanguage: z.enum(['en', 'ar']).default('en'),
-  notifyByEmail: z.boolean().default(true),
-  notifyBySms: z.boolean().default(false),
-  active: z.boolean().default(true),
-})
-
 const emergencyContactSchema = z.object({
-  /** Kept when given (an edit), generated when not — same as guardians. */
+  /** Kept when given (an edit), generated when not. */
   id: z.string().min(1).max(64).optional(),
   name: z.string().trim().min(1).max(200),
   relationship: z.string().trim().min(1).max(50),
@@ -73,7 +57,10 @@ const studentBody = z.object({
   admissionDate: z.string().date().nullable().default(null),
   address: z.string().max(500).nullable().default(null),
   medicalNotes: z.string().max(2000).nullable().default(null),
-  guardians: z.array(guardianSchema).max(10).default([]),
+  /** SAMS 2.3: guardians are parent links now (Parents module). Accepted
+   * only as an empty list, so an older client that always sends `[]` keeps
+   * working; anything else is refused with GUARDIANS_MOVED. */
+  guardians: z.array(z.unknown()).max(0, 'GUARDIANS_MOVED').optional(),
   stopId: z.string().default(''),
   transportMode: z.enum(['TWO_WAY', 'MORNING', 'EVENING', 'NONE']).default('NONE'),
   lat: z.number().min(-90).max(90).nullable().default(null),
@@ -93,6 +80,12 @@ const studentBody = z.object({
 /** PATCH cannot move a student — `classId` is intentionally absent. */
 const updateStudentBody = studentBody.omit({ classId: true, studentNumber: true }).partial()
 
+/** GUARDIANS_MOVED when the only problem is a non-empty guardian list, so
+ * an integration still sending guardians learns where they went. */
+function bodyError(error: z.ZodError): string {
+  return error.issues.some((i) => i.message === 'GUARDIANS_MOVED') ? 'GUARDIANS_MOVED' : 'INVALID_BODY'
+}
+
 const listQuery = z.object({
   branchId: z.string().optional(),
   classId: z.string().optional(),
@@ -104,10 +97,6 @@ const listQuery = z.object({
   incomplete: z.enum(['1']).optional(),
 })
 
-function atMostOnePrimary(guardians: { isPrimary: boolean }[]): boolean {
-  return guardians.filter((g) => g.isPrimary).length <= 1
-}
-
 function withContactIds(contacts: z.infer<typeof emergencyContactSchema>[]): EmergencyContact[] {
   return contacts.map((c) => ({ ...c, id: c.id ?? randomUUID() }))
 }
@@ -116,13 +105,6 @@ function withContactIds(contacts: z.infer<typeof emergencyContactSchema>[]): Eme
 async function admissionSourceOk(ctx: TenantContext, code: string | null | undefined): Promise<boolean> {
   if (!code) return true
   return (await activeCodes(ctx, 'admissionSource')).has(code)
-}
-
-/** Assign a stable id to any guardian that arrived without one. */
-function withGuardianIds(
-  guardians: z.infer<typeof guardianSchema>[],
-): Guardian[] {
-  return guardians.map((g) => ({ ...g, id: g.id ?? randomUUID() }))
 }
 
 interface ResponseExtras {
@@ -150,7 +132,6 @@ function toResponse(doc: StudentDoc, extras: ResponseExtras) {
     admissionDate: doc.admissionDate,
     address: doc.address,
     medicalNotes: doc.medicalNotes,
-    guardians: doc.guardians,
     stopId: doc.stopId,
     transportMode: doc.transportMode,
     lat: doc.lat,
@@ -299,11 +280,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
 
   app.post('/students', scoped('students.create'), async (request, reply) => {
     const parsed = studentBody.safeParse(request.body)
-    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    const guardians = withGuardianIds(parsed.data.guardians)
-    if (!atMostOnePrimary(guardians)) {
-      return reply.code(400).send({ error: 'MULTIPLE_PRIMARY_GUARDIANS' })
-    }
+    if (!parsed.success) return reply.code(400).send({ error: bodyError(parsed.error) })
 
     const tenantId = request.auth!.tenantId!
     if (parsed.data.custodyNotes && !(await callerHasPermission(request, 'students.custody'))) {
@@ -337,7 +314,6 @@ export function registerStudentRoutes(app: FastifyInstance): void {
         await ctx.students.insertOne({
           _id,
           ...rest,
-          guardians,
           emergencyContacts: withContactIds(emergencyContacts),
           // Cache of the enrollment created just below.
           branchId: klass.branchId,
@@ -383,35 +359,30 @@ export function registerStudentRoutes(app: FastifyInstance): void {
   app.patch('/students/:id', scoped('students.update'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = updateStudentBody.safeParse(request.body)
-    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
-
-    const guardians = parsed.data.guardians ? withGuardianIds(parsed.data.guardians) : undefined
-    if (guardians && !atMostOnePrimary(guardians)) {
-      return reply.code(400).send({ error: 'MULTIPLE_PRIMARY_GUARDIANS' })
-    }
+    if (!parsed.success) return reply.code(400).send({ error: bodyError(parsed.error) })
+    const { guardians: _ignored, ...fields } = parsed.data
+    if (Object.keys(fields).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
 
     const tenantId = request.auth!.tenantId!
     const custody = await callerHasPermission(request, 'students.custody')
-    if ('custodyNotes' in parsed.data && !custody) {
+    if ('custodyNotes' in fields && !custody) {
       return reply.code(403).send({ error: 'FORBIDDEN', required: 'students.custody' })
     }
     const access = await requireStudentBranchAccess(request, id, tenantId)
     if (!access.ok) return reply.code(access.status).send({ error: access.error })
-    if (parsed.data.admissionSource) await ensureDefaults(tenantId, 'admissionSource')
+    if (fields.admissionSource) await ensureDefaults(tenantId, 'admissionSource')
 
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.students.findOne({ _id: id })
       if (!before) return null
-      if (!(await admissionSourceOk(ctx, parsed.data.admissionSource))) return 'bad_source' as const
-      const { guardians: _drop, emergencyContacts: contactsIn, ...scalar } = parsed.data
+      if (!(await admissionSourceOk(ctx, fields.admissionSource))) return 'bad_source' as const
+      const { emergencyContacts: contactsIn, ...scalar } = fields
       const emergencyContacts = contactsIn ? withContactIds(contactsIn) : undefined
       const updated = await ctx.students.findOneAndUpdate(
         { _id: id },
         {
           $set: {
             ...scalar,
-            ...(guardians ? { guardians } : {}),
             ...(emergencyContacts ? { emergencyContacts } : {}),
             updatedAt: new Date(),
           },
@@ -443,17 +414,6 @@ export function registerStudentRoutes(app: FastifyInstance): void {
           branchId: before.branchId,
           before: before.emergencyContacts ?? [],
           after: emergencyContacts,
-        })
-      }
-      if (updated && guardians) {
-        await recordAudit(ctx.auditLog, {
-          actorId: request.auth!.sub,
-          action: 'guardians.update',
-          entity: 'student',
-          entityId: id,
-          branchId: before.branchId,
-          before: before.guardians,
-          after: guardians,
         })
       }
       if (!updated) return null
