@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { currentRequestContext } from '../requestContext.js'
 import type { TenantContext } from '../db.js'
 import { authenticate, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 
@@ -212,6 +213,8 @@ async function audit(
     entity: 'dataset',
     entityId,
     meta,
+    ip: currentRequestContext().ip,
+    userAgent: currentRequestContext().userAgent,
     createdAt: new Date(),
   })
 }

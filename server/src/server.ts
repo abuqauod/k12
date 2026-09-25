@@ -5,6 +5,7 @@ import cors from '@fastify/cors'
 import staticFiles from '@fastify/static'
 import { config, isProduction } from './config.js'
 import { closeClient, ping } from './db.js'
+import { runWithRequestContext } from './requestContext.js'
 import { registerAuthRoutes } from './auth/routes.js'
 import { registerDatasetRoutes } from './datasets/routes.js'
 import { registerAdminRoutes } from './admin/routes.js'
@@ -22,6 +23,7 @@ import { registerFinanceRoutes } from './finance/routes.js'
 import { registerNotificationRoutes } from './notifications/routes.js'
 import { registerTransportRoutes } from './transport/routes.js'
 import { registerSearchRoutes } from './search/routes.js'
+import { registerDashboardRoutes } from './dashboard/routes.js'
 import { registerApprovalRoutes } from './approvals/routes.js'
 import { registerSettingsRoutes } from './settings/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
@@ -69,6 +71,17 @@ export function buildServer() {
     }
   })
 
+  // Audit context (SAMS 1.12): every recordAudit in this request picks up
+  // the client IP (trustProxy is on) and user agent. Callback-style so the
+  // route's guards and handler run inside the context.
+  app.addHook('preHandler', (request, _reply, done) => {
+    const agent = request.headers['user-agent']
+    runWithRequestContext(
+      { ip: request.ip ?? null, userAgent: typeof agent === 'string' ? agent.slice(0, 512) : null },
+      done,
+    )
+  })
+
   // Wrapped in one plugin so config.routePrefix applies to every route at
   // once — see the comment on routePrefix in config.ts for why this exists
   // (a host that mounts the app at a path like heymueen.com/api rather than
@@ -109,6 +122,7 @@ export function buildServer() {
       registerNotificationRoutes(instance)
       registerTransportRoutes(instance)
       registerSearchRoutes(instance)
+      registerDashboardRoutes(instance)
       registerApprovalRoutes(instance)
       registerSettingsRoutes(instance)
     },

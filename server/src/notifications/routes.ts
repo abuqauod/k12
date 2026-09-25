@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { recordAudit } from '../audit.js'
 import type { NotificationJobDoc } from '../db.js'
 import {
   authenticate,
@@ -94,6 +95,14 @@ export function registerNotificationRoutes(app: FastifyInstance): void {
         },
         { upsert: true },
       )
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'notificationSettings.update',
+        entity: 'branch',
+        entityId: branchId,
+        branchId: branchId,
+        after: parsed.data,
+      })
       return true
     })
     if (!ok) return reply.code(404).send({ error: 'UNKNOWN_BRANCH' })
@@ -142,6 +151,14 @@ export function registerNotificationRoutes(app: FastifyInstance): void {
         },
         { upsert: true },
       )
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'calendar.update',
+        entity: 'branch',
+        entityId: branchId,
+        branchId: branchId,
+        after: parsed.data,
+      })
       return true
     })
     if (!ok) return reply.code(404).send({ error: 'UNKNOWN_BRANCH' })

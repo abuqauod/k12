@@ -92,6 +92,17 @@ async function canSee(request: FastifyRequest, doc: ApprovalRequestDoc): Promise
   return inBranches(doc.branchId, await callerBranchIds(request))
 }
 
+/** "To decide": decidable types, in the caller's branches, not their own.
+ * Shared with the dashboard's pending-approvals count. */
+export async function toDecideFilter(request: FastifyRequest): Promise<Filter<ApprovalRequestDoc>> {
+  const allowed = await callerBranchIds(request)
+  return {
+    type: { $in: await decidableTypes(request) },
+    requestedBy: { $ne: request.auth!.sub },
+    ...(allowed === null ? {} : { branchId: { $in: allowed } }),
+  }
+}
+
 export function registerApprovalRoutes(app: FastifyInstance): void {
   const guard = { preHandler: [authenticate, requireActiveSubscription] }
 
@@ -129,14 +140,8 @@ export function registerApprovalRoutes(app: FastifyInstance): void {
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_QUERY' })
     const { view, status, type, entity, entityId } = parsed.data
     const me = request.auth!.sub
-    const allowed = await callerBranchIds(request)
 
-    // "To decide": decidable types, in the caller's branches, not their own.
-    const toDecide: Filter<ApprovalRequestDoc> = {
-      type: { $in: await decidableTypes(request) },
-      requestedBy: { $ne: me },
-      ...(allowed === null ? {} : { branchId: { $in: allowed } }),
-    }
+    const toDecide = await toDecideFilter(request)
     const mine: Filter<ApprovalRequestDoc> = { requestedBy: me }
     // Narrowing filters are ANDed onto the view — never merged into it, or a
     // `type` filter would replace the view's own decidable-types restriction.

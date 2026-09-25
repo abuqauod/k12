@@ -88,6 +88,9 @@ export function registerAuditLogRoutes(app: FastifyInstance): void {
         entityId: e.entityId,
         branchId: e.branchId,
         meta: e.meta,
+        ip: e.ip ?? null,
+        userAgent: e.userAgent ?? null,
+        reason: e.reason ?? null,
         createdAt: e.createdAt.toISOString(),
       })),
     })
@@ -109,7 +112,7 @@ export function registerAuditLogRoutes(app: FastifyInstance): void {
         ctx.auditLog.find(built.filter).sort({ createdAt: -1 }).limit(10_000).toArray(),
       )
 
-      const header = ['createdAt', 'actorId', 'action', 'entity', 'entityId', 'branchId', 'meta']
+      const header = ['createdAt', 'actorId', 'action', 'entity', 'entityId', 'branchId', 'reason', 'ip', 'userAgent', 'meta']
       const rows = entries.map((e) =>
         [
           e.createdAt.toISOString(),
@@ -118,6 +121,9 @@ export function registerAuditLogRoutes(app: FastifyInstance): void {
           e.entity ?? '',
           e.entityId ?? '',
           e.branchId ?? '',
+          e.reason ?? '',
+          e.ip ?? '',
+          e.userAgent ?? '',
           JSON.stringify(e.meta),
         ]
           .map((cell) => csvEscape(String(cell)))

@@ -10,13 +10,16 @@ import type { TranslationKey } from '../i18n/translations'
 const MIN_QUERY_LENGTH = 2
 const DEBOUNCE_MS = 300
 
-const GROUP_ORDER: SearchResultType[] = ['student', 'parent', 'class', 'bus', 'stop']
+const GROUP_ORDER: SearchResultType[] = ['student', 'parent', 'enrollment', 'invoice', 'payment', 'class', 'bus', 'stop']
 const GROUP_KEY: Record<SearchResultType, TranslationKey> = {
   student: 'nav.students',
   parent: 'nav.parents',
   class: 'nav.classes',
   bus: 'search.group.buses',
   stop: 'search.group.stops',
+  enrollment: 'search.group.enrollments',
+  invoice: 'search.group.invoices',
+  payment: 'search.group.payments',
 }
 
 function resultPath(result: SearchResult): string {
@@ -31,6 +34,12 @@ function resultPath(result: SearchResult): string {
       return `/routes?bus=${encodeURIComponent(result.id)}`
     case 'stop':
       return `/routes?stop=${encodeURIComponent(result.id)}`
+    case 'enrollment':
+      return `/students?student=${encodeURIComponent(result.id)}`
+    // A payment result carries its invoice's id.
+    case 'invoice':
+    case 'payment':
+      return `/finance?invoice=${encodeURIComponent(result.id)}`
   }
 }
 
@@ -174,7 +183,8 @@ export function GlobalSearch({ onClose }: Props) {
                     const isActive = flatIndex === activeIndex
                     return (
                       <button
-                        key={`${item.type}-${item.id}`}
+                        // Several payments can point at one invoice id — the index keeps keys unique.
+                        key={`${item.type}-${item.id}-${flatIndex}`}
                         type="button"
                         className="btn"
                         style={{

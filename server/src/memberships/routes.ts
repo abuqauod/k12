@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
-import { withoutTenant } from '../db.js'
+import { withTenant, withoutTenant } from '../db.js'
+import { recordAudit } from '../audit.js'
 import type { MembershipDoc } from '../db.js'
 import { authenticate, callerScopes, loadCallerMembership, requirePermission } from '../auth/guard.js'
 import { PRESETS, ROLE_KEYS, ROLE_SCOPES, scopesFor, type RoleKey } from '../auth/scopes.js'
@@ -131,6 +132,17 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
         inviterName: request.auth!.email,
         displayName: parsed.data.displayName,
       })
+      if (invite.outcome !== 'already_member') {
+        await withTenant(tenantId, (ctx) =>
+          recordAudit(ctx.auditLog, {
+            actorId: request.auth!.sub,
+            action: 'membership.invite',
+            entity: 'membership',
+            entityId: invite.userId,
+            after: { email: parsed.data.email, role: check.grant.role, roleKey: check.grant.roleKey, branchIds: check.grant.branchIds ?? null },
+          }),
+        )
+      }
       return reply.send({ outcome: invite.outcome })
     } catch (error) {
       if (error instanceof EmailNotConfiguredError) {
@@ -186,9 +198,21 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
 
   app.delete('/memberships/:userId', guarded, async (request, reply) => {
     const { userId } = request.params as { userId: string }
-    const result = await removeMember(request.auth!.tenantId!, userId)
+    const tenantId = request.auth!.tenantId!
+    const before = await withoutTenant((db) => db.memberships.findOne({ _id: `${tenantId}:${userId}` }))
+    const result = await removeMember(tenantId, userId)
     if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
     if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_REMOVE_LAST_OWNER' })
+    await withTenant(tenantId, (ctx) =>
+      recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'membership.remove',
+        entity: 'membership',
+        entityId: userId,
+        before,
+        after: null,
+      }),
+    )
     return reply.code(204).send()
   })
 }

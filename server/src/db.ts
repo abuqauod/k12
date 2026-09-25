@@ -189,6 +189,13 @@ export interface AuditLogDoc extends Document {
    * `AttendanceRecordDoc.branchId`. */
   branchId: string | null
   meta: Record<string, unknown>
+  /** Who and where (SAMS 1.12): the client IP and user agent of the request
+   * that made the change; null for background jobs and rows written before
+   * these existed (never backfilled). */
+  ip?: string | null
+  userAgent?: string | null
+  /** Why — required on sensitive actions (void, withdraw, delete, archive). */
+  reason?: string | null
   createdAt: Date
 }
 

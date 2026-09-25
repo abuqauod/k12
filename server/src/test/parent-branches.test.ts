@@ -160,7 +160,7 @@ describe('branch-confined parent visibility', () => {
     const patch = await call(fx.app, fx.scopedToken, 'PATCH', base, { emergencyContact: true })
     assert.equal(patch.error, 'BRANCH_FORBIDDEN')
     const branchAdmin = (await member(fx.tenantId, 'viewer', [fx.branchA], 'branch_admin')).token
-    assert.equal((await call(fx.app, branchAdmin, 'POST', `${base}/deactivate`, {})).error, 'BRANCH_FORBIDDEN')
+    assert.equal((await call(fx.app, branchAdmin, 'POST', `${base}/deactivate`, { reason: "Test cleanup" })).error, 'BRANCH_FORBIDDEN')
   })
 
   test('the audit feed hides another branch family records', async () => {
@@ -174,7 +174,7 @@ describe('branch-confined parent visibility', () => {
   test('a family whose links were all deactivated stays hidden', async () => {
     const wide = await call(fx.app, fx.tokens.owner, 'GET', `/parents/${ids.pB}`)
     const linkId = (wide.body as { students: { linkId: string }[] }).students[0]!.linkId
-    const off = await call(fx.app, fx.tokens.owner, 'POST', `/parents/${ids.pB}/links/${linkId}/deactivate`, {})
+    const off = await call(fx.app, fx.tokens.owner, 'POST', `/parents/${ids.pB}/links/${linkId}/deactivate`, { reason: "Test cleanup" })
     assert.equal(off.status, 200)
     assert.equal((await call(fx.app, fx.scopedToken, 'GET', `/parents/${ids.pB}`)).error, 'BRANCH_FORBIDDEN')
   })

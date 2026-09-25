@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { recordAudit } from '../audit.js'
 import type { AcademicYearDoc } from '../db.js'
 import { authenticate, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 
@@ -67,6 +68,13 @@ export function registerAcademicYearRoutes(app: FastifyInstance): void {
         current: !anyExisting,
         createdAt: new Date(),
       })
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'academicYear.create',
+        entity: 'academicYear',
+        entityId: _id,
+        after: { name: parsed.data.name, startDate: parsed.data.startDate, endDate: parsed.data.endDate },
+      })
     })
     return reply.code(201).send({ id: _id })
   })
@@ -85,7 +93,16 @@ export function registerAcademicYearRoutes(app: FastifyInstance): void {
       for (const year of others) {
         if (year._id !== id) await ctx.academicYears.findOneAndUpdate({ _id: year._id }, { $set: { current: false } })
       }
-      return ctx.academicYears.findOneAndUpdate({ _id: id }, { $set: { current: true } }, { returnDocument: 'after' })
+      const updated = await ctx.academicYears.findOneAndUpdate({ _id: id }, { $set: { current: true } }, { returnDocument: 'after' })
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'academicYear.setCurrent',
+        entity: 'academicYear',
+        entityId: id,
+        before: { current: others.map((y) => y._id) },
+        after: { current: id },
+      })
+      return updated
     })
     if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
     return reply.send(toResponse(result))

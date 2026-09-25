@@ -202,9 +202,14 @@ export async function removeInvoiceLineItem(
   }
 }
 
-export async function voidInvoice(getToken: TokenGetter, id: string): Promise<FinanceResult<Invoice>> {
+/** `reason` is required by the server (3+ characters) and kept in the audit log. */
+export async function voidInvoice(getToken: TokenGetter, id: string, reason: string): Promise<FinanceResult<Invoice>> {
   try {
-    const response = await call(`/finance/invoices/${encodeURIComponent(id)}/void`, { method: 'POST' }, getToken)
+    const response = await call(
+      `/finance/invoices/${encodeURIComponent(id)}/void`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+      getToken,
+    )
     return parse(response)
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
@@ -258,9 +263,14 @@ export async function recordPayment(
 export async function voidPayment(
   getToken: TokenGetter,
   id: string,
+  reason: string,
 ): Promise<FinanceResult<{ payment: Payment; invoice: Invoice }>> {
   try {
-    const response = await call(`/finance/payments/${encodeURIComponent(id)}/void`, { method: 'POST' }, getToken)
+    const response = await call(
+      `/finance/payments/${encodeURIComponent(id)}/void`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
+      getToken,
+    )
     return parse(response)
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }

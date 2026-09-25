@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { recordAudit } from '../audit.js'
 import type { SchoolClassDoc } from '../db.js'
 import {
   authenticate,
@@ -129,6 +130,14 @@ export function registerClassRoutes(app: FastifyInstance): void {
         updatedAt: now,
       }
       await ctx.classes.insertOne(doc)
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'class.create',
+        entity: 'class',
+        entityId: doc._id,
+        branchId: doc.branchId,
+        after: doc,
+      })
       return { doc }
     })
     if ('error' in created) {
@@ -170,6 +179,14 @@ export function registerClassRoutes(app: FastifyInstance): void {
           updatedAt: now,
         }
         await ctx.classes.insertOne(doc)
+        await recordAudit(ctx.auditLog, {
+          actorId: request.auth!.sub,
+          action: 'class.create',
+          entity: 'class',
+          entityId: doc._id,
+          branchId: doc.branchId,
+          after: doc,
+        })
         made.push(doc)
       }
       return made
@@ -211,6 +228,15 @@ export function registerClassRoutes(app: FastifyInstance): void {
           await ctx.students.findOneAndUpdate({ _id: s._id }, { $set: { studentGroup: label } })
         }
       }
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'class.update',
+        entity: 'class',
+        entityId: id,
+        branchId: current.branchId,
+        before: current,
+        after: updated,
+      })
       const enrolled = await ctx.students.find({ classId: id, status: 'enrolled' }).toArray()
       return { doc: updated!, enrolled: enrolled.length }
     })
@@ -228,6 +254,15 @@ export function registerClassRoutes(app: FastifyInstance): void {
       const used = await ctx.students.find({ classId: id }).toArray()
       if (used.length > 0) return 'in_use' as const
       await ctx.classes.deleteOne({ _id: id })
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'class.delete',
+        entity: 'class',
+        entityId: id,
+        branchId: current.branchId,
+        before: current,
+        after: null,
+      })
       return 'ok' as const
     })
     if (outcome === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })

@@ -19,6 +19,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { ApprovalCard } from './ApprovalCard'
+import { ReasonDialog } from './ReasonDialog'
 import { listApprovalTypes, listApprovals, requestApproval } from '../lib/approvalsApi'
 import type { Approval } from '../lib/approvalsApi'
 
@@ -185,12 +186,23 @@ export function InvoiceDetailDialog({
     }
   }
 
-  const handleVoidInvoice = async () => {
-    const res = await voidInvoice(getAccessToken, invoiceId)
-    if (res.kind === 'ok') {
+  // Voids ask why first (SAMS 1.12): the reason is required and audited.
+  const [asking, setAsking] = useState<{ kind: 'invoice' } | { kind: 'payment'; id: string } | null>(null)
+  const handleVoidInvoice = () => setAsking({ kind: 'invoice' })
+  const confirmVoid = async (reason: string): Promise<string | null> => {
+    if (!asking) return null
+    if (asking.kind === 'invoice') {
+      const res = await voidInvoice(getAccessToken, invoiceId, reason)
+      if (res.kind !== 'ok') return t('billing.error.generic')
       setInvoice(res.data)
-      onChanged()
+    } else {
+      const res = await voidPayment(getAccessToken, asking.id, reason)
+      if (res.kind !== 'ok') return t('billing.error.generic')
+      await load()
     }
+    setAsking(null)
+    onChanged()
+    return null
   }
 
   // ---------------------------------------------------------------- payment
@@ -233,13 +245,7 @@ export function InvoiceDetailDialog({
     }
   }
 
-  const handleVoidPayment = async (paymentId: string) => {
-    const res = await voidPayment(getAccessToken, paymentId)
-    if (res.kind === 'ok') {
-      await load()
-      onChanged()
-    }
-  }
+  const handleVoidPayment = (paymentId: string) => setAsking({ kind: 'payment', id: paymentId })
 
   if (!invoice) {
     return (
@@ -418,7 +424,7 @@ export function InvoiceDetailDialog({
                               </button>
                             )}
                             {canVoidPayment && !payment.voidedAt && (
-                              <button type="button" className="icon-btn" onClick={() => void handleVoidPayment(payment.id)} aria-label={t('billing.payment.void')}>
+                              <button type="button" className="icon-btn" onClick={() => handleVoidPayment(payment.id)} aria-label={t('billing.payment.void')}>
                                 ×
                               </button>
                             )}
@@ -457,7 +463,7 @@ export function InvoiceDetailDialog({
 
           {canVoidInvoice && !isVoid && (
             <div className="page__actions">
-              <button type="button" className="btn btn--sm btn--ghost" onClick={() => void handleVoidInvoice()}>
+              <button type="button" className="btn btn--sm btn--ghost" onClick={() => handleVoidInvoice()}>
                 {t('billing.voidInvoice')}
               </button>
             </div>
@@ -485,6 +491,14 @@ export function InvoiceDetailDialog({
             </div>
           </div>
         </div>
+      )}
+      {asking && (
+        <ReasonDialog
+          title={t(asking.kind === 'invoice' ? 'billing.voidInvoice' : 'billing.payment.void')}
+          confirmLabel={t(asking.kind === 'invoice' ? 'billing.voidInvoice' : 'billing.payment.void')}
+          onConfirm={confirmVoid}
+          onClose={() => setAsking(null)}
+        />
       )}
     </div>
   )

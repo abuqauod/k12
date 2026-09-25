@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { readReason, setAuditReason } from '../requestContext.js'
 import type { Guardian, StudentDoc } from '../db.js'
 import {
   authenticate,
@@ -279,6 +280,19 @@ export function registerStudentRoutes(app: FastifyInstance): void {
         { $set: { ...scalar, ...(guardians ? { guardians } : {}), updatedAt: new Date() } },
         { returnDocument: 'after' },
       )
+      // Only the fields this request changed, before and after (SAMS 1.12).
+      const changed = Object.keys(scalar) as (keyof typeof scalar)[]
+      if (updated && changed.length > 0) {
+        await recordAudit(ctx.auditLog, {
+          actorId: request.auth!.sub,
+          action: 'student.update',
+          entity: 'student',
+          entityId: id,
+          branchId: before.branchId,
+          before: Object.fromEntries(changed.map((k) => [k, before[k as keyof typeof before] ?? null])),
+          after: Object.fromEntries(changed.map((k) => [k, scalar[k] ?? null])),
+        })
+      }
       if (updated && guardians) {
         await recordAudit(ctx.auditLog, {
           actorId: request.auth!.sub,
@@ -312,6 +326,9 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     const { id } = request.params as { id: string }
     const parsed = z.object({ password: z.string().min(1).max(200) }).safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'PASSWORD_REQUIRED' })
+    const reason = readReason(request.body)
+    if (!reason) return reply.code(400).send({ error: 'REASON_REQUIRED' })
+    setAuditReason(reason)
     const auth = request.auth!
     if (auth.sub.startsWith('apikey:')) return reply.code(403).send({ error: 'FORBIDDEN' })
 
