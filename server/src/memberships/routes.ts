@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withoutTenant } from '../db.js'
-import { authenticate, requireRole } from '../auth/guard.js'
+import { authenticate, requirePermission } from '../auth/guard.js'
 import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from './invite.js'
 import { changeMemberRole, listMembers, removeMember, setMemberBranches } from './service.js'
@@ -29,7 +29,7 @@ const branchesBody = z.object({
 })
 
 export function registerMembershipRoutes(app: FastifyInstance): void {
-  const guarded = { preHandler: [authenticate, requireRole('admin')] }
+  const guarded = { preHandler: [authenticate, requirePermission('memberships.manage')] }
 
   app.get('/memberships', guarded, async (request, reply) => {
     const members = await listMembers(request.auth!.tenantId!)

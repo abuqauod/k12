@@ -4,7 +4,7 @@ import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import type { ParentDoc, ParentStudentLinkDoc } from '../db.js'
-import { authenticate, requireActiveSubscription, requireRole, roleAtLeast } from '../auth/guard.js'
+import { authenticate, requireActiveSubscription, callerHasPermission, requirePermission } from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
 import { composeLinkedStudents, createLink, findDuplicateCandidates, linkedStudentCounts } from './service.js'
 import type { DuplicateCandidate } from './service.js'
@@ -125,9 +125,9 @@ const ERROR_STATUS: Record<string, number> = {
 }
 
 export function registerParentRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('scheduler')] }
-  const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('admin')] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('parents.read')] }
+  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('parents.write')] }
+  const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('parents.manage')] }
 
   app.get('/parents', readGuard, async (request, reply) => {
     const parsed = listQuery.safeParse(request.query)
@@ -204,7 +204,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
   app.post('/parents', writeGuard, async (request, reply) => {
     const parsed = parentBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (parsed.data.portalAccessEnabled && !roleAtLeast(request.auth?.role, 'admin')) {
+    if (parsed.data.portalAccessEnabled && !callerHasPermission(request.auth?.role, 'parents.manage')) {
       return reply.code(403).send({ error: 'PORTAL_FLAG_REQUIRES_ADMIN' })
     }
 
@@ -256,7 +256,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
     if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
     if (
       parsed.data.portalAccessEnabled !== undefined &&
-      !roleAtLeast(request.auth?.role, 'admin')
+      !callerHasPermission(request.auth?.role, 'parents.manage')
     ) {
       return reply.code(403).send({ error: 'PORTAL_FLAG_REQUIRES_ADMIN' })
     }
@@ -360,7 +360,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
     if (
       (parsed.data.financialResponsibility || parsed.data.portalAccess) &&
-      !roleAtLeast(request.auth?.role, 'admin')
+      !callerHasPermission(request.auth?.role, 'parents.manage')
     ) {
       return reply
         .code(403)
@@ -385,7 +385,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
     if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
     if (
       (parsed.data.financialResponsibility === true || parsed.data.portalAccess === true) &&
-      !roleAtLeast(request.auth?.role, 'admin')
+      !callerHasPermission(request.auth?.role, 'parents.manage')
     ) {
       return reply
         .code(403)

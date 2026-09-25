@@ -7,7 +7,7 @@ import {
   authenticate,
   callerCanUseBranch,
   requireActiveSubscription,
-  requireRole,
+  requirePermission,
 } from '../auth/guard.js'
 import { DEFAULT_WORKING_DAYS } from '../calendar.js'
 import { runAbsenceNotifications } from './service.js'
@@ -56,8 +56,8 @@ const logQuery = z.object({
 })
 
 export function registerNotificationRoutes(app: FastifyInstance): void {
-  const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('admin')] }
-  const runGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('scheduler')] }
+  const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('notifications.manage')] }
+  const runGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('notifications.run')] }
 
   app.get('/branches/:branchId/notification-settings', adminGuard, async (request, reply) => {
     const { branchId } = request.params as { branchId: string }

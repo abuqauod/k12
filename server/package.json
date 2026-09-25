@@ -22,7 +22,8 @@
     "create-admin": "tsx src/createAdmin.ts",
     "create-admin:prod": "node dist/createAdmin.js",
     "smoke-admin": "tsx src/smokeAdmin.ts",
-    "smoke-admin:prod": "node dist/smokeAdmin.js"
+    "smoke-admin:prod": "node dist/smokeAdmin.js",
+    "test": "node --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",

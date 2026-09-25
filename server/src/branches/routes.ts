@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { authenticate, callerBranchIds, requireActiveSubscription } from '../auth/guard.js'
+import { authenticate, callerBranchIds, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 import { branchToResponse, listBranchesForTenant } from './service.js'
 
 /**
@@ -12,7 +12,7 @@ import { branchToResponse, listBranchesForTenant } from './service.js'
  * on its own routes.
  */
 export function registerBranchRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('branches.read')] }
 
   app.get('/branches', readGuard, async (request, reply) => {
     const allowed = await callerBranchIds(request)

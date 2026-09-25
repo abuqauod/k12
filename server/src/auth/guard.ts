@@ -92,11 +92,11 @@ export function requireRole(minimum: Role) {
 
 // -------------------------------------------------------------- permissions
 //
-// A named-scope layer on top of the 4-role rank system above, not a
-// replacement for it. `requireRole`/`roleAtLeast` stay exactly as they are —
-// every existing route keeps working unmodified — but every NEW route from
-// here on should be written against `requirePermission`/`callerHasPermission`
-// instead of a fresh `requireRole` call, because a rank comparison can only
+// A named-scope layer on top of the 4-role rank system above. Since SAMS 1.7
+// every route authorizes through `requirePermission`/`callerHasPermission`
+// (pinned by src/test/permissions.test.ts); `requireRole`/`roleAtLeast`
+// remain for rank rules only (who may grant which role), because a rank
+// comparison can only
 // ever express "this action needs at least role X." It cannot express "can
 // approve a refund but not manage fee structures" (two admin-tier actions
 // with no rank relationship to each other) — real cases this app already
@@ -224,7 +224,7 @@ const ROLE_SCOPES: Record<Role, ReadonlySet<PermissionScope>> = {
  * e.g. when only part of a route's behavior needs a scope a lower-privilege
  * caller of the same route doesn't. */
 export function callerHasPermission(role: Role | undefined, scope: PermissionScope): boolean {
-  return role !== undefined && ROLE_SCOPES[role].has(scope)
+  return role !== undefined && (ROLE_SCOPES[role]?.has(scope) ?? false)
 }
 
 export function requirePermission(scope: PermissionScope) {

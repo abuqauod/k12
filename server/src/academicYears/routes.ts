@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import type { AcademicYearDoc } from '../db.js'
-import { authenticate, requireActiveSubscription, requireRole } from '../auth/guard.js'
+import { authenticate, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 
 /**
  * A school year and its terms — what attendance, and later fees/exams, are
@@ -37,8 +37,8 @@ function toResponse(doc: AcademicYearDoc) {
 }
 
 export function registerAcademicYearRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('scheduler')] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('academicYears.read')] }
+  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('academicYears.write')] }
 
   app.get('/academic-years', readGuard, async (request, reply) => {
     const years = await withTenant(request.auth!.tenantId!, (ctx) =>

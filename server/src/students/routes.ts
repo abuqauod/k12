@@ -135,7 +135,7 @@ async function requireStudentBranchAccess(
 }
 
 export function registerStudentRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('students.read')] }
   const writeGuard = {
     preHandler: [authenticate, requireActiveSubscription, requirePermission('students.write')],
   }

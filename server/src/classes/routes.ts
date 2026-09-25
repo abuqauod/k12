@@ -9,7 +9,7 @@ import {
   callerBranchIds,
   callerCanUseBranch,
   requireActiveSubscription,
-  requireRole,
+  requirePermission,
 } from '../auth/guard.js'
 
 /**
@@ -70,8 +70,8 @@ function toResponse(doc: SchoolClassDoc, enrolled: number) {
 }
 
 export function registerClassRoutes(app: FastifyInstance): void {
-  const readGuard = { preHandler: [authenticate, requireActiveSubscription] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requireRole('admin')] }
+  const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('classes.read')] }
+  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('classes.write')] }
 
   app.get('/classes', readGuard, async (request, reply) => {
     const parsed = listQuery.safeParse(request.query)
