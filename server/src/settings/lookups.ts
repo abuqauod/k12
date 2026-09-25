@@ -27,6 +27,16 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
     ],
   },
+  admissionSource: {
+    defaults: [
+      { code: 'walk_in', label: 'Walk-in', labelAr: 'زيارة مباشرة' },
+      { code: 'referral', label: 'Referral', labelAr: 'توصية' },
+      { code: 'sibling', label: 'Sibling already enrolled', labelAr: 'أخ أو أخت مسجل' },
+      { code: 'website', label: 'Website / social media', labelAr: 'الموقع / وسائل التواصل' },
+      { code: 'transfer', label: 'Transfer from another school', labelAr: 'انتقال من مدرسة أخرى' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
   documentCategory: {
     defaults: [
       { code: 'birth_certificate', label: 'Birth certificate', labelAr: 'شهادة الميلاد' },

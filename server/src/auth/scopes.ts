@@ -58,6 +58,7 @@ export type PermissionScope =
   | 'settings.manage'
   | 'settings.read'
   | 'students.create'
+  | 'students.custody'
   | 'students.delete'
   | 'students.read'
   | 'students.update'
@@ -126,6 +127,7 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'parents.manage',
   'reports.finance',
   'settings.manage',
+  'students.custody',
   'students.delete',
   'transport.manage',
 ]
@@ -193,6 +195,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'enrollments.withdraw',
     'parents.write',
     'students.create',
+    'students.custody',
     'students.update',
   ]),
   finance_officer: preset('scheduler', [

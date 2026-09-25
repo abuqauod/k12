@@ -307,6 +307,17 @@ export interface Guardian {
  * "students"); the new SIS fields (guardians, dob, ...) are additions to
  * the same shape, not a rename of it.
  */
+/** SAMS 2.2: someone to call in an emergency who is not necessarily a
+ * parent or guardian (a grandparent, a neighbour). */
+export interface EmergencyContact {
+  id: string
+  name: string
+  relationship: string
+  phone: string
+  alternatePhone: string | null
+  notes: string | null
+}
+
 export interface StudentDoc extends Document {
   _id: string
   tenantId: string
@@ -337,6 +348,19 @@ export interface StudentDoc extends Document {
   address: string | null
   medicalNotes: string | null
   guardians: Guardian[]
+  // SAMS 2.2 profile. Optional: records created before 2.2 lack them, and
+  // every reader treats a missing field as null / [].
+  preferredName?: string | null
+  nationality?: string | null
+  nationalId?: string | null
+  /** An `admissionSource` lookup code (settings lists, SAMS 1.11). */
+  admissionSource?: string | null
+  previousSchool?: string | null
+  emergencyContacts?: EmergencyContact[]
+  /** Custody or pickup restrictions ("father may not collect"). Returned
+   * and editable only with `students.custody`, and its text never enters
+   * the audit log (only that it changed). */
+  custodyNotes?: string | null
   /** Where this student boards. Empty means not yet placed on a route. */
   stopId: string
   transportMode: 'TWO_WAY' | 'MORNING' | 'EVENING' | 'NONE'
