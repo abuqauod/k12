@@ -92,6 +92,47 @@ export interface Student {
   address?: string | null
   medicalNotes?: string | null
   guardians?: Guardian[]
+  // ------------------------------------------------------- profile (2.2) —
+  preferredName?: string | null
+  nationality?: string | null
+  nationalId?: string | null
+  /** An `admissionSource` settings-list code. */
+  admissionSource?: string | null
+  previousSchool?: string | null
+  emergencyContacts?: EmergencyContact[]
+  /** Only present when the viewer holds `students.custody`. */
+  custodyNotes?: string | null
+  /** Computed by the server on read; never sent back. */
+  completeness?: Completeness
+  /** The current photo document, from GET /students/:id only. */
+  photoDocumentId?: string | null
+}
+
+export interface EmergencyContact {
+  /** Absent on a contact not yet saved. */
+  id?: string
+  name: string
+  relationship: string
+  phone: string
+  alternatePhone: string | null
+  notes: string | null
+}
+
+export type CompletenessItem =
+  | 'dob'
+  | 'gender'
+  | 'nationality'
+  | 'nationalId'
+  | 'address'
+  | 'primaryPhone'
+  | 'guardian'
+  | 'emergencyContact'
+  | 'birthCertificate'
+  | 'photo'
+
+export interface Completeness {
+  complete: boolean
+  missing: CompletenessItem[]
 }
 
 /** Does this student ride on the given run? */

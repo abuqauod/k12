@@ -72,6 +72,7 @@ const ROUTES: [Method, string, Role][] = [
   ['GET', `/students/${X}`, 'viewer'],
   ['POST', '/students', 'scheduler'],
   ['PATCH', `/students/${X}`, 'scheduler'],
+  ['GET', `/students/${X}/family`, 'viewer'],
   ['GET', '/attendance', 'viewer'],
   ['GET', `/attendance/student/${X}`, 'viewer'],
   ['GET', `/attendance/student/${X}/corrections`, 'viewer'],

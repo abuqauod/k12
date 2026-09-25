@@ -33,6 +33,7 @@ const ICON = {
   family: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8 2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 20v-1a5 5 0 0 1 10 0v1M14 20v-.5a4 4 0 0 1 7-2.6',
   enroll: 'M4 6l8-3 8 3-8 3-8-3Zm3 2.2V13c0 1.7 2.2 3 5 3s5-1.3 5-3V8.2',
   approve: 'M9 12l2 2 4-4M12 3l7 3v6c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6l7-3Z',
+  record: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 11h6M9 15h4',
 }
 
 function Icon({ d }: { d: string }) {
@@ -320,6 +321,19 @@ export function DashboardPage() {
                     incomplete: n(summary.parents.incomplete),
                   })
                 }
+              />
+            )}
+            {summary?.students && (
+              <StatTile
+                to="/students?incomplete=1"
+                icon={ICON.record}
+                label={t('dash.students.title')}
+                value={n(summary.students.incomplete)}
+                tone={summary.students.incomplete > 0 ? 'warn' : 'ok'}
+                hint={t('dash.students.hint', {
+                  incomplete: n(summary.students.incomplete),
+                  enrolled: n(summary.students.enrolled),
+                })}
               />
             )}
             {summary?.enrollments && (

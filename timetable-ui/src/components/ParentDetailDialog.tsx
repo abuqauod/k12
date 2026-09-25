@@ -5,16 +5,14 @@ import { PREFERRED_CONTACT_METHODS, emptyLink, emptyParent } from '../domain/par
 import type { NewLink, NewParent } from '../lib/parentsApi'
 import { ReasonDialog } from './ReasonDialog'
 import { createParent, createParentLink, deactivateParentLink, getParent, updateParent } from '../lib/parentsApi'
-import { listClasses } from '../lib/classesApi'
-import { listStudents, getStudent } from '../lib/studentsApi'
+import { listStudents } from '../lib/studentsApi'
 import type { Student } from '../domain/students'
-import type { SchoolClass } from '../domain/classes'
 import { useAuth } from '../auth/AuthContext'
 import { useApp } from '../state/AppContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { useNavigate } from 'react-router-dom'
 import { DocumentsPanel } from './DocumentsPanel'
-import { StudentDetailDialog } from './StudentDetailDialog'
 
 type Tab = 'basic' | 'contact' | 'work' | 'status'
 
@@ -58,9 +56,7 @@ export function ParentDetailDialog({
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<DuplicateCandidate[]>([])
   const [students, setStudents] = useState<LinkedStudentSummary[]>([])
-  const [openStudentId, setOpenStudentId] = useState<string | null>(null)
-  const [openStudent, setOpenStudent] = useState<Student | null>(null)
-  const [openStudentClasses, setOpenStudentClasses] = useState<SchoolClass[]>([])
+  const navigate = useNavigate()
 
   const patch = (changes: Partial<typeof form>) => setForm((f) => ({ ...f, ...changes }))
 
@@ -169,14 +165,7 @@ export function ParentDetailDialog({
     return null
   }
 
-  const openStudentProfile = async (studentId: string) => {
-    const res = await getStudent(getAccessToken, studentId)
-    if (res.kind !== 'ok') return
-    const classesRes = await listClasses(getAccessToken, { branchId: res.data.branchId })
-    setOpenStudent(res.data)
-    setOpenStudentClasses(classesRes.kind === 'ok' ? classesRes.data : [])
-    setOpenStudentId(studentId)
-  }
+  const openStudentProfile = (studentId: string) => navigate(`/students/${encodeURIComponent(studentId)}`)
 
   const activeStudents = useMemo(() => students.filter((s) => s.linkActive), [students])
 
@@ -451,7 +440,7 @@ export function ParentDetailDialog({
                               type="button"
                               className="btn btn--ghost btn--sm"
                               style={{ fontWeight: 600, padding: 0 }}
-                              onClick={() => void openStudentProfile(s.studentId)}
+                              onClick={() => openStudentProfile(s.studentId)}
                             >
                               {s.givenName} {s.familyName}
                             </button>
@@ -499,21 +488,6 @@ export function ParentDetailDialog({
         </div>
       </div>
 
-      {openStudentId &&
-        openStudent &&
-        (() => {
-          const studentForDialog = openStudent
-          return (
-            <StudentDetailDialog
-              student={studentForDialog}
-              classes={openStudentClasses}
-              fleet={fleet}
-              getAccessToken={getAccessToken}
-              onClose={() => setOpenStudentId(null)}
-              onChanged={(updated) => setOpenStudent(updated)}
-            />
-          )
-        })()}
       {removingLink && (
         <ReasonDialog
           title={t('parents.link.remove')}

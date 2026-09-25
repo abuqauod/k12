@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Student, TransportMode } from '../domain/students'
 import { TRANSPORT_MODES, auditStudents, isValidPhone } from '../domain/students'
 import type { NewStudent } from '../lib/studentsApi'
 import { createStudent, listStudents, updateStudent } from '../lib/studentsApi'
 import { listClasses } from '../lib/classesApi'
 import type { SchoolClass } from '../domain/classes'
-import { StudentDetailDialog } from '../components/StudentDetailDialog'
 import { DeleteStudentDialog } from '../components/DeleteStudentDialog'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 
-type ModeFilter = TransportMode | 'ALL' | 'ISSUES'
+type ModeFilter = TransportMode | 'ALL' | 'ISSUES' | 'INCOMPLETE'
 
 const NEW_PREFIX = 'NEW-'
 
@@ -45,23 +44,27 @@ export function StudentsPage() {
   const [loadError, setLoadError] = useState(false)
   const [pendingSaves, setPendingSaves] = useState(0)
   const [classes, setClasses] = useState<SchoolClass[]>([])
-  const [detailId, setDetailId] = useState<string | null>(null)
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Deep-link from GlobalSearch: ?student=<id> opens that student's detail
-  // dialog, then the param is dropped so it doesn't reopen on a later visit.
+  // Old deep links: ?student=<id> now opens the student's own page, and
+  // ?incomplete=1 (the dashboard's incomplete-records tile) sets the filter.
   useEffect(() => {
     const id = searchParams.get('student')
-    if (!id) return
-    setDetailId(id)
+    if (id) {
+      navigate(`/students/${encodeURIComponent(id)}`, { replace: true })
+      return
+    }
+    if (searchParams.get('incomplete') !== '1') return
+    setFilter('INCOMPLETE')
     setSearchParams(
       (prev) => {
-        prev.delete('student')
+        prev.delete('incomplete')
         return prev
       },
       { replace: true },
     )
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, navigate])
 
   const classLabel = useMemo(() => new Map(classes.map((c) => [c.id, c.label])), [classes])
 
@@ -178,7 +181,10 @@ export function StudentsPage() {
       .map((student, index) => ({ student, index }))
       .filter(({ student }) => {
         if (filter === 'ISSUES' && !issueIds.has(student.id)) return false
-        if (filter !== 'ALL' && filter !== 'ISSUES' && student.transportMode !== filter) return false
+        // SAMS 2.2: enrolled students whose record is missing something.
+        if (filter === 'INCOMPLETE' && !(student.active && student.completeness?.complete === false)) return false
+        if (filter !== 'ALL' && filter !== 'ISSUES' && filter !== 'INCOMPLETE' && student.transportMode !== filter)
+          return false
         if (!needle) return true
         return `${student.studentNumber} ${student.givenName} ${student.familyName} ${student.givenNameAr ?? ''} ${student.familyNameAr ?? ''} ${student.studentGroup} ${student.primaryPhone} ${student.secondaryPhone}`
           .toLowerCase()
@@ -278,7 +284,7 @@ export function StudentsPage() {
             onChange={(event) => setQuery(event.target.value)}
           />
           <div className="segmented">
-            {(['ALL', 'TWO_WAY', 'MORNING', 'EVENING', 'ISSUES'] as ModeFilter[]).map((option) => (
+            {(['ALL', 'TWO_WAY', 'MORNING', 'EVENING', 'ISSUES', 'INCOMPLETE'] as ModeFilter[]).map((option) => (
               <button
                 key={option}
                 type="button"
@@ -289,7 +295,9 @@ export function StudentsPage() {
                   ? t('inspector.filter.all')
                   : option === 'ISSUES'
                     ? t('students.issues')
-                    : t(`students.mode.${option}` as TranslationKey)}
+                    : option === 'INCOMPLETE'
+                      ? t('students.incomplete')
+                      : t(`students.mode.${option}` as TranslationKey)}
               </button>
             ))}
           </div>
@@ -423,9 +431,9 @@ export function StudentsPage() {
                           <button
                             type="button"
                             className="icon-btn"
-                            onClick={() => setDetailId(student.id)}
-                            aria-label={`${t('enroll.history')} ${student.studentNumber}`}
-                            title={t('enroll.history')}
+                            onClick={() => navigate(`/students/${encodeURIComponent(student.id)}`)}
+                            aria-label={`${t('students.openProfile')} ${student.studentNumber}`}
+                            title={t('students.openProfile')}
                           >
                             ⋯
                           </button>
@@ -454,24 +462,6 @@ export function StudentsPage() {
           {t('students.demandNote')}
         </p>
       </div>
-
-      {detailId &&
-        (() => {
-          const s = students.find((x) => x.id === detailId)
-          if (!s) return null
-          return (
-            <StudentDetailDialog
-              student={s}
-              classes={classes}
-              fleet={fleet}
-              getAccessToken={getAccessToken}
-              onClose={() => setDetailId(null)}
-              onChanged={(updated) =>
-                setStudents(students.map((x) => (x.id === updated.id ? updated : x)))
-              }
-            />
-          )
-        })()}
 
       {deleting && (
         <DeleteStudentDialog
