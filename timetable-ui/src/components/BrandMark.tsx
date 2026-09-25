@@ -16,11 +16,15 @@ export function BrandMark({ size = 30 }: { size?: number }) {
   )
 }
 
-/** Full lockup: shield beside the wordmark, for the login screen. */
+/** Full lockup for the sign-in screens: the logo seated in a white round
+ * badge (the JPG's own white background becomes the badge, so it reads as
+ * intentional on the dark brand panel), beside the wordmark. */
 export function BrandLockup({ tagline }: { tagline: string }) {
   return (
     <div className="lockup">
-      <BrandMark size={116} />
+      <span className="lockup__badge">
+        <BrandMark size={96} />
+      </span>
       <div className="lockup__text">
         <span className="lockup__word">ArrangeMySchool</span>
         <span className="lockup__tagline">{tagline}</span>

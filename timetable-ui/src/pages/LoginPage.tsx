@@ -17,6 +17,25 @@ const DEMO_HINTS: Array<{ email: string; password: string; role: 'owner' | 'sche
   { email: 'admin@riverside.test', password: 'admin123', role: 'owner' },
 ]
 
+const Icon = ({ d }: { d: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={d} />
+  </svg>
+)
+const MAIL = 'M4 6h16v12H4zM4 7l8 6 8-6'
+const LOCK = 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3'
+const EYE = 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'
+const EYE_OFF = 'M3 3l18 18M10.6 5.1A9.9 9.9 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2'
+const CHEVRON = 'M9 6l6 6-6 6'
+
+const initials = (name: string) =>
+  name
+    .split(/s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('')
+
 function errorKey(code: string): TranslationKey {
   switch (code) {
     case 'INVALID_CREDENTIALS':
@@ -93,17 +112,25 @@ export function LoginPage() {
             <h2 className="login__title">{t('login.chooseSchool')}</h2>
             <p className="login__subtitle">{t('login.chooseSchoolHint')}</p>
 
-            {tenants.map((tenant) => (
-              <button
-                type="button"
-                key={tenant.slug}
-                className="login__demo-row"
-                disabled={busy}
-                onClick={() => void attempt(tenant.slug)}
-              >
-                <span>{tenant.name}</span>
-              </button>
-            ))}
+            <div className="login__schools">
+              {tenants.map((tenant) => (
+                <button
+                  type="button"
+                  key={tenant.slug}
+                  className="login__school"
+                  disabled={busy}
+                  onClick={() => void attempt(tenant.slug)}
+                >
+                  <span className="login__school-avatar" aria-hidden="true">
+                    {initials(tenant.name)}
+                  </span>
+                  <span className="login__school-name">{tenant.name}</span>
+                  <span className="login__chevron">
+                    <Icon d={CHEVRON} />
+                  </span>
+                </button>
+              ))}
+            </div>
 
             {error && (
               <p className="login__error" role="alert">
@@ -125,45 +152,56 @@ export function LoginPage() {
           </div>
         ) : (
           <form className="login__form" onSubmit={submit} noValidate>
-            <h2 className="login__title">{t('login.title')}</h2>
-            <p className="login__subtitle">{t('login.subtitle')}</p>
+            <h2 className="login__title">{t('login.welcome')}</h2>
+            <p className="login__subtitle">{t('login.welcomeHint')}</p>
 
-            <label className="field">
-              <span>{t('login.email')}</span>
-              <input
-                className="input"
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@school.test"
-              />
-            </label>
-
-            <label className="field">
-              <span>{t('login.password')}</span>
-              <div className="input-affix">
+            <div className="field">
+              <label htmlFor="login-email">{t('login.email')}</label>
+              <div className="login__input">
+                <Icon d={MAIL} />
                 <input
+                  id="login-email"
+                  className="input"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="admin@school.test"
+                  aria-invalid={Boolean(error)}
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <div className="login__label-row">
+                <label htmlFor="login-password">{t('login.password')}</label>
+                <Link to="/forgot-password" className="login__forgot">
+                  {t('login.forgotPassword')}
+                </Link>
+              </div>
+              <div className="login__input">
+                <Icon d={LOCK} />
+                <input
+                  id="login-password"
                   className="input"
                   type={reveal ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  aria-invalid={Boolean(error)}
                 />
                 <button
                   type="button"
-                  className="btn btn--ghost btn--sm"
+                  className="login__reveal"
                   onClick={() => setReveal(!reveal)}
                   aria-label={reveal ? t('login.hidePassword') : t('login.showPassword')}
+                  aria-pressed={reveal}
                 >
-                  {reveal ? '🙈' : '👁'}
+                  <Icon d={reveal ? EYE_OFF : EYE} />
                 </button>
               </div>
-            </label>
-
-            <Link to="/forgot-password" className="login__forgot">
-              {t('login.forgotPassword')}
-            </Link>
+            </div>
 
             {error && (
               <p className="login__error" role="alert">
@@ -171,12 +209,12 @@ export function LoginPage() {
               </p>
             )}
 
-            <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
+            <button type="submit" className="btn btn--primary btn--block login__submit" disabled={busy} aria-busy={busy}>
               {busy ? t('login.signingIn') : t('login.submit')}
             </button>
 
-            <div className="login__demo">
-              <h3 className="panel__title">{t('login.demoTitle')}</h3>
+            <details className="login__demo">
+              <summary>{t('login.demoTitle')}</summary>
               {DEMO_HINTS.map((account) => (
                 <button
                   type="button"
@@ -194,7 +232,7 @@ export function LoginPage() {
                 </button>
               ))}
               <p className="login__note">{t('login.demoNote')}</p>
-            </div>
+            </details>
           </form>
         )}
     </AuthShell>
