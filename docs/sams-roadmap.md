@@ -187,6 +187,14 @@ first because every later phase depends on them.
 - Conversion creates the Student, parent links and a `pending` Enrollment in
   one audited operation — no retyping.
 - UI: applications table, detail with checklist and decision panel.
+- **Built**: statuses as above plus `withdrawn`; the checklist is a per-
+  application list of documentCategory codes (default: birth certificate,
+  photo, previous report); accepting needs each present and not rejected.
+  Scopes: admissions.read / admissions.manage (schedulers, registrars,
+  reception) and admissions.decide (admins). Conversion reuses a parent on
+  file by phone, creates the student as `inquiry` ("Admitted") with a
+  pending enrollment, and moves the documents. Intake staff may upload an
+  applicant's documents with admissions.manage.
 
 ### 2.6 Year-end re-enrollment
 - Bulk move eligible students to the next academic year (promote / hold back

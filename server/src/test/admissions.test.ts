@@ -51,7 +51,9 @@ async function upload(appId: string, category: string) {
   const res = await fx.app.inject({
     method: 'POST',
     url: `${config.routePrefix}/documents?ownerType=application&ownerId=${appId}&category=${category}&fileName=f.png`,
-    headers: { authorization: `Bearer ${fx.tokens.admin}`, 'content-type': 'application/octet-stream' },
+    // A scheduler: admissions.manage covers an applicant's documents
+    // (documents.upload is needed for students' and parents').
+    headers: { authorization: `Bearer ${fx.tokens.scheduler}`, 'content-type': 'application/octet-stream' },
     payload: PNG,
   })
   assert.equal(res.statusCode, 201, res.body)

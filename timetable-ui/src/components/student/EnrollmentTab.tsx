@@ -147,6 +147,8 @@ export function EnrollmentTab({
     )
 
   const enrolled = (student.status ?? 'enrolled') === 'enrolled'
+  // Left the school (as opposed to admitted and not yet started).
+  const returning = student.status === 'withdrawn' || student.status === 'graduated'
   const canTransfer = can('enrollments.transfer')
   const canWithdraw = can('enrollments.withdraw')
   const canAssign = can('enrollments.assign')
@@ -228,9 +230,9 @@ export function EnrollmentTab({
 
       {canAssign && (
         <section className="card profile-card">
-          <h2 className="card__title">{enrolled ? t('enroll.plan.title') : t('enroll.reenroll.title')}</h2>
+          <h2 className="card__title">{returning ? t('enroll.reenroll.title') : t('enroll.plan.title')}</h2>
           <p className="card__hint" style={{ margin: 0 }}>
-            {enrolled ? t('enroll.plan.hint') : t('enroll.reenroll.hint')}
+            {returning ? t('enroll.reenroll.hint') : enrolled ? t('enroll.plan.hint') : t('enroll.admitted.hint')}
           </p>
           <div className="field-grid">
             <label className="field">
@@ -250,7 +252,7 @@ export function EnrollmentTab({
             </label>
           </div>
           <div className="page__actions">
-            {!enrolled && (
+            {returning && (
               <button type="button" className="btn btn--sm btn--primary" disabled={busy || !placeClassId} onClick={() => void doOpen(false)}>
                 {t('enroll.reenroll.now')}
               </button>

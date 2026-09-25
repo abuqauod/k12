@@ -336,6 +336,16 @@ export function DashboardPage() {
                 })}
               />
             )}
+            {summary?.admissions && (
+              <StatTile
+                to="/admissions"
+                icon={ICON.record}
+                label={t('nav.admissions')}
+                value={n(summary.admissions.open)}
+                tone={summary.admissions.open > 0 ? 'warn' : 'neutral'}
+                hint={t('dash.admissions.hint', { accepted: n(summary.admissions.accepted) })}
+              />
+            )}
             {summary?.enrollments && (
               <StatTile
                 to="/students"

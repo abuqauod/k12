@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { MongoServerError } from 'mongodb'
 import { z } from 'zod'
 import { config } from '../config.js'
@@ -132,6 +132,14 @@ async function ownerAccess(
   return { ok: true, branchId: null }
 }
 
+/** Passes with any one of the scopes; the handler narrows it further. */
+function requireAnyPermission(scopes: PermissionScope[]) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    for (const scope of scopes) if (await callerHasPermission(request, scope)) return
+    await reply.code(403).send({ error: 'FORBIDDEN', required: scopes[0] })
+  }
+}
+
 /** Loads a document and checks the caller may see its owner. */
 async function documentAccess(request: FastifyRequest, tenantId: string, id: string) {
   const doc = await withTenant(tenantId, (ctx) => ctx.documents.findOne({ _id: id }))
@@ -227,7 +235,16 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       { parseAs: 'buffer', bodyLimit: config.maxDocumentBytes },
       (_request, body, done) => done(null, body),
     )
-    const uploadOptions = { ...scoped('documents.upload'), bodyLimit: config.maxDocumentBytes }
+    // The scope is checked per owner below: documents.upload in general, or
+    // admissions.manage for an application's own documents (SAMS 2.5 —
+    // intake staff collect an applicant's papers).
+    const uploadOptions = {
+      preHandler: [...signedIn, requireAnyPermission(['documents.upload', 'admissions.manage'])],
+      bodyLimit: config.maxDocumentBytes,
+    }
+    const mayUpload = async (request: FastifyRequest, ownerType: DocumentOwnerType) =>
+      (await callerHasPermission(request, 'documents.upload')) ||
+      (ownerType === 'application' && (await callerHasPermission(request, 'admissions.manage')))
 
     /** Checks the bytes; returns the detected type or an error reply body. */
     type FileCheck = { data: Buffer; mime: string } | { error: string; status: number }
@@ -244,6 +261,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const file = readFile(request.body)
       if ('error' in file) return reply.code(file.status).send({ error: file.error })
       const { ownerType, ownerId, category, expiresAt } = parsed.data
+      if (!(await mayUpload(request, ownerType))) return reply.code(403).send({ error: 'FORBIDDEN' })
       const tenantId = request.auth!.tenantId!
       const access = await ownerAccess(request, tenantId, ownerType, ownerId)
       if (!access.ok) return reply.code(access.status).send({ error: access.error })
@@ -312,6 +330,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const tenantId = request.auth!.tenantId!
       const access = await documentAccess(request, tenantId, id)
       if (!access.ok) return reply.code(access.status).send({ error: access.error })
+      if (!(await mayUpload(request, access.doc.ownerType))) return reply.code(403).send({ error: 'FORBIDDEN' })
       if (access.doc.archivedAt) return reply.code(409).send({ error: 'ARCHIVED' })
       if (!access.doc.isCurrent) return reply.code(409).send({ error: 'NOT_CURRENT_VERSION' })
 

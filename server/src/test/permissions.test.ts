@@ -105,8 +105,10 @@ const ROUTES: [Method, string, Role][] = [
   ['GET', `/documents?ownerType=student&ownerId=${X}`, 'viewer'],
   ['GET', `/documents/${X}/versions`, 'viewer'],
   ['POST', `/documents/${X}/link`, 'viewer'],
-  ['POST', '/documents', 'admin'],
-  ['POST', `/documents/${X}/versions`, 'admin'],
+  // admissions.manage (scheduler) may upload an applicant's documents;
+  // which owners it covers is checked in the handler (documents.test.ts).
+  ['POST', '/documents', 'scheduler'],
+  ['POST', `/documents/${X}/versions`, 'scheduler'],
   ['POST', `/documents/${X}/verify`, 'admin'],
   ['POST', `/documents/${X}/archive`, 'admin'],
 ]
