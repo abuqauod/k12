@@ -41,6 +41,11 @@ export function buildServer() {
     // otherwise done server-to-server (curl, scripts), which isn't subject
     // to CORS at all.
     methods: ['GET', 'PUT', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    // Response headers are only readable by cross-origin page JS (the normal
+    // topology here — the frontend's baseUrl is rarely same-origin with this
+    // server) when explicitly exposed. Needed so the audit-log CSV export's
+    // client can read the server-chosen filename off the response.
+    exposedHeaders: ['Content-Disposition'],
   })
 
   // Fastify's default JSON parser rejects a request whose Content-Type is
