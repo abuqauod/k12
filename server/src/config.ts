@@ -37,6 +37,8 @@ export const config = {
     .filter(Boolean),
   /** Largest accepted dataset document. A big school is well under this. */
   maxBodyBytes: Number(process.env.MAX_BODY_BYTES ?? 8 * 1024 * 1024),
+  /** Largest accepted uploaded document (SAMS 2.1). */
+  maxDocumentBytes: Number(process.env.MAX_DOCUMENT_BYTES ?? 10 * 1024 * 1024),
   /**
    * Set this when the app is reachable under a path, not its own
    * subdomain — e.g. Hostinger's Node.js Selector mounting the app at
