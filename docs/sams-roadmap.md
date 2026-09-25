@@ -143,6 +143,14 @@ first because every later phase depends on them.
   from Finance — never stored on the student.
 - Student detail becomes a full page with tabs: Profile, Family, Enrollment
   history, Finance, Documents, Activity (audit).
+- **Built**: new scope `students.custody` (admins, registrars); custody
+  text is never written to the audit log. Admission source is a settings
+  list (`admissionSource`). Completeness items: date of birth, gender,
+  nationality, national ID, address, primary phone, a parent or guardian,
+  an emergency contact, a birth certificate and a photo that aren't
+  rejected. Only enrolled students count. The photo is the student's
+  current `photo` document, not a separate field. The student dialog is
+  gone; `/students/:id` replaces it.
 
 ### 2.3 Unify the guardian models
 - Absence notifications switch from `StudentDoc.guardians` to
