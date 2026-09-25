@@ -161,11 +161,23 @@ export async function composeLinkedStudents(
 export async function linkedStudentCounts(
   ctx: TenantContext,
   parentIds: string[],
+  /** Count only children in these branches (SAMS 1.9); null = all. */
+  allowedBranchIds: string[] | null = null,
 ): Promise<Map<string, number>> {
   if (parentIds.length === 0) return new Map()
-  const links = await ctx.parentStudentLinks
+  let links = await ctx.parentStudentLinks
     .find({ parentId: { $in: parentIds }, active: true })
     .toArray()
+  if (allowedBranchIds !== null && links.length > 0) {
+    const inBranch = new Set(
+      (
+        await ctx.students
+          .find({ _id: { $in: links.map((l) => l.studentId) }, branchId: { $in: allowedBranchIds } })
+          .toArray()
+      ).map((s) => s._id),
+    )
+    links = links.filter((l) => inBranch.has(l.studentId))
+  }
   const counts = new Map<string, number>()
   for (const link of links) counts.set(link.parentId, (counts.get(link.parentId) ?? 0) + 1)
   return counts
@@ -178,6 +190,9 @@ export interface DuplicateCandidate {
   email: string | null
   nationalId: string | null
   matchedOn: Array<'nationalId' | 'primaryPhone' | 'alternativePhone' | 'email'>
+  /** Set when the match belongs to another branch's family (SAMS 1.9):
+   * personal fields are blanked, only the fact of a match is shown. */
+  restricted?: boolean
 }
 
 /**
@@ -344,4 +359,50 @@ export async function createLink(
 
 function isDuplicateKeyError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000
+}
+
+// ------------------------------------------------------ branch visibility --
+//
+// SAMS 1.9. `ParentDoc` has no branch of its own — a family belongs to
+// branches only through its children. A caller confined to some branches
+// therefore sees a parent when:
+//  - the parent is linked (now or formerly) to a student in one of those
+//    branches, or
+//  - the parent has never been linked at all — an intake record not yet
+//    attached to any family (otherwise the receptionist who just created it
+//    could not find it to link the child).
+// Derived from links every time, never copied onto the parent.
+
+/** Parent ids a branch-confined caller must not see. */
+export async function parentsHiddenFromBranches(
+  ctx: TenantContext,
+  allowedBranchIds: string[],
+): Promise<Set<string>> {
+  // Deactivated links count too: a family whose child left must not turn
+  // into an unlinked intake record visible to every branch.
+  const links = await ctx.parentStudentLinks.find({}).toArray()
+  if (links.length === 0) return new Set()
+  const studentIds = [...new Set(links.map((l) => l.studentId))]
+  const inBranch = new Set(
+    (await ctx.students.find({ _id: { $in: studentIds }, branchId: { $in: allowedBranchIds } }).toArray()).map(
+      (s) => s._id,
+    ),
+  )
+  const visible = new Set(links.filter((l) => inBranch.has(l.studentId)).map((l) => l.parentId))
+  return new Set(links.map((l) => l.parentId).filter((id) => !visible.has(id)))
+}
+
+/** Single-parent form of `parentsHiddenFromBranches`. */
+export async function parentHiddenFromBranches(
+  ctx: TenantContext,
+  parentId: string,
+  allowedBranchIds: string[],
+): Promise<boolean> {
+  const links = await ctx.parentStudentLinks.find({ parentId }).toArray()
+  if (links.length === 0) return false
+  const inBranch = await ctx.students.countDocuments({
+    _id: { $in: links.map((l) => l.studentId) },
+    branchId: { $in: allowedBranchIds },
+  })
+  return inBranch === 0
 }
