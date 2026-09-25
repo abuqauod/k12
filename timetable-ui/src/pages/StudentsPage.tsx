@@ -7,6 +7,7 @@ import { createStudent, listStudents, updateStudent } from '../lib/studentsApi'
 import { listClasses } from '../lib/classesApi'
 import type { SchoolClass } from '../domain/classes'
 import { StudentDetailDialog } from '../components/StudentDetailDialog'
+import { DeleteStudentDialog } from '../components/DeleteStudentDialog'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
@@ -35,7 +36,9 @@ function toPayload(student: Student): NewStudent {
 export function StudentsPage() {
   const { t, n } = useI18n()
   const { students, setStudents, fleet, activeBranchId } = useApp()
-  const { getAccessToken } = useAuth()
+  const { getAccessToken, can } = useAuth()
+  const canDelete = can('students.delete')
+  const [deleting, setDeleting] = useState<Student | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ModeFilter>('ALL')
   const [loading, setLoading] = useState(true)
@@ -189,10 +192,14 @@ export function StudentsPage() {
     scheduleSave(id, changes)
   }
 
-  // No delete endpoint yet — a real withdrawal should flip `status` to
-  // 'withdrawn' server-side, not erase the record. Until that lands this
-  // only removes the row from view; it reappears on the next server fetch.
-  const remove = (index: number) => setStudents(students.filter((_, i) => i !== index))
+  // A row not saved yet only exists here, so it's simply dropped. A saved
+  // student is deleted permanently on the server, behind a confirmation
+  // dialog where the admin re-enters their password (DeleteStudentDialog).
+  const remove = (index: number) => {
+    const student = students[index]!
+    if (student.id.startsWith(NEW_PREFIX)) setStudents(students.filter((_, i) => i !== index))
+    else setDeleting(student)
+  }
 
   const add = () => {
     const firstClass = classes[0]
@@ -423,6 +430,7 @@ export function StudentsPage() {
                             ⋯
                           </button>
                         )}
+                        {(canDelete || student.id.startsWith(NEW_PREFIX)) && (
                         <button
                           type="button"
                           className="icon-btn"
@@ -431,6 +439,7 @@ export function StudentsPage() {
                         >
                           ×
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -463,6 +472,18 @@ export function StudentsPage() {
             />
           )
         })()}
+
+      {deleting && (
+        <DeleteStudentDialog
+          studentId={deleting.id}
+          studentName={`${deleting.givenName} ${deleting.familyName} (${deleting.studentNumber})`}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setStudents(students.filter((x) => x.id !== deleting.id))
+            setDeleting(null)
+          }}
+        />
+      )}
     </div>
   )
 }

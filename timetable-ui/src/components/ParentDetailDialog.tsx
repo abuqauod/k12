@@ -37,6 +37,12 @@ export function ParentDetailDialog({
   onSaved: (parent: Parent) => void
 }) {
   const { t, n } = useI18n()
+  // A code with no translation shows the generic message, never a raw key.
+  const errorText = (code: string) => {
+    const key = `parents.error.${code}` as TranslationKey
+    const text = t(key)
+    return text === key ? t('parents.error.generic') : text
+  }
   const { getAccessToken } = useAuth()
   const { fleet, activeBranchId } = useApp()
 
@@ -103,7 +109,7 @@ export function ParentDetailDialog({
       : await createParent(getAccessToken, body)
     setSaving(false)
     if (result.kind !== 'ok') {
-      setError(t(`parents.error.${result.error}` as TranslationKey) || t('parents.error.generic'))
+      setError(errorText(result.error))
       return
     }
     const parent = 'parent' in result.data ? result.data.parent : result.data
@@ -138,7 +144,7 @@ export function ParentDetailDialog({
     const res = await createParentLink(getAccessToken, id, body)
     setLinking(false)
     if (res.kind !== 'ok') {
-      setLinkError(t(`parents.error.${res.error}` as TranslationKey) || t('parents.error.generic'))
+      setLinkError(errorText(res.error))
       return
     }
     setShowLinkForm(false)

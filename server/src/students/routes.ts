@@ -13,6 +13,9 @@ import {
 } from '../auth/guard.js'
 import type { PermissionScope } from '../auth/scopes.js'
 import { recordAudit } from '../audit.js'
+import { verify } from '@node-rs/argon2'
+import { withoutTenant } from '../db.js'
+import { clearLoginFailures, isLockedOut, recordLoginFailure } from '../auth/rateLimit.js'
 import { createInitialEnrollment, resolveAcademicYearId } from '../enrollments/service.js'
 
 /**
@@ -291,5 +294,73 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     })
     if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
     return reply.send(toResponse(result))
+  })
+
+  /**
+   * Permanent delete — for a record that should never have existed (a
+   * duplicate, a typo'd intake). A real departure is a withdrawal, which
+   * keeps history. Guarded three ways:
+   *  - `students.delete` (admin-level) plus the student's branch;
+   *  - the caller re-enters their own password (rate-limited like login,
+   *    so a stolen session cannot guess it; API keys can never delete);
+   *  - a student with any invoice or payment is refused — financial
+   *    history is never destroyed (SAMS spec §24); withdraw them instead.
+   * The student's enrollments, attendance and parent links go with them;
+   * the audit row keeps a full snapshot of what was removed.
+   */
+  app.delete('/students/:id', scoped('students.delete'), async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = z.object({ password: z.string().min(1).max(200) }).safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'PASSWORD_REQUIRED' })
+    const auth = request.auth!
+    if (auth.sub.startsWith('apikey:')) return reply.code(403).send({ error: 'FORBIDDEN' })
+
+    if (await isLockedOut(auth.email)) return reply.code(429).send({ error: 'TOO_MANY_ATTEMPTS' })
+    const user = await withoutTenant((db) => db.users.findOne({ _id: auth.sub }))
+    const passwordOk = user?.passwordHash
+      ? await verify(user.passwordHash, parsed.data.password).catch(() => false)
+      : false
+    if (!passwordOk) {
+      await recordLoginFailure(auth.email)
+      return reply.code(403).send({ error: 'INVALID_PASSWORD' })
+    }
+    await clearLoginFailures(auth.email)
+
+    const tenantId = auth.tenantId!
+    const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: id }))
+    if (!student) return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (!(await callerCanUseBranch(request, student.branchId))) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
+
+    const result = await withTenant(tenantId, async (ctx) => {
+      const hasFinance =
+        (await ctx.invoices.countDocuments({ studentId: id })) > 0 ||
+        (await ctx.payments.countDocuments({ studentId: id })) > 0
+      if (hasFinance) return 'HAS_FINANCIAL_HISTORY' as const
+      const before = await ctx.students.findOne({ _id: id })
+      if (!before) return 'NOT_FOUND' as const
+      const enrollments = await ctx.enrollments.find({ studentId: id }).toArray()
+      const links = await ctx.parentStudentLinks.find({ studentId: id }).toArray()
+      const attendance = await ctx.attendance.countDocuments({ studentId: id })
+      await ctx.enrollments.deleteMany({ studentId: id })
+      await ctx.attendance.deleteMany({ studentId: id })
+      await ctx.attendanceCorrections.deleteMany({ studentId: id })
+      await ctx.parentStudentLinks.deleteMany({ studentId: id })
+      await ctx.students.deleteOne({ _id: id })
+      await recordAudit(ctx.auditLog, {
+        actorId: auth.sub,
+        action: 'student.delete',
+        entity: 'student',
+        entityId: id,
+        branchId: before.branchId,
+        before: { student: before, enrollments, parentLinks: links, attendanceRecords: attendance },
+        after: null,
+      })
+      return 'ok' as const
+    })
+    if (result === 'HAS_FINANCIAL_HISTORY') return reply.code(409).send({ error: result })
+    if (result === 'NOT_FOUND') return reply.code(404).send({ error: result })
+    return reply.code(204).send()
   })
 }

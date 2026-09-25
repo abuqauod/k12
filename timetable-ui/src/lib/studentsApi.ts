@@ -136,3 +136,23 @@ export async function updateStudent(
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }
 }
+
+/** Permanent delete: the caller re-enters their own password. Refused for a
+ * student with financial history (withdraw them instead). */
+export async function deleteStudent(
+  getToken: TokenGetter,
+  id: string,
+  password: string,
+): Promise<StudentsResult<null>> {
+  try {
+    const response = await call(
+      `/students/${encodeURIComponent(id)}`,
+      { method: 'DELETE', body: JSON.stringify({ password }) },
+      getToken,
+    )
+    if (response.status === 204) return { kind: 'ok', data: null }
+    return parse<null>(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
