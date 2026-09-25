@@ -37,6 +37,17 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
     ],
   },
+  withdrawalReason: {
+    defaults: [
+      { code: 'relocation', label: 'Moved away', labelAr: 'انتقال السكن' },
+      { code: 'other_school', label: 'Moved to another school', labelAr: 'الانتقال إلى مدرسة أخرى' },
+      { code: 'financial', label: 'Financial', labelAr: 'أسباب مالية' },
+      { code: 'academic', label: 'Academic', labelAr: 'أسباب أكاديمية' },
+      { code: 'health', label: 'Health', labelAr: 'أسباب صحية' },
+      { code: 'family', label: 'Family circumstances', labelAr: 'ظروف عائلية' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
   documentCategory: {
     defaults: [
       { code: 'birth_certificate', label: 'Birth certificate', labelAr: 'شهادة الميلاد' },

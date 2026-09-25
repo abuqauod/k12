@@ -476,7 +476,12 @@ export interface AttendanceCorrectionDoc extends Document {
 // history is continuous and nothing is lost when a student changes class or
 // the year rolls over.
 
-export type EnrollmentStatus = 'active' | 'withdrawn' | 'graduated' | 'transferred'
+/**
+ * `pending`: planned, not started (next year's place, a re-enrollment not
+ * yet begun) — it doesn't touch the student's cached class. `cancelled`: a
+ * pending row that won't happen; kept, never deleted (SAMS 2.4).
+ */
+export type EnrollmentStatus = 'active' | 'pending' | 'withdrawn' | 'graduated' | 'transferred' | 'cancelled'
 
 export interface EnrollmentDoc extends Document {
   _id: string
@@ -492,8 +497,11 @@ export interface EnrollmentDoc extends Document {
   status: EnrollmentStatus
   /** For a `transferred` row: the enrollment it was replaced by. */
   supersededBy: string | null
-  /** Free text captured on withdraw / transfer. */
+  /** Free text captured on withdraw / transfer / cancel. */
   reason: string | null
+  /** A `withdrawalReason` settings-list code, on a withdrawn row (SAMS
+   * 2.4). Absent on rows written before it existed. */
+  reasonCode?: string | null
   createdAt: Date
   createdBy: string | null
   updatedAt: Date

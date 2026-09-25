@@ -94,8 +94,10 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
               active: await ctx.enrollments.countDocuments({ ...inYear, status: 'active' }),
               withdrawals: await ctx.enrollments.countDocuments({ ...inYear, status: 'withdrawn' }),
               transfers: await ctx.enrollments.countDocuments({ ...inYear, status: 'transferred' }),
+              // SAMS 2.4: planned places not yet started, in any year.
+              pending: await ctx.enrollments.countDocuments({ ...branchFilter, status: 'pending' }),
             }
-          : { academicYear: null, active: 0, withdrawals: 0, transfers: 0 }
+          : { academicYear: null, active: 0, withdrawals: 0, transfers: 0, pending: 0 }
       }
 
       // Only when the caller can decide at least one approval type.
