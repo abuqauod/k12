@@ -85,6 +85,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { tenantId: 1, studentId: 1 },
       { unique: true, partialFilterExpression: { status: 'active' } },
     )
+  // SAMS 2.4: at most one open (active or pending) enrollment per student
+  // per academic year — next year's place can be planned while this year
+  // is active, but never two places in the same year.
+  await db
+    .collection('enrollments')
+    .createIndex(
+      { tenantId: 1, studentId: 1, academicYearId: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { status: { $in: ['active', 'pending'] } },
+        name: 'enrollment_one_open_per_year',
+      },
+    )
   await db.collection('enrollments').createIndex({ tenantId: 1, studentId: 1, startDate: -1 })
   await db.collection('enrollments').createIndex({ tenantId: 1, classId: 1, status: 1 })
   await db.collection('enrollments').createIndex({ tenantId: 1, branchId: 1, academicYearId: 1, status: 1 })

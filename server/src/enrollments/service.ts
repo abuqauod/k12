@@ -222,6 +222,8 @@ export async function withdrawStudent(
     status: 'withdrawn' | 'graduated'
     effectiveDate?: string
     reason?: string | null
+    /** `withdrawalReason` code; withdrawals only. */
+    reasonCode?: string | null
     actorId: string | null
   },
 ): Promise<WithdrawResult> {
@@ -237,6 +239,7 @@ export async function withdrawStudent(
         status: params.status,
         endDate: effectiveDate,
         reason: params.reason ?? null,
+        reasonCode: params.reasonCode ?? null,
         updatedAt: now,
       },
     },
@@ -256,10 +259,160 @@ export async function withdrawStudent(
     entityId: params.studentId,
     branchId: current.branchId,
     before: { status: 'active', enrollmentId: current._id },
-    after: { status: params.status, effectiveDate },
+    after: { status: params.status, effectiveDate, reasonCode: params.reasonCode ?? null },
     meta: { reason: params.reason ?? null },
   })
   return { ok: true, enrollment: closed }
+}
+
+/** Points the student's cached class/branch/year at an enrollment that has
+ * just become active. */
+async function cacheActive(ctx: TenantContext, e: EnrollmentDoc, klass: { gradeLevel: string; name: string }) {
+  await ctx.students.findOneAndUpdate(
+    { _id: e.studentId },
+    {
+      $set: {
+        branchId: e.branchId,
+        classId: e.classId,
+        academicYearId: e.academicYearId,
+        studentGroup: classLabel(klass),
+        status: 'enrolled',
+        updatedAt: new Date(),
+      },
+    },
+  )
+}
+
+export type OpenResult =
+  | { ok: true; enrollment: EnrollmentDoc }
+  | { ok: false; error: 'UNKNOWN_STUDENT' | 'UNKNOWN_CLASS' | 'NO_ACADEMIC_YEAR' | 'ALREADY_ENROLLED' | 'YEAR_TAKEN' }
+
+/**
+ * SAMS 2.4: a new enrollment row for an existing student — never an edit
+ * of an old one, so history is kept.
+ *  - active: a re-enrollment after a withdrawal or graduation. Refused
+ *    while the student has an active enrollment (that is a transfer).
+ *  - pending: a planned place, e.g. next year's class. Leaves the student's
+ *    current class alone until it is activated.
+ * Either way, at most one open (active or pending) row per academic year —
+ * also enforced by a partial unique index (schema.ts).
+ */
+export async function openEnrollment(
+  ctx: TenantContext,
+  tenantId: string,
+  params: { studentId: string; classId: string; startDate?: string; pending: boolean; actorId: string | null },
+): Promise<OpenResult> {
+  const student = await ctx.students.findOne({ _id: params.studentId })
+  if (!student) return { ok: false, error: 'UNKNOWN_STUDENT' }
+  const klass = await ctx.classes.findOne({ _id: params.classId })
+  if (!klass) return { ok: false, error: 'UNKNOWN_CLASS' }
+  const academicYearId = await resolveAcademicYearId(ctx, klass.academicYearId)
+  if (!academicYearId) return { ok: false, error: 'NO_ACADEMIC_YEAR' }
+  if (!params.pending && (await activeEnrollment(ctx, params.studentId))) {
+    return { ok: false, error: 'ALREADY_ENROLLED' }
+  }
+  const sameYear = await ctx.enrollments.findOne({
+    studentId: params.studentId,
+    academicYearId,
+    status: { $in: ['active', 'pending'] },
+  })
+  if (sameYear) return { ok: false, error: 'YEAR_TAKEN' }
+
+  const now = new Date()
+  const enrollment: EnrollmentDoc = {
+    _id: randomUUID(),
+    tenantId,
+    studentId: params.studentId,
+    branchId: klass.branchId,
+    classId: klass._id,
+    academicYearId,
+    startDate: params.startDate ?? today(),
+    endDate: null,
+    status: params.pending ? 'pending' : 'active',
+    supersededBy: null,
+    reason: null,
+    createdAt: now,
+    createdBy: params.actorId,
+    updatedAt: now,
+  }
+  await ctx.enrollments.insertOne(enrollment)
+  if (!params.pending) await cacheActive(ctx, enrollment, klass)
+
+  await recordAudit(ctx.auditLog, {
+    actorId: params.actorId,
+    action: params.pending ? 'enrollment.plan' : 'enrollment.reenroll',
+    entity: 'student',
+    entityId: params.studentId,
+    branchId: klass.branchId,
+    before: params.pending ? null : { status: student.status },
+    after: { enrollmentId: enrollment._id, classId: klass._id, academicYearId, status: enrollment.status },
+  })
+  return { ok: true, enrollment }
+}
+
+export type PendingResult =
+  | { ok: true; enrollment: EnrollmentDoc }
+  | { ok: false; error: 'NOT_FOUND' | 'NOT_PENDING' | 'ALREADY_ENROLLED' | 'UNKNOWN_CLASS' }
+
+/** A pending enrollment starts: it becomes the student's active one. The
+ * student must have no active enrollment — close this year's first
+ * (withdraw, graduate); rolling a whole school forward is SAMS 2.6. */
+export async function activatePending(
+  ctx: TenantContext,
+  params: { enrollmentId: string; startDate?: string; actorId: string | null },
+): Promise<PendingResult> {
+  const row = await ctx.enrollments.findOne({ _id: params.enrollmentId })
+  if (!row) return { ok: false, error: 'NOT_FOUND' }
+  if (row.status !== 'pending') return { ok: false, error: 'NOT_PENDING' }
+  if (await activeEnrollment(ctx, row.studentId)) return { ok: false, error: 'ALREADY_ENROLLED' }
+  const klass = await ctx.classes.findOne({ _id: row.classId })
+  if (!klass) return { ok: false, error: 'UNKNOWN_CLASS' }
+
+  const startDate = params.startDate ?? row.startDate
+  const activated = await ctx.enrollments.findOneAndUpdate(
+    { _id: row._id, status: 'pending' },
+    { $set: { status: 'active', startDate, updatedAt: new Date() } },
+    { returnDocument: 'after' },
+  )
+  if (!activated) return { ok: false, error: 'NOT_PENDING' }
+  await cacheActive(ctx, activated, klass)
+  await recordAudit(ctx.auditLog, {
+    actorId: params.actorId,
+    action: 'enrollment.activate',
+    entity: 'student',
+    entityId: row.studentId,
+    branchId: row.branchId,
+    before: { enrollmentId: row._id, status: 'pending' },
+    after: { enrollmentId: row._id, status: 'active', startDate },
+  })
+  return { ok: true, enrollment: activated }
+}
+
+/** A pending enrollment that won't happen. Kept as `cancelled`. */
+export async function cancelPending(
+  ctx: TenantContext,
+  params: { enrollmentId: string; reason: string; actorId: string | null },
+): Promise<PendingResult> {
+  const now = new Date()
+  const cancelled = await ctx.enrollments.findOneAndUpdate(
+    { _id: params.enrollmentId, status: 'pending' },
+    { $set: { status: 'cancelled', endDate: today(), reason: params.reason, updatedAt: now } },
+    { returnDocument: 'after' },
+  )
+  if (!cancelled) {
+    const exists = await ctx.enrollments.findOne({ _id: params.enrollmentId })
+    return { ok: false, error: exists ? 'NOT_PENDING' : 'NOT_FOUND' }
+  }
+  await recordAudit(ctx.auditLog, {
+    actorId: params.actorId,
+    action: 'enrollment.cancel',
+    entity: 'student',
+    entityId: cancelled.studentId,
+    branchId: cancelled.branchId,
+    before: { enrollmentId: cancelled._id, status: 'pending' },
+    after: { enrollmentId: cancelled._id, status: 'cancelled' },
+  })
+  return { ok: true, enrollment: cancelled }
 }
 
 export interface BulkAssignRow {
