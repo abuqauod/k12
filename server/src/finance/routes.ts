@@ -17,9 +17,14 @@ import type { PermissionScope } from '../auth/scopes.js'
 import { recordAudit } from '../audit.js'
 import {
   addLineItem,
+  allocate,
   computeStudentBalances,
+  decidePayment,
+  openInvoices,
+  recordPayments,
   generateInvoice,
   invoicePaidTotals as paidTotals,
+  price,
   recordPayment,
   removeLineItem,
   updateLineItem,
@@ -30,6 +35,11 @@ import {
 import './approvals.js'
 import { MAX_INSTALLMENTS, installmentViews, overdueAmount, planError, splitEvenly } from './installments.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
+import { registerDiscountRoutes } from './discounts.js'
+import { registerScholarshipRoutes } from './scholarships.js'
+import { registerRefundRoutes } from './refunds.js'
+import { registerExpenseRoutes } from './expenses.js'
+import { registerFinanceReportRoutes } from './reports.js'
 
 /**
  * Finance & Accounting core loop — fee structures, invoices, payments,
@@ -138,11 +148,26 @@ const recordPaymentBody = z.object({
   paidAt: z.string().date(),
   payerName: z.string().min(1).max(200),
   notes: z.string().max(2000).nullable().default(null),
+  /** SAMS 3.4: a cheque or transfer to be confirmed before it counts. */
+  awaitingConfirmation: z.boolean().default(false),
+})
+
+/** SAMS 3.4: one amount over several of a student's invoices — as given,
+ * or oldest due first when `allocations` is left out. */
+const studentPaymentBody = recordPaymentBody.extend({
+  allocations: z
+    .array(z.object({ invoiceId: z.string().min(1), amount: z.number().int().min(0) }))
+    .min(1)
+    .max(50)
+    .optional(),
 })
 
 const paymentListQuery = z.object({
   invoiceId: z.string().optional(),
   studentId: z.string().optional(),
+  /** `pending` lists what waits for confirmation across the caller's branches. */
+  confirmation: z.enum(['pending', 'confirmed', 'rejected']).optional(),
+  branchId: z.string().optional(),
 })
 
 const receiptListQuery = z.object({
@@ -186,6 +211,10 @@ function invoiceResponse(doc: InvoiceDoc, paid?: number) {
     issueDate: doc.issueDate,
     dueDate: doc.dueDate,
     lineItems: doc.lineItems,
+    // SAMS 3.2: the lines' net sum, then the invoice-level discounts and
+    // scholarships that bring it to `total`.
+    subtotal: price(doc.lineItems, doc.adjustments).subtotal,
+    adjustments: (doc.adjustments ?? []).map((a) => ({ ...a, appliedAt: a.appliedAt.toISOString() })),
     total: doc.total,
     status: doc.status,
     notes: doc.notes,
@@ -207,6 +236,9 @@ function paymentResponse(doc: PaymentDoc) {
     payerName: doc.payerName,
     payerParentId: doc.payerParentId,
     notes: doc.notes,
+    batchId: doc.batchId ?? null,
+    confirmation: doc.confirmation ?? 'confirmed',
+    confirmedAt: doc.confirmedAt ? doc.confirmedAt.toISOString() : null,
     createdAt: doc.createdAt.toISOString(),
     voidedAt: doc.voidedAt ? doc.voidedAt.toISOString() : null,
   }
@@ -223,6 +255,9 @@ function receiptResponse(doc: ReceiptDoc) {
     method: doc.method,
     payerName: doc.payerName,
     issueDate: doc.issueDate,
+    allocations: doc.allocations ?? [
+      { paymentId: doc.paymentId, invoiceId: doc.invoiceId, invoiceNumber: null, amount: doc.amount },
+    ],
     createdAt: doc.createdAt.toISOString(),
   }
 }
@@ -238,6 +273,13 @@ const ERROR_STATUS: Record<string, number> = {
   UNKNOWN_PAYMENT: 404,
   DISCOUNT_REQUIRES_ADMIN: 403,
   BRANCH_FORBIDDEN: 403,
+  INVOICE_OTHER_STUDENT: 400,
+  DUPLICATE_ALLOCATION: 400,
+  ALLOCATION_MISMATCH: 400,
+  ALLOCATION_EXCEEDS_OUTSTANDING: 400,
+  AMOUNT_EXCEEDS_OUTSTANDING: 400,
+  NOTHING_OUTSTANDING: 409,
+  NOT_PENDING: 409,
 }
 
 export function registerFinanceRoutes(app: FastifyInstance): void {
@@ -580,26 +622,121 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
   app.get('/finance/payments', readGuard, async (request, reply) => {
     const parsed = paymentListQuery.safeParse(request.query)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_QUERY' })
-    if (!parsed.data.invoiceId && !parsed.data.studentId) {
+    const { invoiceId, studentId, confirmation, branchId } = parsed.data
+    if (!invoiceId && !studentId && !confirmation) {
       return reply.code(400).send({ error: 'MISSING_FILTER' })
     }
 
     const tenantId = request.auth!.tenantId!
     const filter: Filter<PaymentDoc> = {}
-    if (parsed.data.invoiceId) filter.invoiceId = parsed.data.invoiceId
-    if (parsed.data.studentId) filter.studentId = parsed.data.studentId
+    if (invoiceId) filter.invoiceId = invoiceId
+    if (studentId) filter.studentId = studentId
+    if (confirmation === 'confirmed') filter.confirmation = { $nin: ['pending', 'rejected'] }
+    else if (confirmation) filter.confirmation = confirmation
 
     const result = await withTenant(tenantId, async (ctx) => {
-      const rows = await ctx.payments.find(filter).sort({ paidAt: -1 }).toArray()
+      const rows = await ctx.payments.find(filter).sort({ paidAt: -1 }).limit(1000).toArray()
       const invoiceIds = [...new Set(rows.map((r) => r.invoiceId))]
       const invoices = invoiceIds.length > 0 ? await ctx.invoices.find({ _id: { $in: invoiceIds } }).toArray() : []
-      return { rows, branchIds: new Set(invoices.map((i) => i.branchId)) }
+      return { rows, invoices: new Map(invoices.map((i) => [i._id, i])) }
     })
-    for (const branchId of result.branchIds) {
-      if (!(await callerCanUseBranch(request, branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    if (invoiceId || studentId) {
+      for (const inv of result.invoices.values()) {
+        if (!(await callerCanUseBranch(request, inv.branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+      }
     }
-    return reply.send({ payments: result.rows.map(paymentResponse) })
+    // A queue across students: narrowed to the caller's (or the asked) branches.
+    const allowed = await callerBranchIds(request)
+    if (branchId && allowed !== null && !allowed.includes(branchId)) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    const visible = result.rows.filter((p) => {
+      const b = result.invoices.get(p.invoiceId)?.branchId
+      if (!b) return false
+      if (branchId) return b === branchId
+      return allowed === null || allowed.includes(b)
+    })
+    return reply.send({
+      payments: visible.map((p) => ({ ...paymentResponse(p), invoiceNumber: result.invoices.get(p.invoiceId)?.invoiceNumber ?? null })),
+    })
   })
+
+  // SAMS 3.4: what a new payment for this student may cover, oldest due first.
+  app.get('/finance/students/:studentId/open-invoices', readGuard, async (request, reply) => {
+    const { studentId } = request.params as { studentId: string }
+    const tenantId = request.auth!.tenantId!
+    const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: studentId }))
+    if (!student) return reply.code(404).send({ error: 'UNKNOWN_STUDENT' })
+    if (!(await callerCanUseBranch(request, student.branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    const open = await withTenant(tenantId, (ctx) => openInvoices(ctx, studentId))
+    const allowed = await callerBranchIds(request)
+    return reply.send({
+      invoices: open
+        .filter((o) => allowed === null || allowed.includes(o.invoice.branchId))
+        .map((o) => ({ ...invoiceResponse(o.invoice), outstanding: o.outstanding })),
+    })
+  })
+
+  app.post('/finance/students/:studentId/payments', scoped('finance.payment.create'), async (request, reply) => {
+    const { studentId } = request.params as { studentId: string }
+    const parsed = studentPaymentBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const tenantId = request.auth!.tenantId!
+    const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: studentId }))
+    if (!student) return reply.code(404).send({ error: 'UNKNOWN_STUDENT' })
+    if (!(await callerCanUseBranch(request, student.branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    await ensureDefaults(tenantId, 'paymentMethod')
+    const methods = await withTenant(tenantId, (ctx) => activeCodes(ctx, 'paymentMethod'))
+    if (!methods.has(parsed.data.method)) return reply.code(400).send({ error: 'INVALID_PAYMENT_METHOD' })
+
+    const { allocations: requested, amount, ...input } = parsed.data
+    const allowed = await callerBranchIds(request)
+    const result = await withTenant(tenantId, async (ctx) => {
+      // Only invoices in the caller's branches can be paid from here.
+      const open = (await openInvoices(ctx, studentId)).filter(
+        (o) => allowed === null || allowed.includes(o.invoice.branchId),
+      )
+      const split = allocate(open, amount, requested)
+      if (!split.ok) return split
+      return recordPayments(ctx, tenantId, { ...input, studentId, allocations: split.allocations, actorId: request.auth!.sub })
+    })
+    if (!result.ok) {
+      return reply
+        .code(ERROR_STATUS[result.error] ?? 409)
+        .send({ error: result.error, ...('outstanding' in result ? { outstanding: result.outstanding } : {}) })
+    }
+    return reply.code(201).send({
+      payments: result.payments.map(paymentResponse),
+      receipt: result.receipt ? receiptResponse(result.receipt) : null,
+      invoices: result.invoices.map((i) => invoiceResponse(i)),
+    })
+  })
+
+  for (const [path, confirm] of [
+    ['confirm', true],
+    ['reject', false],
+  ] as const) {
+    app.post(`/finance/payments/:id/${path}`, scoped('finance.payment.confirm'), async (request, reply) => {
+      const { id } = request.params as { id: string }
+      if (!confirm) {
+        const reason = readReason(request.body)
+        if (!reason) return reply.code(400).send({ error: 'REASON_REQUIRED' })
+        setAuditReason(reason)
+      }
+      const tenantId = request.auth!.tenantId!
+      const payment = await withTenant(tenantId, (ctx) => ctx.payments.findOne({ _id: id }))
+      if (!payment) return reply.code(404).send({ error: 'UNKNOWN_PAYMENT' })
+      const access = await requireInvoiceBranchAccess(request, payment.invoiceId, tenantId)
+      if (!access.ok) return reply.code(access.status).send({ error: access.error })
+      const result = await withTenant(tenantId, (ctx) =>
+        decidePayment(ctx, tenantId, id, { confirm, actorId: request.auth!.sub }),
+      )
+      if (!result.ok) return reply.code(ERROR_STATUS[result.error] ?? 409).send({ error: result.error })
+      return reply.send({
+        payments: result.payments.map(paymentResponse),
+        receipt: result.receipt ? receiptResponse(result.receipt) : null,
+        invoices: result.invoices.map((i) => invoiceResponse(i)),
+      })
+    })
+  }
 
   app.post('/finance/invoices/:id/payments', scoped('finance.payment.create'), async (request, reply) => {
     const { id } = request.params as { id: string }
@@ -620,7 +757,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     if (!result.ok) return reply.code(ERROR_STATUS[result.error] ?? 400).send({ error: result.error })
     return reply.code(201).send({
       payment: paymentResponse(result.payment),
-      receipt: receiptResponse(result.receipt),
+      receipt: result.receipt ? receiptResponse(result.receipt) : null,
       invoice: invoiceResponse(result.invoice),
     })
   })
@@ -692,4 +829,11 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
       balance.get(studentId) ?? { invoicedTotal: 0, paidTotal: 0, outstandingBalance: 0 },
     )
   })
+
+  // Phase 3 modules share this file's invoice shape.
+  registerDiscountRoutes(app, (doc) => invoiceResponse(doc))
+  registerScholarshipRoutes(app)
+  registerRefundRoutes(app)
+  registerExpenseRoutes(app)
+  registerFinanceReportRoutes(app)
 }

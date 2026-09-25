@@ -792,7 +792,7 @@ export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 
 /** SAMS 2.1: records a document can be attached to. Staff and applications
  * join this list in later phases. */
-export type DocumentOwnerType = 'student' | 'parent' | 'application'
+export type DocumentOwnerType = 'student' | 'parent' | 'application' | 'scholarship' | 'expense'
 export type DocumentVerificationStatus = 'unverified' | 'verified' | 'rejected'
 
 /**
@@ -942,6 +942,23 @@ export interface InvoiceLineItem {
   netAmount: number
 }
 
+/** SAMS 3.2: an invoice-level reduction from a named discount type or an
+ * approved scholarship. `amount` is recomputed on every invoice write
+ * (finance/service.ts `price`): a percent applies to the lines' net sum. */
+export interface InvoiceAdjustment {
+  id: string
+  source: 'discount' | 'scholarship'
+  /** `DiscountTypeDoc._id` or `ScholarshipDoc._id`. */
+  refId: string
+  label: string
+  type: DiscountType
+  value: number
+  /** Minor units. */
+  amount: number
+  appliedAt: Date
+  appliedBy: string | null
+}
+
 /** SAMS 3.1: one dated part of an invoice's total. */
 export interface InvoiceInstallment {
   id: string
@@ -988,6 +1005,8 @@ export interface InvoiceDoc extends Document {
    * Its amounts sum to `total` when set; a later line change that moves
    * the total leaves the plan flagged as not matching until it is redone. */
   installments?: InvoiceInstallment[]
+  /** SAMS 3.2; absent = none. `total` is the lines' net sum less these. */
+  adjustments?: InvoiceAdjustment[]
   status: InvoiceStatus
   notes: string | null
   createdAt: Date
@@ -1004,6 +1023,8 @@ export interface InvoiceDoc extends Document {
  * one indexed query, not a join through invoices (same reasoning as
  * `AttendanceRecordDoc.branchId`).
  */
+export type PaymentConfirmation = 'pending' | 'confirmed' | 'rejected'
+
 export interface PaymentDoc extends Document {
   _id: string
   tenantId: string
@@ -1026,9 +1047,18 @@ export interface PaymentDoc extends Document {
   payerParentId: string | null
   notes: string | null
   receivedBy: string | null
+  /** SAMS 3.4: payments taken together (one amount spread over several
+   * invoices) share it, and one receipt. Absent on older payments. */
+  batchId?: string
+  /** SAMS 3.4: a cheque or transfer can wait for confirmation; until it is
+   * confirmed it counts toward nothing and has no receipt. Absent =
+   * confirmed (every payment before 3.4). */
+  confirmation?: PaymentConfirmation
+  confirmedAt?: Date | null
+  confirmedBy?: string | null
   createdAt: Date
-  /** No refund flow exists (out of scope for this PR) — a mis-recorded
-   * payment is voided, never edited, so the audit trail always shows what
+  /** A mis-recorded payment is voided (money actually handed back is a
+   * refund, SAMS 3.3), never edited, so the audit trail always shows what
    * was really entered and when it was reversed. */
   voidedAt: Date | null
   voidedBy: string | null
@@ -1058,6 +1088,9 @@ export interface ReceiptDoc extends Document {
   method: PaymentMethod
   payerName: string
   issueDate: string
+  /** SAMS 3.4: how the amount was spread; one entry for a single invoice.
+   * Absent on older receipts. */
+  allocations?: { paymentId: string; invoiceId: string; invoiceNumber: string; amount: number }[]
   createdAt: Date
   createdBy: string | null
 }
@@ -1075,6 +1108,121 @@ export interface FinanceCounterDoc extends Document {
   _id: string
   tenantId: string
   seq: number
+}
+
+/** SAMS 3.2: a named, reusable discount (sibling, staff child, early
+ * payment…) applied to invoices as an adjustment. Deactivated, never
+ * deleted, so invoices keep pointing at it. */
+export interface DiscountTypeDoc extends Document {
+  _id: string
+  tenantId: string
+  name: string
+  nameAr: string | null
+  type: DiscountType
+  value: number
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+/** SAMS 3.2/3.3/3.5: records that go through an approval (1.10). They are
+ * created `pending` together with their approval request; the request's
+ * outcome moves them on. */
+export type ScholarshipStatus = 'pending' | 'active' | 'rejected' | 'cancelled' | 'revoked'
+export type RefundStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'paid'
+export type ExpenseStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'paid'
+
+/** A formal award for one student for one academic year. Once approved it
+ * applies to every non-void invoice of that student and year, including
+ * ones generated later. Supporting documents attach to it (2.1). */
+export interface ScholarshipDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  branchId: string
+  academicYearId: string
+  name: string
+  type: DiscountType
+  value: number
+  reason: string
+  status: ScholarshipStatus
+  requestedBy: string
+  decidedBy: string | null
+  decidedAt: Date | null
+  revokedAt: Date | null
+  revokedBy: string | null
+  revokeReason: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** Money returned against an invoice: requested, approved, then paid out.
+ * Only a paid refund reduces what the invoice has been paid. */
+export interface RefundDoc extends Document {
+  _id: string
+  tenantId: string
+  refundNumber: string
+  invoiceId: string
+  studentId: string
+  branchId: string
+  /** Minor units. */
+  amount: number
+  reason: string
+  status: RefundStatus
+  requestedBy: string
+  decidedBy: string | null
+  decidedAt: Date | null
+  /** ISO yyyy-mm-dd, set when paid out. */
+  paidAt: string | null
+  paidBy: string | null
+  method: PaymentMethod | null
+  reference: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface VendorDoc extends Document {
+  _id: string
+  tenantId: string
+  name: string
+  contactName: string | null
+  phone: string | null
+  email: string | null
+  taxNumber: string | null
+  notes: string | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+/** Money the school spends: submitted, approved, then paid. */
+export interface ExpenseDoc extends Document {
+  _id: string
+  tenantId: string
+  expenseNumber: string
+  branchId: string
+  /** An `expenseCategory` lookup code (SAMS 1.11). */
+  categoryCode: string
+  vendorId: string | null
+  description: string
+  /** Minor units. */
+  amount: number
+  /** ISO yyyy-mm-dd the cost was incurred. */
+  expenseDate: string
+  /** The vendor's own invoice number, if any. */
+  reference: string | null
+  status: ExpenseStatus
+  requestedBy: string
+  decidedBy: string | null
+  decidedAt: Date | null
+  paidAt: string | null
+  paidBy: string | null
+  method: PaymentMethod | null
+  paymentReference: string | null
+  createdAt: Date
+  updatedAt: Date
 }
 
 // ----------------------------------------------------------- transport --
@@ -1397,6 +1545,11 @@ export interface TenantContext {
   payments: TenantScope<PaymentDoc>
   receipts: TenantScope<ReceiptDoc>
   financeCounters: TenantScope<FinanceCounterDoc>
+  discountTypes: TenantScope<DiscountTypeDoc>
+  scholarships: TenantScope<ScholarshipDoc>
+  refunds: TenantScope<RefundDoc>
+  vendors: TenantScope<VendorDoc>
+  expenses: TenantScope<ExpenseDoc>
   buses: TenantScope<BusDoc>
   stops: TenantScope<StopDoc>
   transportSettings: TenantScope<TransportSettingsDoc>
@@ -1485,6 +1638,11 @@ export async function withTenant<T>(
           tenantId,
           session,
         ),
+        discountTypes: new TenantScope(db.collection<DiscountTypeDoc>('discountTypes'), tenantId, session),
+        scholarships: new TenantScope(db.collection<ScholarshipDoc>('scholarships'), tenantId, session),
+        refunds: new TenantScope(db.collection<RefundDoc>('refunds'), tenantId, session),
+        vendors: new TenantScope(db.collection<VendorDoc>('vendors'), tenantId, session),
+        expenses: new TenantScope(db.collection<ExpenseDoc>('expenses'), tenantId, session),
         buses: new TenantScope(db.collection<BusDoc>('buses'), tenantId, session),
         stops: new TenantScope(db.collection<StopDoc>('stops'), tenantId, session),
         transportSettings: new TenantScope(

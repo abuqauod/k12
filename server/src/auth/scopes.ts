@@ -40,14 +40,21 @@ export type PermissionScope =
   | 'enrollments.transfer'
   | 'enrollments.withdraw'
   | 'finance.discount.approve'
+  | 'finance.expense.approve'
+  | 'finance.expense.create'
   | 'finance.feeStructure.manage'
   | 'finance.invoice.create'
   | 'finance.invoice.lineItems'
   | 'finance.invoice.void'
+  | 'finance.payment.confirm'
   | 'finance.payment.create'
   | 'finance.payment.void'
+  | 'finance.payout'
   | 'finance.read'
   | 'finance.refund.approve'
+  | 'finance.refund.request'
+  | 'finance.scholarship.approve'
+  | 'finance.scholarship.request'
   | 'hr.employee.update'
   | 'hr.read'
   | 'memberships.manage'
@@ -96,9 +103,12 @@ const SCHEDULER_SCOPES: readonly PermissionScope[] = [
   'admissions.read',
   'attendance.write',
   'datasets.write',
+  'finance.expense.create',
   'finance.invoice.create',
   'finance.invoice.lineItems',
   'finance.payment.create',
+  'finance.refund.request',
+  'finance.scholarship.request',
   'notifications.run',
   'parents.write',
   'students.create',
@@ -123,10 +133,14 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'enrollments.transfer',
   'enrollments.withdraw',
   'finance.discount.approve',
+  'finance.expense.approve',
   'finance.feeStructure.manage',
   'finance.invoice.void',
+  'finance.payment.confirm',
   'finance.payment.void',
+  'finance.payout',
   'finance.refund.approve',
+  'finance.scholarship.approve',
   'hr.employee.update',
   'hr.read',
   'memberships.manage',
@@ -210,13 +224,20 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   finance_officer: preset('scheduler', [
     ...VIEWER_SCOPES,
     'finance.discount.approve',
+    'finance.expense.approve',
+    'finance.expense.create',
     'finance.feeStructure.manage',
     'finance.invoice.create',
     'finance.invoice.lineItems',
     'finance.invoice.void',
+    'finance.payment.confirm',
     'finance.payment.create',
     'finance.payment.void',
+    'finance.payout',
     'finance.refund.approve',
+    'finance.refund.request',
+    'finance.scholarship.approve',
+    'finance.scholarship.request',
     'reports.finance',
   ]),
   hr: preset('viewer', [...OFFICE_READ, 'hr.employee.update', 'hr.read']),

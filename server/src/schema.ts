@@ -189,6 +189,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('receipts').createIndex({ tenantId: 1, receiptNumber: 1 }, { unique: true })
   await db.collection('receipts').createIndex({ tenantId: 1, paymentId: 1 }, { unique: true })
   await db.collection('receipts').createIndex({ tenantId: 1, studentId: 1 })
+  await db.collection('payments').createIndex({ tenantId: 1, batchId: 1 })
+
+  // SAMS 3.2–3.5.
+  await db.collection('discountTypes').createIndex({ tenantId: 1, active: 1, name: 1 })
+  await db.collection('scholarships').createIndex({ tenantId: 1, studentId: 1, academicYearId: 1, status: 1 })
+  await db.collection('scholarships').createIndex({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
+  await db.collection('refunds').createIndex({ tenantId: 1, refundNumber: 1 }, { unique: true })
+  await db.collection('refunds').createIndex({ tenantId: 1, invoiceId: 1, status: 1 })
+  await db.collection('refunds').createIndex({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
+  await db.collection('vendors').createIndex({ tenantId: 1, active: 1, name: 1 })
+  await db.collection('expenses').createIndex({ tenantId: 1, expenseNumber: 1 }, { unique: true })
+  await db.collection('expenses').createIndex({ tenantId: 1, branchId: 1, status: 1, expenseDate: -1 })
 
   await db.collection('buses').createIndex({ tenantId: 1, branchId: 1, active: 1 })
   await db.collection('stops').createIndex({ tenantId: 1, branchId: 1, active: 1 })
