@@ -2,9 +2,10 @@ import { loadSyncSettings } from './sync'
 import { authorizedFetch, type TokenGetter } from './http'
 
 /** Client for enrollment history and the operations that change it —
- * transfer, withdraw, bulk class assignment. */
+ * transfer, withdraw, re-enroll / plan a place, activate or cancel a
+ * planned one, bulk class assignment. */
 
-export type EnrollmentStatus = 'active' | 'withdrawn' | 'graduated' | 'transferred'
+export type EnrollmentStatus = 'active' | 'pending' | 'withdrawn' | 'graduated' | 'transferred' | 'cancelled'
 
 export interface Enrollment {
   id: string
@@ -17,6 +18,8 @@ export interface Enrollment {
   status: EnrollmentStatus
   supersededBy: string | null
   reason: string | null
+  /** A `withdrawalReason` code on a withdrawn row (SAMS 2.4). */
+  reasonCode: string | null
   createdAt: string
 }
 
@@ -88,7 +91,12 @@ export async function transferStudent(
 export async function withdrawStudent(
   getToken: TokenGetter,
   studentId: string,
-  input: { status: 'withdrawn' | 'graduated'; effectiveDate?: string; reason?: string | null },
+  input: {
+    status: 'withdrawn' | 'graduated'
+    effectiveDate?: string
+    reason?: string | null
+    reasonCode?: string | null
+  },
 ): Promise<EnrollmentsResult<{ enrollment: Enrollment }>> {
   try {
     const response = await call(
@@ -110,6 +118,58 @@ export async function bulkAssign(
     const response = await call(
       '/enrollments/bulk-assign',
       { method: 'POST', body: JSON.stringify(input) },
+      getToken,
+    )
+    return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+/** Re-enroll now (`pending: false`) or plan a future place (`pending: true`). */
+export async function openEnrollment(
+  getToken: TokenGetter,
+  studentId: string,
+  input: { classId: string; startDate?: string; pending: boolean },
+): Promise<EnrollmentsResult<{ enrollment: Enrollment }>> {
+  try {
+    const response = await call(
+      `/students/${encodeURIComponent(studentId)}/enrollments`,
+      { method: 'POST', body: JSON.stringify(input) },
+      getToken,
+    )
+    return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function activateEnrollment(
+  getToken: TokenGetter,
+  enrollmentId: string,
+  startDate?: string,
+): Promise<EnrollmentsResult<{ enrollment: Enrollment }>> {
+  try {
+    const response = await call(
+      `/enrollments/${encodeURIComponent(enrollmentId)}/activate`,
+      { method: 'POST', body: JSON.stringify(startDate ? { startDate } : {}) },
+      getToken,
+    )
+    return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function cancelEnrollment(
+  getToken: TokenGetter,
+  enrollmentId: string,
+  reason: string,
+): Promise<EnrollmentsResult<{ enrollment: Enrollment }>> {
+  try {
+    const response = await call(
+      `/enrollments/${encodeURIComponent(enrollmentId)}/cancel`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
       getToken,
     )
     return parse(response)

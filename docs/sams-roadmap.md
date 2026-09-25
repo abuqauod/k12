@@ -171,6 +171,13 @@ first because every later phase depends on them.
 - Add `pending` status, withdrawal reason codes (lookup), re-enrollment as a
   new row (history never overwritten), and a DB-enforced rule of one active
   enrollment per student per academic year.
+- **Built**: statuses `pending` (a planned place; leaves the student's
+  class alone) and `cancelled`. `POST /students/:id/enrollments` plans a
+  place or re-enrolls as a new row; `/enrollments/:id/activate` and
+  `/cancel`. The existing one-active-per-student index stays, plus one
+  open (active or pending) row per student per academic year. Withdrawal
+  reasons are a settings list (`withdrawalReason`); a note alone counts as
+  "other". Also fixed: enrollment history wasn't branch-checked.
 
 ### 2.5 Admissions
 - `ApplicationDoc` (applicant, guardians, requested branch/grade/year, source,
