@@ -13,6 +13,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useApp } from '../state/AppContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { DocumentsPanel } from './DocumentsPanel'
 import { StudentDetailDialog } from './StudentDetailDialog'
 
 type Tab = 'basic' | 'contact' | 'work' | 'status'
@@ -485,6 +486,12 @@ export function ParentDetailDialog({
                       )
                     })}
                   </div>
+                </section>
+              )}
+
+              {id && (
+                <section style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                  <DocumentsPanel ownerType="parent" ownerId={id} />
                 </section>
               )}
             </>

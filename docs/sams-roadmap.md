@@ -122,9 +122,15 @@ first because every later phase depends on them.
   (lookup), `fileName`, `mime`, `size`, `version`, `expiresAt`,
   `verification` (unverified/verified/rejected), `uploadedBy`, `archivedAt`.
   New upload of the same slot = new version, old kept.
-- **Access**: download only via short-lived signed tokens (reuse
-  `actionTokens`); never a predictable public URL. Read access follows the
-  owner entity's permission and branch.
+- **Access**: download only via short-lived signed tokens; never a
+  predictable public URL. Read access follows the owner entity's permission
+  and branch.
+- **Built** (student and parent owners): links are 5-minute signed JWTs,
+  not `actionTokens`. Those are single-use, and a PDF preview makes several
+  range requests. Uploads are raw bytes (no multipart dependency); the file
+  type is taken from the bytes (PDF/PNG/JPEG/WebP only). New scope
+  `documents.verify`. Staff and application owners come with Phases 4 and
+  2.5.
 - **UI**: reusable Documents panel (upload, preview image/PDF, verify,
   archive, version history).
 

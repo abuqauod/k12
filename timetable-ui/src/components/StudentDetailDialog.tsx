@@ -16,12 +16,13 @@ import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { LocationPicker } from './LocationPicker'
 import { InvoiceDetailDialog } from './InvoiceDetailDialog'
+import { DocumentsPanel } from './DocumentsPanel'
 
 /**
  * Everything about one student that doesn't belong in the roster table:
  * the full guardian list (with per-guardian language and notification
- * opt-in), and the enrolment actions — transfer and withdraw — plus the
- * enrolment history they produce.
+ * opt-in), the enrolment actions — transfer and withdraw — plus the
+ * enrolment history they produce, billing, and documents.
  */
 export function StudentDetailDialog({
   student,
@@ -449,6 +450,10 @@ export function StudentDetailDialog({
                 </tbody>
               </table>
             )}
+          </section>
+
+          <section style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+            <DocumentsPanel ownerType="student" ownerId={student.id} />
           </section>
         </div>
       </div>
