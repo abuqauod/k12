@@ -15,6 +15,12 @@ import { backfillParentsFromGuardians } from './backfill.js'
  * Requires the API server already running (`npm run dev` in another
  * terminal) — override its address with SEED_BASE if it's not on the
  * default port.
+ *
+ * Meant to run once against a freshly seeded database. Classes and fee
+ * structures 409 cleanly on a name/slot clash (so a second run fails fast,
+ * on the very first one, rather than corrupting data), but student numbers
+ * are generated from a counter starting at 1 every run and duplicate — wipe
+ * and re-seed rather than re-running this against data it already created.
  */
 
 const BASE = process.env.SEED_BASE ?? 'http://localhost:4000'
@@ -249,10 +255,9 @@ async function seedTenant(plan: SeedPlan): Promise<void> {
             body: JSON.stringify({ studentId, feeStructureId, dueDate: isoDaysAgo(-30) }),
           }, token)
           invoiceCount++
-          const roll = random()
-          if (roll < 0.85) {
+          if (random() < 0.85) {
             const total = invoice.total as number
-            const amount = roll < 0.55 ? total : Math.round(total * (0.4 + random() * 0.4))
+            const amount = random() < 0.55 ? total : Math.round(total * (0.4 + random() * 0.4))
             await call(`/finance/invoices/${invoice.id}/payments`, {
               method: 'POST',
               body: JSON.stringify({
