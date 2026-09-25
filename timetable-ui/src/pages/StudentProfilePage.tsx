@@ -222,7 +222,7 @@ export function StudentProfilePage() {
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'profile' && <ProfileTab key={student.id} student={student} fleet={fleet} onChanged={onChanged} />}
-        {tab === 'family' && <FamilyTab key={student.id} student={student} onChanged={onChanged} />}
+        {tab === 'family' && <FamilyTab key={student.id} student={student} />}
         {tab === 'enrollment' && <EnrollmentTab student={student} classes={classes} onChanged={onChanged} />}
         {tab === 'finance' && <FinanceTab student={student} />}
         {tab === 'documents' && (

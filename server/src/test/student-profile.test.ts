@@ -218,12 +218,21 @@ describe('family', () => {
       authorizedPickup: true,
     })
     const res = await call(fx.app, fx.tokens.viewer, 'GET', `/students/${id}/family`)
-    const family = (res.body as { family: { parentId: string; relationshipType: string; authorizedPickup: boolean }[] })
-      .family
+    const family = (
+      res.body as {
+        family: {
+          parentId: string
+          relationshipType: string
+          authorizedPickup: boolean
+          communicationPermissions: { email: boolean; sms: boolean }
+        }[]
+      }
+    ).family
     assert.equal(family.length, 1)
     assert.equal(family[0]!.parentId, parentId)
     assert.equal(family[0]!.relationshipType, 'father')
     assert.equal(family[0]!.authorizedPickup, true)
+    assert.deepEqual(family[0]!.communicationPermissions, { email: true, sms: false })
     assert.equal((await call(fx.app, fx.scopedToken, 'GET', `/students/${id}/family`)).error, 'BRANCH_FORBIDDEN')
   })
 })

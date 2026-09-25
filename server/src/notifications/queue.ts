@@ -9,7 +9,10 @@ import { effectiveSettings, renderMessage } from './settings.js'
 /**
  * Absence notifications are a queue. `enqueueAbsenceNotifications` scans a
  * branch/day and writes one PENDING `NotificationJobDoc` per (absent
- * student × opted-in active guardian × enabled channel). `processQueue`
+ * student × opted-in parent × enabled channel). Since SAMS 2.3 the
+ * recipients are the student's active parent links: the link's
+ * `communicationPermissions` say which channels, the parent record gives
+ * the address and language. An archived or inactive parent gets nothing. `processQueue`
  * drains it — one `NotificationAttemptDoc` per try, exponential backoff
  * between retries, `dead` after `maxAttempts` or a permanent error.
  *
@@ -86,31 +89,43 @@ export async function enqueueAbsenceNotifications(params: {
     const now = new Date()
     const outcome: EnqueueOutcome = { ...zero, absentees: absentees.length }
 
+    const links = await ctx.parentStudentLinks
+      .find({ studentId: { $in: absentees.map((s) => s._id) }, active: true })
+      .toArray()
+    const parents = await ctx.parents
+      .find({ _id: { $in: [...new Set(links.map((l) => l.parentId))] }, status: 'active' })
+      .toArray()
+    const parentById = new Map(parents.map((p) => [p._id, p]))
+
     for (const student of absentees) {
-      const guardians = student.guardians.filter((g) => g.active)
+      const recipients = links
+        .filter((l) => l.studentId === student._id && parentById.has(l.parentId))
+        .map((link) => ({ link, parent: parentById.get(link.parentId)! }))
       const studentName = `${student.givenName} ${student.familyName}`.trim()
       const tokens = { studentName, date, schoolName: tenant.name, branchName: branch.name }
 
       let sentToAny = false
-      for (const guardian of guardians) {
+      for (const { link, parent } of recipients) {
         for (const channel of settings.channels) {
-          const wants = channel === 'email' ? guardian.notifyByEmail : guardian.notifyBySms
-          if (!wants) continue
-          const to = channel === 'email' ? (guardian.email ?? '') : (guardian.phone ?? '')
+          if (!link.communicationPermissions[channel]) continue
+          const to = channel === 'email' ? (parent.email ?? '') : (parent.primaryPhone ?? '')
           if (!to) continue
           sentToAny = true
 
-          const language: GuardianLanguage = guardian.preferredLanguage
+          const language: GuardianLanguage = parent.preferredLanguage ?? 'en'
           const msg = renderMessage(settings, channel, language, tokens)
-          const _id = `${tenantId}:${branchId}:${student._id}:${date}:${channel}:${guardian.id}`
+          // Keyed by parent, so one parent is messaged once per student,
+          // day and channel however the link is later edited.
+          const _id = `${tenantId}:${branchId}:${student._id}:${date}:${channel}:${parent._id}`
           const job: Omit<NotificationJobDoc, '_id' | 'tenantId'> = {
             branchId,
             studentId: student._id,
-            guardianId: guardian.id,
+            // The field names predate parents; they now hold the parent's.
+            guardianId: parent._id,
             date,
             channel,
             to,
-            guardianName: guardian.name,
+            guardianName: parent.fullName,
             language,
             subject: msg.subject,
             body: msg.body,

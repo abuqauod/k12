@@ -4,7 +4,7 @@ import { ensureIndexes } from './schema.js'
 import {
   backfillBranchesAndClasses,
   backfillEnrollmentModel,
-  backfillParentsFromGuardians,
+  retireEmbeddedGuardians,
 } from './backfill.js'
 
 /**
@@ -31,9 +31,9 @@ async function main(): Promise<void> {
   await backfillEnrollmentModel(db)
   console.log('  done')
 
-  console.log('Backfilling parents from embedded guardian records...')
-  await backfillParentsFromGuardians(db)
-  console.log('  done')
+  console.log('Moving embedded student guardians onto parent links...')
+  const moved = await retireEmbeddedGuardians(db)
+  console.log(`  done: ${moved.students} students, ${moved.parents} new parents, ${moved.links} new links`)
 
   await client.close()
 }
