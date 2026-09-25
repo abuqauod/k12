@@ -501,15 +501,15 @@ const en = {
   'reset.tokenUsed':
     'This reset link has already been used. Request a new one if you still need to reset your password.',
 
-  'login.marketing.solver': 'Conflict-free by construction',
-  'login.marketing.solverBody':
-    'Room, teacher and cohort clashes are hard constraints — a published timetable has zero.',
-  'login.marketing.breaks': 'Breaks that match your school',
-  'login.marketing.breaksBody':
-    'Whole-school recess and staggered per-class lunch, on a Sunday or Monday week.',
-  'login.marketing.tiers': 'KG1 through Grade 12',
-  'login.marketing.tiersBody':
-    'Homeroom kindergartens, rotating elementary specialists and high-school streams in one model.',
+  'login.welcome': 'Welcome back',
+  'login.welcomeHint': "Sign in to your school's administration workspace.",
+  'login.points.students': 'Students & admissions',
+  'login.points.studentsBody': 'Enrollment, transfers and family records — full history, never overwritten.',
+  'login.points.finance': 'Fees & finance',
+  'login.points.financeBody': 'Fee structures, invoices, payments and receipts per branch and academic year.',
+  'login.points.staff': 'A role for every office',
+  'login.points.staffBody': 'Registrar, finance, reception and branch admins each see exactly what their job needs.',
+  'login.trust': 'Branch-scoped access · Every change audited',
 
   'dash.greeting': 'Welcome back, {name}',
   'dash.subtitle': 'Here is where the schedule stands today.',
@@ -1379,15 +1379,15 @@ const ar: Record<TranslationKey, string> = {
   'reset.tokenExpired': 'انتهت صلاحية رابط إعادة التعيين هذا. اطلب رابطاً جديداً.',
   'reset.tokenUsed': 'تم استخدام رابط إعادة التعيين هذا من قبل. اطلب رابطاً جديداً إذا كنت لا تزال بحاجة لإعادة التعيين.',
 
-  'login.marketing.solver': 'جدول خالٍ من التعارضات',
-  'login.marketing.solverBody':
-    'تعارضات القاعات والمعلمين والصفوف قيود صارمة — الجدول المعتمد لا يحتوي أياً منها.',
-  'login.marketing.breaks': 'فُسَح تناسب مدرستك',
-  'login.marketing.breaksBody':
-    'فسحة عامة للمدرسة ووجبة غداء متدرجة لكل صف، في أسبوع يبدأ الأحد أو الاثنين.',
-  'login.marketing.tiers': 'من الروضة حتى الصف الثاني عشر',
-  'login.marketing.tiersBody':
-    'صفوف روضة بغرفة ثابتة، ومعلمو تخصص متنقلون، ومسارات ثانوية في نموذج واحد.',
+  'login.welcome': 'مرحبًا بعودتك',
+  'login.welcomeHint': 'سجّل الدخول إلى مساحة إدارة مدرستك.',
+  'login.points.students': 'الطلاب والقبول',
+  'login.points.studentsBody': 'التسجيل والنقل وسجلات الأسر — سجل كامل لا يُستبدل أبدًا.',
+  'login.points.finance': 'الرسوم والمالية',
+  'login.points.financeBody': 'هياكل الرسوم والفواتير والمدفوعات والإيصالات لكل فرع وعام دراسي.',
+  'login.points.staff': 'دور لكل قسم',
+  'login.points.staffBody': 'المسجّل والمالية والاستقبال ومديرو الفروع — كلٌّ يرى ما يحتاجه عمله فقط.',
+  'login.trust': 'صلاحيات حسب الفرع · كل تغيير مُسجَّل',
 
   'dash.greeting': 'أهلاً بعودتك، {name}',
   'dash.subtitle': 'هذا هو وضع الجدول اليوم.',

@@ -551,9 +551,17 @@
 }
 
 /* ============================================================== login ==== */
+/* Brand palette sampled from the logo: deep indigo rings, and the star's
+   magenta / violet / teal / green / sun-yellow. Scoped to the auth screens. */
 .login {
+  --logo-ink: #241042;
+  --logo-magenta: #d9328f;
+  --logo-violet: #7b2fbe;
+  --logo-teal: #34b3e4;
+  --logo-green: #62b32f;
+  --logo-sun: #f6c21c;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
   min-height: 100dvh;
   background: var(--paper);
 }
@@ -563,72 +571,96 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 34px;
-  padding: 48px 52px;
-  background: var(--brand-gradient);
-  color: var(--on-accent);
+  gap: 40px;
+  padding: 56px clamp(28px, 5vw, 64px);
+  background:
+    radial-gradient(120% 90% at 0% 0%, #3a1a6e 0%, transparent 60%),
+    linear-gradient(160deg, var(--logo-ink) 0%, #1a0b33 100%);
+  color: #fff;
   overflow: hidden;
+  isolation: isolate;
 }
 
-/* Faint grid, echoing the timetable the product produces. Light lines now
-   that the panel itself is dark (see --brand-gradient). */
+/* The logo confetti dots, blurred into soft light. */
+.login__aside::before {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  z-index: -1;
+  background:
+    radial-gradient(closest-side, color-mix(in srgb, var(--logo-magenta) 55%, transparent), transparent) 78% 82% / 44% 44% no-repeat,
+    radial-gradient(closest-side, color-mix(in srgb, var(--logo-violet) 60%, transparent), transparent) 88% 18% / 40% 40% no-repeat,
+    radial-gradient(closest-side, color-mix(in srgb, var(--logo-teal) 40%, transparent), transparent) 8% 92% / 36% 36% no-repeat,
+    radial-gradient(closest-side, color-mix(in srgb, var(--logo-green) 30%, transparent), transparent) 12% 12% / 26% 26% no-repeat;
+  filter: blur(28px);
+  opacity: 0.85;
+}
+
+/* A sparse star field, echoing the small stars in the logo. */
 .login__aside::after {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: -1;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 58px 44px;
-  mask-image: radial-gradient(circle at 30% 40%, #000 0%, transparent 72%);
+    radial-gradient(1.5px 1.5px at 20% 30%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 70% 20%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 85% 65%, rgba(246, 194, 28, 0.8), transparent),
+    radial-gradient(1px 1px at 40% 80%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 55% 50%, rgba(255, 255, 255, 0.35), transparent);
+  background-size: 320px 260px;
   pointer-events: none;
 }
 
 .login__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  position: relative;
-  z-index: 1;
-}
-
-/* On the dark panel the shield inverts to white. */
-.login__brand .brand__mark {
-  color: var(--on-accent);
 }
 
 .lockup {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 20px;
+}
+
+/* The white JPG ground becomes a deliberate round badge. */
+.lockup__badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 0 6px rgba(255, 255, 255, 0.08),
+    0 0 0 14px rgba(255, 255, 255, 0.04),
+    0 18px 48px -12px color-mix(in srgb, var(--logo-magenta) 60%, transparent);
+}
+
+.lockup__badge .brand__mark {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
 }
 
 .lockup__text {
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 
 .lockup__word {
-  font-size: clamp(24px, 4vw, 34px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: clamp(26px, 3.4vw, 36px);
+  font-weight: 750;
+  letter-spacing: -0.025em;
   line-height: 1.05;
-  color: var(--on-accent);
+  color: #fff;
 }
 
 .lockup__tagline {
-  font-size: 13.5px;
+  font-size: 14px;
   letter-spacing: 0.01em;
   color: rgba(255, 255, 255, 0.72);
-}
-
-.login__brand .brand__title,
-.login__brand .brand__subtitle {
-  color: var(--on-accent);
-}
-
-.login__brand .brand__subtitle {
-  opacity: 0.72;
 }
 
 .login__points {
@@ -636,36 +668,63 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 22px;
+  gap: 14px;
   max-width: 30rem;
-  position: relative;
-  z-index: 1;
 }
 
 .login__points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(6px);
+}
+
+.login__point-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--logo-violet), var(--logo-magenta));
+  color: #fff;
+}
+
+.login__points li div {
   display: grid;
-  gap: 4px;
-  padding-inline-start: 16px;
-  border-inline-start: 2px solid rgba(255, 255, 255, 0.28);
+  gap: 3px;
 }
 
 .login__points strong {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 650;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
 }
 
 .login__points span {
   font-size: 13px;
-  opacity: 0.78;
   line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.login__trust {
+  margin: 0;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .login__main {
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: 24px clamp(16px, 4vw, 48px);
   overflow: auto;
+  background:
+    radial-gradient(60% 50% at 100% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent),
+    var(--paper);
 }
 
 .login__topbar {
@@ -673,51 +732,142 @@
   justify-content: flex-end;
 }
 
+/* The form card, shared by the sign-in, invite and reset screens. */
 .login__form {
-  width: min(408px, 100%);
+  width: min(420px, 100%);
   margin: auto;
   display: grid;
-  gap: 14px;
-  padding: 8px 0 24px;
+  gap: 16px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  animation: login-rise 0.35s ease-out both;
+}
+
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
 .login__title {
   margin: 0;
   font-size: 26px;
-  font-weight: 650;
+  font-weight: 700;
   letter-spacing: -0.03em;
 }
 
 .login__subtitle {
-  margin: -8px 0 6px;
+  margin: -10px 0 4px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.login__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Inputs with a leading icon, and an optional trailing reveal button. */
+.login__input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login__input > svg {
+  position: absolute;
+  inset-inline-start: 12px;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.login__input .input {
+  width: 100%;
+  min-height: 44px;
+  padding-inline-start: 40px;
+}
+
+.login__input:has(.login__reveal) .input {
+  padding-inline-end: 44px;
+}
+
+.login__reveal {
+  position: absolute;
+  inset-inline-end: 4px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.login__reveal svg {
+  width: 18px;
+  height: 18px;
+}
+
+.login__reveal:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.login__reveal:focus-visible,
+.login__school:focus-visible,
+.login__demo summary:focus-visible,
+.login__forgot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.login__submit {
+  min-height: 46px;
+  border: 0;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--logo-magenta) 100%);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.login__submit:disabled {
+  opacity: 0.7;
 }
 
 .login__error {
   margin: 0;
-  padding: 8px 11px;
-  border-radius: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
   background: var(--bad-soft);
   color: var(--bad);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .login__success {
   margin: 0;
-  padding: 8px 11px;
-  border-radius: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
   background: var(--ok-soft);
   color: var(--ok);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .login__forgot {
-  align-self: flex-start;
-  margin: -4px 0 2px;
   font-size: 12.5px;
-  color: var(--accent);
+  font-weight: 550;
+  color: var(--accent-text);
   text-decoration: none;
+  border-radius: 4px;
 }
 
 .login__forgot:hover {
@@ -734,14 +884,82 @@
   flex: 1;
 }
 
+/* School picker, for accounts that belong to more than one school. */
+.login__schools {
+  display: grid;
+  gap: 8px;
+}
+
+.login__school {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: start;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.login__school:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.login__school-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--logo-violet), var(--logo-magenta));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.login__school-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.login__chevron {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+:root[dir='rtl'] .login__chevron {
+  transform: scaleX(-1);
+}
+
+/* Demo accounts, tucked away so they do not compete with the real form. */
 .login__demo {
-  margin-block-start: 10px;
-  padding: 12px 14px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
   background: var(--surface-2);
+  padding: 4px 12px;
+}
+
+.login__demo summary {
+  padding: 8px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.login__demo[open] {
   display: grid;
   gap: 6px;
+  padding-bottom: 12px;
 }
 
 .login__demo-row {
@@ -749,10 +967,12 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 6px 8px;
+  min-height: 40px;
+  padding: 6px 10px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
   text-align: start;
   font-size: 11.5px;
@@ -769,17 +989,39 @@
   color: var(--muted);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .login__form {
+    animation: none;
+  }
+  .login__school {
+    transition: none;
+  }
+}
+
 /* ========================================================= responsive ==== */
 @media (max-width: 900px) {
   .login {
     grid-template-columns: 1fr;
   }
+  /* The brand panel collapses to a compact header above the form. */
   .login__aside {
-    padding: 28px 24px;
-    gap: 20px;
+    padding: 22px 20px;
+    gap: 0;
   }
-  .login__points {
+  .login__points,
+  .login__trust {
     display: none;
+  }
+  .lockup__badge {
+    width: 64px;
+    height: 64px;
+  }
+  .lockup__badge .brand__mark {
+    width: 54px;
+    height: 54px;
+  }
+  .login__form {
+    padding: 24px 20px;
   }
 }
 
