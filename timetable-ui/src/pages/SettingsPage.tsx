@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../state/AppContext'
 import type { Theme } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
@@ -30,34 +31,86 @@ import { RoutingRulesEditor } from '../components/RoutingRules'
 import { BreaksEditor } from '../components/BreaksEditor'
 import { JsonDialog } from '../components/JsonDialog'
 import { getTenant } from '../lib/tenantApi'
+import { LookupSection } from '../components/LookupSection'
+import {
+  AcademicYearsSection,
+  GradesClassesSection,
+  NotificationTemplatesSection,
+  OrganizationProfileCard,
+  RolesSection,
+} from '../components/SettingsSections'
 import type { TenantProfile } from '../lib/tenantApi'
 
 const THEMES: Theme[] = ['auto', 'light', 'dark']
 
-type SettingsTab = 'account' | 'calendar' | 'transport' | 'tuning' | 'team' | 'branches' | 'organization'
+type SettingsSection =
+  | 'account'
+  | 'organization'
+  | 'branches'
+  | 'academic-years'
+  | 'grades-classes'
+  | 'payment-methods'
+  | 'document-categories'
+  | 'notification-templates'
+  | 'roles'
+  | 'team'
+  | 'calendar'
+  | 'transport'
+  | 'tuning'
 
-const BASE_TABS: Array<{ id: SettingsTab; key: TranslationKey }> = [
-  { id: 'account', key: 'settings.tab.account' },
-  { id: 'calendar', key: 'settings.tab.calendar' },
-  { id: 'transport', key: 'fleet.rules' },
-  { id: 'tuning', key: 'panel.tuning' },
+interface SectionDef {
+  id: SettingsSection
+  key: TranslationKey
+  /** Scope that shows the section; the API enforces the same. */
+  scope?: string
+}
+
+/** Settings information architecture (SAMS 1.11): one place, grouped. */
+const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
+  { key: 'settings.group.personal', sections: [{ id: 'account', key: 'settings.tab.account' }] },
+  {
+    key: 'settings.group.school',
+    sections: [
+      { id: 'organization', key: 'settings.tab.organization', scope: 'settings.read' },
+      { id: 'branches', key: 'branches.title', scope: 'notifications.manage' },
+      { id: 'academic-years', key: 'settings.section.academicYears', scope: 'academicYears.read' },
+      { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
+      { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
+      { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
+      { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
+    ],
+  },
+  {
+    key: 'settings.group.access',
+    sections: [
+      { id: 'team', key: 'settings.tab.team', scope: 'memberships.manage' },
+      { id: 'roles', key: 'settings.section.roles', scope: 'memberships.manage' },
+    ],
+  },
+  {
+    key: 'settings.group.scheduling',
+    sections: [
+      { id: 'calendar', key: 'settings.tab.calendar' },
+      { id: 'transport', key: 'fleet.rules' },
+      { id: 'tuning', key: 'panel.tuning' },
+    ],
+  },
 ]
 
 export function SettingsPage() {
   const { t } = useI18n()
   const { can } = useAuth()
-  const [tab, setTab] = useState<SettingsTab>('account')
-  // Staff management needs memberships.manage — the same scope the API
-  // enforces, resolved server-side (SAMS 1.8).
-  const canManageTeam = can('memberships.manage')
-  const tabs = canManageTeam
-    ? [
-        ...BASE_TABS,
-        { id: 'organization' as const, key: 'settings.tab.organization' as TranslationKey },
-        { id: 'branches' as const, key: 'branches.title' as TranslationKey },
-        { id: 'team' as const, key: 'settings.tab.team' as TranslationKey },
-      ]
-    : BASE_TABS
+  const navigate = useNavigate()
+  const { section } = useParams<{ section?: string }>()
+
+  const groups = SECTION_GROUPS.map((group) => ({
+    ...group,
+    sections: group.sections.filter((s) => !s.scope || can(s.scope)),
+  })).filter((group) => group.sections.length > 0)
+  const allowed = groups.flatMap((group) => group.sections)
+  // Unknown or not-permitted sections fall back to the first allowed one.
+  const active = allowed.find((s) => s.id === section) ?? allowed[0]
+  const go = (id: SettingsSection) => navigate(`/settings/${id}`)
 
   return (
     <div className="page">
@@ -68,27 +121,70 @@ export function SettingsPage() {
         </div>
       </header>
 
-      <div className="page-tabs" role="tablist">
-        {tabs.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === entry.id}
-            onClick={() => setTab(entry.id)}
-          >
-            {t(entry.key)}
-          </button>
-        ))}
-      </div>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label={t('settings.title')}>
+          {groups.map((group) => (
+            <div key={group.key} className="settings-nav__group">
+              <p className="settings-nav__label">{t(group.key)}</p>
+              {group.sections.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="settings-nav__item"
+                  aria-current={active?.id === s.id ? 'page' : undefined}
+                  onClick={() => go(s.id)}
+                >
+                  {t(s.key)}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <select
+          className="select settings-nav__select"
+          value={active?.id}
+          onChange={(event) => go(event.target.value as SettingsSection)}
+          aria-label={t('settings.title')}
+        >
+          {groups.map((group) => (
+            <optgroup key={group.key} label={t(group.key)}>
+              {group.sections.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {t(s.key)}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
 
-      {tab === 'account' && <AccountTab />}
-      {tab === 'calendar' && <CalendarSettingsTab />}
-      {tab === 'transport' && <TransportSettingsTab />}
-      {tab === 'tuning' && <TuningSettingsTab />}
-      {tab === 'organization' && canManageTeam && <OrganizationSettingsTab />}
-      {tab === 'branches' && canManageTeam && <BranchesSettingsTab />}
-      {tab === 'team' && canManageTeam && <TeamSettingsTab />}
+        <div className="settings-content">
+          {active?.id === 'account' && <AccountTab />}
+          {active?.id === 'organization' && <OrganizationSettingsTab />}
+          {active?.id === 'branches' && <BranchesSettingsTab />}
+          {active?.id === 'academic-years' && <AcademicYearsSection />}
+          {active?.id === 'grades-classes' && <GradesClassesSection />}
+          {active?.id === 'payment-methods' && (
+            <LookupSection
+              kind="paymentMethod"
+              title={t('settings.section.paymentMethods')}
+              hint={t('settings.paymentMethods.hint')}
+            />
+          )}
+          {active?.id === 'document-categories' && (
+            <LookupSection
+              kind="documentCategory"
+              title={t('settings.section.documentCategories')}
+              hint={t('settings.documentCategories.hint')}
+            />
+          )}
+          {active?.id === 'notification-templates' && <NotificationTemplatesSection />}
+          {active?.id === 'team' && <TeamSettingsTab />}
+          {active?.id === 'roles' && <RolesSection />}
+          {active?.id === 'calendar' && <CalendarSettingsTab />}
+          {active?.id === 'transport' && <TransportSettingsTab />}
+          {active?.id === 'tuning' && <TuningSettingsTab />}
+        </div>
+      </div>
     </div>
   )
 }
@@ -724,6 +820,7 @@ function OrganizationSettingsTab() {
           </>
         )}
       </section>
+      <OrganizationProfileCard />
     </div>
   )
 }

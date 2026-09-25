@@ -50,7 +50,7 @@ export default function App() {
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/finance" element={<FinancePage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/:section?" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

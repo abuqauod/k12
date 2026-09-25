@@ -58,10 +58,22 @@ export async function ping(): Promise<void> {
 
 // --------------------------------------------------------------- documents --
 
+export interface TenantProfile {
+  nameAr: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  website: string | null
+  taxNumber: string | null
+}
+
 export interface TenantDoc extends Document {
   _id: string
   slug: string
   name: string
+  /** School-editable contact details (SAMS 1.11, PATCH /tenant). Everything
+   * else on this document stays vendor-only. */
+  profile?: TenantProfile
   plan: string
   status: 'active' | 'suspended' | 'cancelled'
   seats: number
@@ -613,7 +625,29 @@ export interface ParentStudentLinkDoc extends Document {
 // conversion to a displayed major-unit amount happens only at the UI
 // boundary (timetable-ui/src/domain/finance.ts).
 
-export type PaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'cheque' | 'other'
+/** A `paymentMethod` lookup code (SAMS 1.11) — the built-ins are cash,
+ * bank_transfer, card, cheque, other; schools may add their own. */
+export type PaymentMethod = string
+
+/** SAMS 1.11: one tenant-scoped collection for every settings list. A kind
+ * (paymentMethod, documentCategory, …) is registered in
+ * settings/lookups.ts; entries are never deleted, only deactivated, so
+ * records that reference a code keep resolving. */
+export interface LookupDoc extends Document {
+  _id: string
+  tenantId: string
+  kind: string
+  /** Immutable, unique per tenant + kind; what other records store. */
+  code: string
+  label: string
+  labelAr: string | null
+  active: boolean
+  order: number
+  /** Seeded default rather than school-created. */
+  builtIn: boolean
+  createdAt: Date
+  updatedAt: Date
+}
 export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 
 // --------------------------------------------------------------- approvals --
@@ -1130,6 +1164,7 @@ export interface TenantContext {
   datasets: TenantScope<DatasetDoc>
   datasetVersions: TenantScope<DatasetVersionDoc>
   auditLog: TenantScope<AuditLogDoc>
+  lookups: TenantScope<LookupDoc>
   /** Scoped view for a signed-in admin managing their own school's staff. */
   memberships: TenantScope<MembershipDoc>
   /** Scoped view for a signed-in admin managing their own school's API keys. */
@@ -1181,6 +1216,7 @@ export async function withTenant<T>(
           session,
         ),
         auditLog: new TenantScope(db.collection<AuditLogDoc>('auditLog'), tenantId, session),
+        lookups: new TenantScope(db.collection<LookupDoc>('lookups'), tenantId, session),
         memberships: new TenantScope(db.collection<MembershipDoc>('memberships'), tenantId, session),
         apiKeys: new TenantScope(db.collection<ApiKeyDoc>('apiKeys'), tenantId, session),
         students: new TenantScope(db.collection<StudentDoc>('students'), tenantId, session),

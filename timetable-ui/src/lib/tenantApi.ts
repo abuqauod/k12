@@ -15,6 +15,17 @@ export interface TenantProfile {
   status: 'active' | 'suspended' | 'cancelled'
   validUntil: string | null
   graceDays: number
+  /** School-editable contact details (SAMS 1.11). */
+  profile: ContactProfile
+}
+
+export interface ContactProfile {
+  nameAr: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  website: string | null
+  taxNumber: string | null
 }
 
 function baseUrl(): string {
@@ -36,6 +47,28 @@ export async function getTenant(getToken: TokenGetter): Promise<TenantResult<Ten
       return { kind: 'error', error }
     }
     return { kind: 'ok', data: body as TenantProfile }
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+/** `PATCH /tenant` — only the contact profile; everything else is vendor-only. */
+export async function updateTenantProfile(
+  getToken: TokenGetter,
+  profile: Partial<ContactProfile>,
+): Promise<TenantResult<{ profile: ContactProfile }>> {
+  try {
+    const response = await authorizedFetch(
+      `${baseUrl()}/tenant`,
+      { method: 'PATCH', body: JSON.stringify({ profile }) },
+      getToken,
+    )
+    const text = await response.text()
+    const body = text ? (JSON.parse(text) as unknown) : null
+    if (!response.ok) {
+      return { kind: 'error', error: (body as { error?: string } | null)?.error ?? `HTTP_${response.status}` }
+    }
+    return { kind: 'ok', data: body as { profile: ContactProfile } }
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }
