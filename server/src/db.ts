@@ -550,8 +550,18 @@ export interface AttendanceCorrectionDoc extends Document {
  * `pending`: planned, not started (next year's place, a re-enrollment not
  * yet begun) — it doesn't touch the student's cached class. `cancelled`: a
  * pending row that won't happen; kept, never deleted (SAMS 2.4).
+ * `completed`: closed at year end when next year's place started (2.6).
  */
-export type EnrollmentStatus = 'active' | 'pending' | 'withdrawn' | 'graduated' | 'transferred' | 'cancelled'
+export type EnrollmentStatus =
+  | 'active'
+  | 'pending'
+  | 'withdrawn'
+  | 'graduated'
+  | 'transferred'
+  | 'cancelled'
+  /** SAMS 2.6: the year finished and the student moved on to next year's
+   * enrollment (promoted or held back). */
+  | 'completed'
 
 export interface EnrollmentDoc extends Document {
   _id: string
