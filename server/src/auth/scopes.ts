@@ -31,6 +31,7 @@ export type PermissionScope =
   | 'datasets.write'
   | 'documents.delete'
   | 'documents.upload'
+  | 'documents.verify'
   | 'enrollments.assign'
   | 'enrollments.read'
   | 'enrollments.transfer'
@@ -109,6 +110,7 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'classes.write',
   'documents.delete',
   'documents.upload',
+  'documents.verify',
   'enrollments.assign',
   'enrollments.transfer',
   'enrollments.withdraw',
@@ -185,6 +187,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'academicYears.write',
     'classes.write',
     'documents.upload',
+    'documents.verify',
     'enrollments.assign',
     'enrollments.transfer',
     'enrollments.withdraw',

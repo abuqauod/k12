@@ -1,4 +1,4 @@
-import { MongoClient } from 'mongodb'
+import { GridFSBucket, MongoClient } from 'mongodb'
 import type { RoleKey } from './auth/scopes.js'
 import type {
   ClientSession,
@@ -49,6 +49,13 @@ async function getDb() {
 
 export async function closeClient(): Promise<void> {
   await client.close()
+}
+
+/** A GridFS bucket on the app database. Only `documents/store.ts` uses
+ * this: GridFS has no tenant scope of its own, so that module stamps every
+ * file with its tenant and checks it on every read (see the note there). */
+export async function gridFsBucket(bucketName: string): Promise<GridFSBucket> {
+  return new GridFSBucket(await getDb(), { bucketName })
 }
 
 export async function ping(): Promise<void> {
@@ -657,6 +664,54 @@ export interface LookupDoc extends Document {
 }
 export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 
+// --------------------------------------------------------------- documents --
+
+/** SAMS 2.1: records a document can be attached to. Staff and applications
+ * join this list in later phases. */
+export type DocumentOwnerType = 'student' | 'parent'
+export type DocumentVerificationStatus = 'unverified' | 'verified' | 'rejected'
+
+/**
+ * One version of one uploaded document. The bytes live in the document
+ * store (GridFS today, see documents/store.ts); this row is the metadata.
+ * Uploading a replacement adds a row with the same `seriesId` and the next
+ * `version` and clears `isCurrent` on the previous one, so history is
+ * never overwritten. Archiving flags every version of the series; nothing
+ * is deleted.
+ */
+export interface DocumentDoc extends Document {
+  _id: string
+  tenantId: string
+  ownerType: DocumentOwnerType
+  ownerId: string
+  /** The owner's branch at upload, for the audit feed and lists. Access is
+   * always re-checked against the live owner, never this copy. */
+  branchId: string | null
+  /** A `documentCategory` lookup code (SAMS 1.11). */
+  categoryCode: string
+  seriesId: string
+  version: number
+  isCurrent: boolean
+  fileId: string
+  fileName: string
+  /** Detected from the file's own bytes, never taken from the client. */
+  mime: string
+  size: number
+  sha256: string
+  /** YYYY-MM-DD, for documents that lapse (IDs, medical forms). */
+  expiresAt: string | null
+  verification: {
+    status: DocumentVerificationStatus
+    by: string | null
+    at: Date | null
+    note: string | null
+  }
+  uploadedBy: string
+  createdAt: Date
+  archivedAt: Date | null
+  archivedBy: string | null
+}
+
 // --------------------------------------------------------------- approvals --
 
 /** SAMS 1.10: one shared approval mechanism. A module registers a type
@@ -1178,6 +1233,7 @@ export interface TenantContext {
   datasetVersions: TenantScope<DatasetVersionDoc>
   auditLog: TenantScope<AuditLogDoc>
   lookups: TenantScope<LookupDoc>
+  documents: TenantScope<DocumentDoc>
   /** Scoped view for a signed-in admin managing their own school's staff. */
   memberships: TenantScope<MembershipDoc>
   /** Scoped view for a signed-in admin managing their own school's API keys. */
@@ -1230,6 +1286,7 @@ export async function withTenant<T>(
         ),
         auditLog: new TenantScope(db.collection<AuditLogDoc>('auditLog'), tenantId, session),
         lookups: new TenantScope(db.collection<LookupDoc>('lookups'), tenantId, session),
+        documents: new TenantScope(db.collection<DocumentDoc>('documents'), tenantId, session),
         memberships: new TenantScope(db.collection<MembershipDoc>('memberships'), tenantId, session),
         apiKeys: new TenantScope(db.collection<ApiKeyDoc>('apiKeys'), tenantId, session),
         students: new TenantScope(db.collection<StudentDoc>('students'), tenantId, session),
