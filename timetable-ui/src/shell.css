@@ -1456,6 +1456,19 @@ body.is-resizing .sidebar__link {
   gap: var(--space-6);
 }
 
+/* One column that never grows past the screen: the header's controls wrap
+   onto new lines on a phone instead of widening the page. */
+.app--routes {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 860px) {
+  .app--routes .header,
+  .app--routes .header__controls {
+    flex-wrap: wrap;
+  }
+}
+
 .routes-section {
   display: grid;
   gap: var(--space-3);
@@ -1495,6 +1508,11 @@ body.is-resizing .sidebar__link {
 
 .table-scroll {
   overflow-x: auto;
+}
+
+.bus-name-cell {
+  display: flex;
+  align-items: center;
 }
 
 .column--map {
@@ -1876,4 +1894,190 @@ tr.is-muted td {
   margin-block-start: 2px;
   font-size: var(--text-xs);
   color: var(--muted);
+}
+
+/* ============================================== documents (SAMS 2.1) ===== */
+.docs__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.docs__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.docs__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'icon main'
+    'icon actions';
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.docs__item--archived {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.docs__item[aria-busy='true'] {
+  opacity: 0.6;
+}
+
+.docs__icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.docs__main {
+  grid-area: main;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.docs__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-weight: 600;
+}
+
+.docs__name .link-btn {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs__meta {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.docs__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.docs__note {
+  font-size: var(--text-xs);
+  color: var(--bad);
+}
+
+.docs__actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.docs__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+  margin-block-end: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.docs__file,
+.docs__form .login__error,
+.docs__form-actions {
+  grid-column: 1 / -1;
+}
+
+.docs__form-actions {
+  justify-content: flex-end;
+}
+
+.docs__preview {
+  max-width: min(960px, 100%);
+  width: 100%;
+}
+
+.docs__preview-body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.docs__viewer {
+  height: min(70vh, 720px);
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.docs__viewer iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.docs__viewer img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.docs__viewer .skeleton {
+  width: 100%;
+}
+
+.docs__versions {
+  margin: 0;
+  padding-inline-start: 18px;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.docs__versions li {
+  display: grid;
+  gap: 2px;
+}
+
+.docs__versions [aria-current='true'] {
+  font-weight: 700;
+}
+
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
 }

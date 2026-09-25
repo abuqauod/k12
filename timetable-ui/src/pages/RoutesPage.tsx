@@ -267,7 +267,7 @@ export function RoutesPage() {
   const handleRemoveStop = (stopId: string) => void apiRemoveStop(stopId)
 
   return (
-    <div className="app">
+    <div className="app app--routes">
       <header className="header">
         <div className="brand">
           <span>
@@ -566,7 +566,7 @@ export function RoutesPage() {
                   <tbody>
                     {fleet.buses.map((bus, index) => (
                       <tr key={bus.id}>
-                        <td>
+                        <td className="bus-name-cell">
                           <span className="route-swatch" style={{ background: routeColour(index) }} aria-hidden="true" />
                           <input
                             className="cell-input"
