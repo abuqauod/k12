@@ -18,6 +18,7 @@ import { verify } from '@node-rs/argon2'
 import { withoutTenant } from '../db.js'
 import { clearLoginFailures, isLockedOut, recordLoginFailure } from '../auth/rateLimit.js'
 import { createInitialEnrollment, resolveAcademicYearId } from '../enrollments/service.js'
+import { gridFsStore } from '../documents/store.js'
 
 /**
  * The student roster. A student's *demographics, guardians and transport*
@@ -319,8 +320,9 @@ export function registerStudentRoutes(app: FastifyInstance): void {
    *    so a stolen session cannot guess it; API keys can never delete);
    *  - a student with any invoice or payment is refused — financial
    *    history is never destroyed (SAMS spec §24); withdraw them instead.
-   * The student's enrollments, attendance and parent links go with them;
-   * the audit row keeps a full snapshot of what was removed.
+   * The student's enrollments, attendance, parent links and documents go
+   * with them; the audit row keeps a full snapshot of what was removed
+   * (document metadata only; the files themselves are deleted).
    */
   app.delete('/students/:id', scoped('students.delete'), async (request, reply) => {
     const { id } = request.params as { id: string }
@@ -360,6 +362,8 @@ export function registerStudentRoutes(app: FastifyInstance): void {
       const enrollments = await ctx.enrollments.find({ studentId: id }).toArray()
       const links = await ctx.parentStudentLinks.find({ studentId: id }).toArray()
       const attendance = await ctx.attendance.countDocuments({ studentId: id })
+      const documents = await ctx.documents.find({ ownerType: 'student', ownerId: id }).toArray()
+      await ctx.documents.deleteMany({ ownerType: 'student', ownerId: id })
       await ctx.enrollments.deleteMany({ studentId: id })
       await ctx.attendance.deleteMany({ studentId: id })
       await ctx.attendanceCorrections.deleteMany({ studentId: id })
@@ -371,13 +375,24 @@ export function registerStudentRoutes(app: FastifyInstance): void {
         entity: 'student',
         entityId: id,
         branchId: before.branchId,
-        before: { student: before, enrollments, parentLinks: links, attendanceRecords: attendance },
+        before: {
+          student: before,
+          enrollments,
+          parentLinks: links,
+          attendanceRecords: attendance,
+          documents: documents.map(({ fileId: _f, ...meta }) => meta),
+        },
         after: null,
       })
-      return 'ok' as const
+      return { fileIds: documents.map((d) => d.fileId) }
     })
     if (result === 'HAS_FINANCIAL_HISTORY') return reply.code(409).send({ error: result })
     if (result === 'NOT_FOUND') return reply.code(404).send({ error: result })
+    // After the commit: GridFS can't join the transaction. A failure here
+    // leaves an unreferenced file, never a reference to a missing one.
+    for (const fileId of result.fileIds) {
+      await gridFsStore.remove(tenantId, fileId).catch((error) => request.log.warn(error, 'document file not removed'))
+    }
     return reply.code(204).send()
   })
 }

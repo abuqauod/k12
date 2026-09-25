@@ -90,6 +90,13 @@ const ROUTES: [Method, string, Role][] = [
   ['GET', '/audit-log/export', 'admin'],
   ['GET', '/search?q=test', 'viewer'],
   ['GET', '/tenant', 'viewer'],
+  ['GET', `/documents?ownerType=student&ownerId=${X}`, 'viewer'],
+  ['GET', `/documents/${X}/versions`, 'viewer'],
+  ['POST', `/documents/${X}/link`, 'viewer'],
+  ['POST', '/documents', 'admin'],
+  ['POST', `/documents/${X}/versions`, 'admin'],
+  ['POST', `/documents/${X}/verify`, 'admin'],
+  ['POST', `/documents/${X}/archive`, 'admin'],
 ]
 
 const RANK: Record<Role, number> = { viewer: 0, scheduler: 1, admin: 2, owner: 3 }

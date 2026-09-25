@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto'
 import { hash } from '@node-rs/argon2'
 import { withTenant, withoutTenant } from '../db.js'
 import { signAccessToken } from '../auth/tokens.js'
+import { config } from '../config.js'
+import { gridFsStore } from '../documents/store.js'
 import { call, createFixture, type Fixture } from './harness.js'
 
 let fx: Fixture
@@ -95,6 +97,22 @@ describe('permanent student delete', () => {
     assert.equal(left.student, null)
     assert.equal(left.enrollments, 0)
     assert.equal((left.audit?.meta.before as { student: { _id: string } }).student._id, id)
+  })
+
+  test('deletes the student\'s documents and their files too', async () => {
+    const id = await student()
+    const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')
+    const up = await fx.app.inject({
+      method: 'POST',
+      url: `${config.routePrefix}/documents?ownerType=student&ownerId=${id}&category=photo&fileName=p.png`,
+      headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/octet-stream' },
+      payload: png,
+    })
+    assert.equal(up.statusCode, 201)
+    const fileId = (await withTenant(fx.tenantId, (ctx) => ctx.documents.findOne({ ownerId: id })))!.fileId
+    assert.equal((await del(adminToken, id, PASSWORD)).status, 204)
+    assert.equal(await withTenant(fx.tenantId, (ctx) => ctx.documents.countDocuments({ ownerId: id })), 0)
+    assert.equal(await gridFsStore.open(fx.tenantId, fileId), null)
   })
 
   test('a student with financial history is refused', async () => {

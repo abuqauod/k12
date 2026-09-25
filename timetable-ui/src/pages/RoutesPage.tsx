@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { FleetProblem } from '../domain/fleet'
 import type { RunDirection } from '../domain/students'
@@ -15,43 +16,32 @@ import type { TravelMatrix } from '../lib/routing'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { RouteMap, routeColour } from '../components/RouteMap'
-import { Splitter } from '../components/Splitter'
-import { useMediaQuery } from '../lib/useMediaQuery'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 
 const BUDGETS = [3000, 8000, 20000]
 
-const WIDTHS_KEY = 'fleet.layout'
-// Wider than the timetable's side panels — the stops editor table (name,
-// lat, lng, pinned bus) needs the room to stop scrolling horizontally.
-const DEFAULT_LEFT = 380
-const DEFAULT_RIGHT = 360
-const MIN_LEFT = 280
-const MAX_LEFT = 640
-const MIN_RIGHT = 280
-const MAX_RIGHT = 560
-/** The map itself never shrinks past this, whatever the side panels do. */
-const MIN_MAP = 360
-const SPLITTER = 8
-
-interface PanelWidths {
-  left: number
-  right: number
+const ICONS = {
+  riders: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7 1a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 20v-1a6 6 0 0 1 12 0v1M15 20v-.5a4.5 4.5 0 0 1 6-4.2',
+  seat: 'M4 17h16M6 17V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8M7 17v3M17 17v3M6 12h12',
+  stop: 'M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10Zm0-8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
+  route: 'M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm12-10a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7',
 }
 
-function readWidths(): PanelWidths {
-  try {
-    const raw = localStorage.getItem(WIDTHS_KEY)
-    if (!raw) return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT }
-    const parsed = JSON.parse(raw) as Partial<PanelWidths>
-    return {
-      left: Number.isFinite(parsed.left) ? Number(parsed.left) : DEFAULT_LEFT,
-      right: Number.isFinite(parsed.right) ? Number(parsed.right) : DEFAULT_RIGHT,
-    }
-  } catch {
-    return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT }
-  }
+/** A read-only summary tile (the dashboard's tiles are links; these are not). */
+function Tile(props: { icon: string; label: string; value: ReactNode; hint?: ReactNode; tone?: 'neutral' | 'ok' | 'bad' }) {
+  return (
+    <div className={`stat-tile stat-tile--${props.tone ?? 'neutral'}`}>
+      <span className="stat-tile__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d={props.icon} />
+        </svg>
+      </span>
+      <span className="stat-tile__label">{props.label}</span>
+      <b className="stat-tile__value">{props.value}</b>
+      {props.hint && <span className="stat-tile__hint">{props.hint}</span>}
+    </div>
+  )
 }
 
 export function RoutesPage() {
@@ -117,59 +107,6 @@ export function RoutesPage() {
   // synthetic door-to-door nodes, so the map and route-card list can
   // resolve every leg's stopId, real or synthetic.
   const [effectiveProblem, setEffectiveProblem] = useState<FleetProblem>(fleet)
-
-  // Splitters appear as soon as there are two columns to divide — the right
-  // column itself only exists above the wider breakpoint, matching
-  // shell.css's `.workspace--routes` media rules.
-  const roomy = useMediaQuery('(min-width: 861px)')
-  const rightFits = useMediaQuery('(min-width: 1181px)')
-  const workspaceRef = useRef<HTMLDivElement>(null)
-  const [widths, setWidths] = useState<PanelWidths>(readWidths)
-  const [workspaceWidth, setWorkspaceWidth] = useState(0)
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(WIDTHS_KEY, JSON.stringify(widths))
-    } catch {
-      // Preference simply will not persist.
-    }
-  }, [widths])
-
-  // Observed rather than read from the ref during render, so the clamp also
-  // reacts to the sidebar collapsing — not just to window resizes.
-  useLayoutEffect(() => {
-    const element = workspaceRef.current
-    if (!element) return
-    setWorkspaceWidth(element.clientWidth)
-    const observer = new ResizeObserver((entries) => {
-      setWorkspaceWidth(entries[0].contentRect.width)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [roomy])
-
-  /**
-   * The hard limit is the map, not the panel: a panel may only grow while
-   * the map still has MIN_MAP left, so it can never be squeezed to nothing.
-   */
-  const maxFor = useCallback(
-    (side: 'left' | 'right') => {
-      const ceiling = side === 'left' ? MAX_LEFT : MAX_RIGHT
-      if (!workspaceWidth) return ceiling
-      const other = side === 'left' ? (rightFits ? widths.right : 0) : widths.left
-      const splitters = SPLITTER * (rightFits ? 2 : 1)
-      return Math.max(
-        side === 'left' ? MIN_LEFT : MIN_RIGHT,
-        Math.min(ceiling, workspaceWidth - other - splitters - MIN_MAP),
-      )
-    },
-    [workspaceWidth, rightFits, widths.left, widths.right],
-  )
-
-  const effectiveWidths = {
-    left: Math.min(widths.left, maxFor('left')),
-    right: Math.min(widths.right, maxFor('right')),
-  }
 
   const thresholdM = fleet.settings.outlierThresholdMeters ?? DEFAULT_OUTLIER_THRESHOLD_M
   const doorToDoorEnabled = fleet.settings.doorToDoorEnabled ?? true
@@ -330,7 +267,7 @@ export function RoutesPage() {
   const handleRemoveStop = (stopId: string) => void apiRemoveStop(stopId)
 
   return (
-    <div className="app">
+    <div className="app app--routes">
       <header className="header">
         <div className="brand">
           <span>
@@ -411,245 +348,33 @@ export function RoutesPage() {
         </div>
       </header>
 
-      <div
-        ref={workspaceRef}
-        className="workspace workspace--routes"
-        style={
-          roomy
-            ? {
-                gridTemplateColumns: rightFits
-                  ? `${effectiveWidths.left}px ${SPLITTER}px minmax(${MIN_MAP}px, 1fr) ${SPLITTER}px ${effectiveWidths.right}px`
-                  : `${effectiveWidths.left}px ${SPLITTER}px minmax(${MIN_MAP}px, 1fr)`,
-              }
-            : undefined
-        }
-      >
-        <aside className="column column--left">
-          {transportLoading && <p className="card__hint">{t('fleet.loading')}</p>}
-          <div className="panel">
-            <div className="panel__head">
-              <h3 className="panel__title">{t('fleet.fleetTitle')}</h3>
-            </div>
-            <div className="stat-row">
-              <span>{t('fleet.riders')}</span>
-              <b>{n(riders)}</b>
-            </div>
-            <div className="stat-row">
-              <span>{t('fleet.students')}</span>
-              <b>{n(totalStudents)}</b>
-            </div>
-            <div className="stat-row">
-              <span>{t('fleet.seats')}</span>
-              <b style={{ color: totalSeats < riders ? 'var(--bad)' : undefined }}>
-                {n(totalSeats)}
-              </b>
-            </div>
-            <div className="stat-row">
-              <span>{t('fleet.stops')}</span>
-              <b>{n(fleet.stops.length)}</b>
-            </div>
-            {totalSeats < riders && (
-              <p className="card__hint" style={{ color: 'var(--bad)', margin: '8px 0 0' }}>
-                {t('fleet.notEnoughSeats', { short: n(riders - totalSeats) })}
-              </p>
-            )}
-          </div>
+      <div className="page routes-page">
+        {transportLoading && <p className="card__hint">{t('fleet.loading')}</p>}
 
-          <div className="panel">
-            <div className="panel__head">
-              <h3 className="panel__title">{t('fleet.rules')}</h3>
-            </div>
-            <div className="stat-row">
-              <span>{t('fleet.maxRide')}</span>
-              <b>{n(fleet.settings.maxRideMinutes)} min</b>
-            </div>
-            <div className="stat-row">
-              <span>{t('fleet.bell')}</span>
-              <b>{fleet.settings.bellTime.slice(0, 5)}</b>
-            </div>
-            <div className="stat-row">
-              <span>{t('fleet.matrixSource')}</span>
-              <b style={{ color: matrix?.source === 'osrm' ? 'var(--ok)' : 'var(--warn)' }}>
-                {t(
-                  matrix
-                    ? (`fleet.matrix.${matrix.source}` as TranslationKey)
-                    : 'fleet.matrix.haversine',
-                )}
-              </b>
-            </div>
-            {matrix?.note && (
-              <p className="card__hint" style={{ color: 'var(--warn)', margin: '8px 0 0' }}>
-                {t('fleet.matrixNote', { note: matrix.note })}
-              </p>
-            )}
-            <div className="page__actions" style={{ marginBlockStart: 10 }}>
-              <Link className="btn btn--sm" to="/settings">
-                {t('fleet.editRules')}
-              </Link>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel__head">
-              <h3 className="panel__title">{t('fleet.buses')}</h3>
-              <button type="button" className="btn btn--sm" onClick={addBus}>
-                {t('fleet.addBus')}
-              </button>
-            </div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t('fleet.bus')}</th>
-                  <th style={{ width: 62 }}>{t('fleet.seatsShort')}</th>
-                  <th style={{ width: 30 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {fleet.buses.map((bus, index) => (
-                  <tr key={bus.id}>
-                    <td>
-                      <span
-                        className="route-swatch"
-                        style={{ background: routeColour(index) }}
-                        aria-hidden="true"
-                      />
-                      <input
-                        className="cell-input"
-                        value={bus.name}
-                        onChange={(event) => patchBus(bus.id, { name: event.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="cell-input cell-input--num"
-                        type="number"
-                        min={1}
-                        value={bus.seats}
-                        onChange={(event) =>
-                          patchBus(bus.id, { seats: Math.max(1, Number(event.target.value) || 1) })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={() => handleRemoveBus(bus.id)}
-                        aria-label={`${t('fleet.removeBus')} ${bus.name}`}
-                      >
-                        ×
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="panel">
-            <div className="panel__head">
-              <h3 className="panel__title">{t('fleet.stopsEditor')}</h3>
-              <button type="button" className="btn btn--sm" onClick={addStop}>
-                {t('fleet.addStop')}
-              </button>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ minWidth: 420 }}>
-                <thead>
-                  <tr>
-                    <th>{t('fleet.stopName')}</th>
-                    <th style={{ width: 84 }}>{t('fleet.stopLat')}</th>
-                    <th style={{ width: 84 }}>{t('fleet.stopLng')}</th>
-                    <th style={{ width: 110 }}>{t('fleet.pinnedBus')}</th>
-                    <th style={{ width: 30 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {fleet.stops.map((stop) => (
-                    <tr
-                      key={stop.id}
-                      ref={(el) => {
-                        stopRowRefs.current[stop.id] = el
-                      }}
-                      className={stop.id === highlightStopId ? 'row--highlight' : undefined}
-                    >
-                      <td>
-                        <input
-                          className="cell-input"
-                          value={stop.name}
-                          onChange={(event) => patchStop(stop.id, { name: event.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="cell-input cell-input--num"
-                          type="number"
-                          step="any"
-                          value={stop.lat}
-                          onChange={(event) => {
-                            const value = Number(event.target.value)
-                            if (!Number.isNaN(value)) patchStop(stop.id, { lat: value })
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="cell-input cell-input--num"
-                          type="number"
-                          step="any"
-                          value={stop.lng}
-                          onChange={(event) => {
-                            const value = Number(event.target.value)
-                            if (!Number.isNaN(value)) patchStop(stop.id, { lng: value })
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          className="cell-input"
-                          value={stop.pinnedBusId ?? ''}
-                          onChange={(event) =>
-                            patchStop(stop.id, { pinnedBusId: event.target.value || null })
-                          }
-                        >
-                          <option value="">{t('fleet.pinnedBus.none')}</option>
-                          {fleet.buses.map((bus) => (
-                            <option key={bus.id} value={bus.id}>
-                              {bus.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => handleRemoveStop(stop.id)}
-                          aria-label={`${t('fleet.removeStop')} ${stop.name}`}
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </aside>
-
-        {roomy && (
-          <Splitter
-            value={effectiveWidths.left}
-            min={MIN_LEFT}
-            max={maxFor('left')}
-            defaultValue={DEFAULT_LEFT}
-            onChange={(next) => setWidths((current) => ({ ...current, left: next }))}
-            label={t('layout.resizeFleetPanel')}
+        <section aria-label={t('fleet.fleetTitle')} className="tile-grid routes-kpis">
+          <Tile icon={ICONS.riders} label={t('fleet.riders')} value={n(riders)} hint={t('fleet.studentsHint', { count: n(totalStudents) })} />
+          <Tile
+            icon={ICONS.seat}
+            label={t('fleet.seats')}
+            value={n(totalSeats)}
+            tone={totalSeats < riders ? 'bad' : 'neutral'}
+            hint={totalSeats < riders ? t('fleet.notEnoughSeats', { short: n(riders - totalSeats) }) : t('fleet.busCount', { count: n(fleet.buses.length) })}
           />
-        )}
+          <Tile icon={ICONS.stop} label={t('fleet.stops')} value={n(fleet.stops.length)} />
+          <Tile
+            icon={ICONS.route}
+            label={t('fleet.totalDistance')}
+            value={solution ? `${n(Math.round(solution.totals.distanceKm))} km` : '—'}
+            hint={
+              solution
+                ? t('fleet.busesUsedOf', { used: n(solution.totals.busesUsed), total: n(fleet.buses.length) })
+                : t('header.notSolved')
+            }
+            tone={!solution ? 'neutral' : solution.violations.some((v) => v.level === 'HARD') ? 'bad' : 'ok'}
+          />
+        </section>
 
-        <main className="column column--center column--map">
+        <section className="card routes-map" aria-label={t('fleet.routes')}>
           <RouteMap
             problem={solution ? effectiveProblem : fleet}
             solution={solution}
@@ -659,173 +384,348 @@ export function RoutesPage() {
             students={students}
             stopLinks={stopLinks}
           />
-        </main>
+        </section>
 
-        {roomy && rightFits && (
-          <Splitter
-            value={effectiveWidths.right}
-            min={MIN_RIGHT}
-            max={maxFor('right')}
-            defaultValue={DEFAULT_RIGHT}
-            invert
-            onChange={(next) => setWidths((current) => ({ ...current, right: next }))}
-            label={t('layout.resizeRoutesPanel')}
-          />
-        )}
-
-        <aside className="column column--right">
-          <div className="panel">
-            <div className="panel__head">
-              <h3 className="panel__title">{t('fleet.routes')}</h3>
-              {solving && <span className="chip">{t('inspector.running')}</span>}
+        <section className="routes-section" aria-labelledby="routes-list">
+          <div className="section-head section-head--split">
+            <div>
+              <h2 id="routes-list" className="section-head__title">
+                {t('fleet.routes')}
+              </h2>
+              <p className="section-head__hint">{t('fleet.routesHint')}</p>
             </div>
-
-            {error && (
-              <div className="empty-state" style={{ borderColor: 'var(--bad)', color: 'var(--bad)' }}>
-                {error}
-              </div>
-            )}
-
             {solution && (
-              <>
-                <div className="stat-row">
-                  <span>{t('fleet.totalDistance')}</span>
-                  <b>{n(solution.totals.distanceKm)} km</b>
-                </div>
-                <div className="stat-row">
-                  <span>{t('fleet.busesUsed')}</span>
-                  <b>
-                    {n(solution.totals.busesUsed)}/{n(fleet.buses.length)}
-                  </b>
-                </div>
-                <div className="stat-row">
-                  <span>{t('inspector.moves')}</span>
-                  <b>{n(solving ? (progress?.iterations ?? 0) : solution.stats.iterations)}</b>
-                </div>
-              </>
+              <span className="card__hint">
+                {solving && <span className="chip">{t('inspector.running')}</span>}{' '}
+                {t('inspector.moves')}: {n(solving ? (progress?.iterations ?? 0) : solution.stats.iterations)}
+              </span>
             )}
           </div>
 
-          {solution?.routes.map((route, index) => {
-            const bus = busById.get(route.busId)
-            if (!bus || route.legs.length === 0) return null
-            const active = focusBusId === route.busId
-            return (
-              <button
-                type="button"
-                key={route.busId}
-                className={`route-card${active ? ' route-card--active' : ''}`}
-                onClick={() => setFocusBusId(active ? null : route.busId)}
-              >
-                <span className="route-card__head">
-                  <span className="route-swatch" style={{ background: routeColour(index) }} />
-                  <b>{bus.name}</b>
-                  <span className="mono">
-                    {n(route.load)}/{n(bus.seats)}
-                  </span>
-                </span>
-                <span className="route-card__meta">
-                  {t('fleet.routeMeta', {
-                    km: n(Math.round(route.distanceKm * 10) / 10),
-                    minutes: n(Math.round(route.durationMinutes)),
-                    stops: n(route.legs.length),
-                  })}
-                </span>
-                <span className="route-card__meta">
-                  {t('fleet.departArrive', {
-                    depart: route.departAt,
-                    arrive: route.arrivalAtSchool,
-                  })}
-                </span>
-                {active && (
-                  <ol className="route-card__stops">
-                    {route.legs.map((leg) => (
-                      <li key={leg.stopId}>
-                        <span>{stopById.get(leg.stopId)?.name ?? leg.stopId}</span>
-                        <span className="mono">
-                          +{n(Math.round(leg.arrivalMinutes))}m · {n(leg.loadAfter)}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </button>
-            )
-          })}
+          {error && (
+            <div className="empty-state" style={{ borderColor: 'var(--bad)', color: 'var(--bad)' }}>
+              {error}
+            </div>
+          )}
+          {!solution && !error && <div className="empty-state">{solving ? t('inspector.running') : t('header.notSolved')}</div>}
 
-          {solution && solution.violations.length > 0 && (
-            <div className="panel">
-              <div className="panel__head">
-                <h3 className="panel__title">{t('inspector.violations')}</h3>
-              </div>
-              {solution.violations.slice(0, 30).map((violation, index) => (
-                <div
-                  className="violation"
-                  data-level={violation.level}
-                  key={`${violation.constraint}-${index}`}
+          <div className="route-grid">
+            {solution?.routes.map((route, index) => {
+              const bus = busById.get(route.busId)
+              if (!bus || route.legs.length === 0) return null
+              const active = focusBusId === route.busId
+              return (
+                <button
+                  type="button"
+                  key={route.busId}
+                  className={`route-card${active ? ' route-card--active' : ''}`}
+                  aria-pressed={active}
+                  onClick={() => setFocusBusId(active ? null : route.busId)}
                 >
-                  <span className="violation__head">
-                    <span>{t(`fleet.constraint.${violation.constraint}` as TranslationKey)}</span>
-                    <span className="violation__penalty">−{n(Math.round(violation.penalty))}</span>
-                  </span>
-                  <span className="violation__body">
-                    {t(violation.messageKey as TranslationKey, violation.messageParams)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {solution && solution.violations.length === 0 && (
-            <div className="panel">
-              <div className="empty-state">{t('fleet.allGood')}</div>
-            </div>
-          )}
-
-          <div className="panel">
-            <div className="panel__head">
-              <h3 className="panel__title">{t('fleet.outliers')}</h3>
-              {outliers.length > 0 && <span className="chip">{n(outliers.length)}</span>}
-            </div>
-            {outliers.length === 0 ? (
-              <div className="empty-state">{t('fleet.outliers.empty')}</div>
-            ) : (
-              outliers.map((link) => {
-                const student = studentById.get(link.studentId)
-                if (!student) return null
-                const currentStop = link.stopId ? stopById.get(link.stopId) : null
-                const nearestStop = link.nearestStopId ? fleet.stops.find((s) => s.id === link.nearestStopId) : null
-                return (
-                  <div className="stat-row" key={link.studentId} style={{ flexWrap: 'wrap', gap: 4 }}>
-                    <span>
-                      {student.givenName} {student.familyName}
-                      <br />
-                      <small className="card__hint">
-                        {currentStop
-                          ? t('fleet.outliers.distance', {
-                              stop: currentStop.name,
-                              distance: n(Math.round(link.distanceM ?? 0)),
-                            })
-                          : t('fleet.outliers.unassigned')}
-                      </small>
+                  <span className="route-card__head">
+                    <span className="route-swatch" style={{ background: routeColour(index) }} />
+                    <b>{bus.name}</b>
+                    <span className="mono">
+                      {n(route.load)}/{n(bus.seats)}
                     </span>
-                    {nearestStop ? (
-                      <button
-                        type="button"
-                        className="btn btn--sm"
-                        onClick={() => void assignNearestStop(link.studentId, link.nearestStopId)}
-                      >
-                        {t('fleet.outliers.useNearest', { stop: nearestStop.name })}
-                      </button>
-                    ) : (
-                      <small className="card__hint">{t('fleet.outliers.noNearby')}</small>
-                    )}
-                  </div>
-                )
-              })
-            )}
+                  </span>
+                  <span className="route-card__meta">
+                    {t('fleet.routeMeta', {
+                      km: n(Math.round(route.distanceKm * 10) / 10),
+                      minutes: n(Math.round(route.durationMinutes)),
+                      stops: n(route.legs.length),
+                    })}
+                  </span>
+                  <span className="route-card__meta">
+                    {t('fleet.departArrive', {
+                      depart: route.departAt,
+                      arrive: route.arrivalAtSchool,
+                    })}
+                  </span>
+                  {active && (
+                    <ol className="route-card__stops">
+                      {route.legs.map((leg) => (
+                        <li key={leg.stopId}>
+                          <span>{stopById.get(leg.stopId)?.name ?? leg.stopId}</span>
+                          <span className="mono">
+                            +{n(Math.round(leg.arrivalMinutes))}m · {n(leg.loadAfter)}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </button>
+              )
+            })}
           </div>
-        </aside>
+        </section>
+
+        <section className="routes-section" aria-labelledby="routes-issues">
+          <div className="section-head">
+            <h2 id="routes-issues" className="section-head__title">
+              {t('fleet.issues')}
+            </h2>
+          </div>
+          <div className="routes-stack">
+            {solution && (
+              <div className="card">
+                <div className="card__head">
+                  <h3 className="card__title">{t('inspector.violations')}</h3>
+                  {solution.violations.length > 0 && <span className="chip">{n(solution.violations.length)}</span>}
+                </div>
+                {solution.violations.length === 0 ? (
+                  <div className="empty-state">{t('fleet.allGood')}</div>
+                ) : (
+                  solution.violations.slice(0, 30).map((violation, index) => (
+                    <div className="violation" data-level={violation.level} key={`${violation.constraint}-${index}`}>
+                      <span className="violation__head">
+                        <span>{t(`fleet.constraint.${violation.constraint}` as TranslationKey)}</span>
+                        <span className="violation__penalty">−{n(Math.round(violation.penalty))}</span>
+                      </span>
+                      <span className="violation__body">
+                        {t(violation.messageKey as TranslationKey, violation.messageParams)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            <div className="card">
+              <div className="card__head">
+                <h3 className="card__title">{t('fleet.outliers')}</h3>
+                {outliers.length > 0 && <span className="chip">{n(outliers.length)}</span>}
+              </div>
+              {outliers.length === 0 ? (
+                <div className="empty-state">{t('fleet.outliers.empty')}</div>
+              ) : (
+                outliers.map((link) => {
+                  const student = studentById.get(link.studentId)
+                  if (!student) return null
+                  const currentStop = link.stopId ? stopById.get(link.stopId) : null
+                  const nearestStop = link.nearestStopId
+                    ? fleet.stops.find((s) => s.id === link.nearestStopId)
+                    : null
+                  return (
+                    <div className="stat-row" key={link.studentId} style={{ flexWrap: 'wrap', gap: 4 }}>
+                      <span>
+                        {student.givenName} {student.familyName}
+                        <br />
+                        <small className="card__hint">
+                          {currentStop
+                            ? t('fleet.outliers.distance', {
+                                stop: currentStop.name,
+                                distance: n(Math.round(link.distanceM ?? 0)),
+                              })
+                            : t('fleet.outliers.unassigned')}
+                        </small>
+                      </span>
+                      {nearestStop ? (
+                        <button
+                          type="button"
+                          className="btn btn--sm"
+                          onClick={() => void assignNearestStop(link.studentId, link.nearestStopId)}
+                        >
+                          {t('fleet.outliers.useNearest', { stop: nearestStop.name })}
+                        </button>
+                      ) : (
+                        <small className="card__hint">{t('fleet.outliers.noNearby')}</small>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="routes-section" aria-labelledby="routes-setup">
+          <div className="section-head">
+            <h2 id="routes-setup" className="section-head__title">
+              {t('fleet.setup')}
+            </h2>
+            <p className="section-head__hint">{t('fleet.setupHint')}</p>
+          </div>
+          <div className="routes-stack">
+            <div className="card">
+              <div className="card__head">
+                <h3 className="card__title">{t('fleet.buses')}</h3>
+                <button type="button" className="btn btn--sm" onClick={addBus}>
+                  {t('fleet.addBus')}
+                </button>
+              </div>
+              <div className="table-scroll">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>{t('fleet.bus')}</th>
+                      <th style={{ width: 110 }}>{t('fleet.seatsShort')}</th>
+                      <th style={{ width: 44 }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fleet.buses.map((bus, index) => (
+                      <tr key={bus.id}>
+                        <td className="bus-name-cell">
+                          <span className="route-swatch" style={{ background: routeColour(index) }} aria-hidden="true" />
+                          <input
+                            className="cell-input"
+                            value={bus.name}
+                            aria-label={t('fleet.bus')}
+                            onChange={(event) => patchBus(bus.id, { name: event.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="cell-input cell-input--num"
+                            type="number"
+                            min={1}
+                            value={bus.seats}
+                            aria-label={t('fleet.seatsShort')}
+                            onChange={(event) =>
+                              patchBus(bus.id, { seats: Math.max(1, Number(event.target.value) || 1) })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => handleRemoveBus(bus.id)}
+                            aria-label={`${t('fleet.removeBus')} ${bus.name}`}
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card__head">
+                <h3 className="card__title">{t('fleet.stopsEditor')}</h3>
+                <button type="button" className="btn btn--sm" onClick={addStop}>
+                  {t('fleet.addStop')}
+                </button>
+              </div>
+              <div className="table-scroll">
+                <table className="table" style={{ minWidth: 520 }}>
+                  <thead>
+                    <tr>
+                      <th>{t('fleet.stopName')}</th>
+                      <th style={{ width: 130 }}>{t('fleet.stopLat')}</th>
+                      <th style={{ width: 130 }}>{t('fleet.stopLng')}</th>
+                      <th style={{ width: 170 }}>{t('fleet.pinnedBus')}</th>
+                      <th style={{ width: 44 }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fleet.stops.map((stop) => (
+                      <tr
+                        key={stop.id}
+                        ref={(el) => {
+                          stopRowRefs.current[stop.id] = el
+                        }}
+                        className={stop.id === highlightStopId ? 'row--highlight' : undefined}
+                      >
+                        <td>
+                          <input
+                            className="cell-input"
+                            value={stop.name}
+                            aria-label={t('fleet.stopName')}
+                            onChange={(event) => patchStop(stop.id, { name: event.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="cell-input cell-input--num"
+                            type="number"
+                            step="any"
+                            value={stop.lat}
+                            aria-label={t('fleet.stopLat')}
+                            onChange={(event) => {
+                              const value = Number(event.target.value)
+                              if (!Number.isNaN(value)) patchStop(stop.id, { lat: value })
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="cell-input cell-input--num"
+                            type="number"
+                            step="any"
+                            value={stop.lng}
+                            aria-label={t('fleet.stopLng')}
+                            onChange={(event) => {
+                              const value = Number(event.target.value)
+                              if (!Number.isNaN(value)) patchStop(stop.id, { lng: value })
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            className="cell-input"
+                            value={stop.pinnedBusId ?? ''}
+                            aria-label={t('fleet.pinnedBus')}
+                            onChange={(event) => patchStop(stop.id, { pinnedBusId: event.target.value || null })}
+                          >
+                            <option value="">{t('fleet.pinnedBus.none')}</option>
+                            {fleet.buses.map((bus) => (
+                              <option key={bus.id} value={bus.id}>
+                                {bus.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => handleRemoveStop(stop.id)}
+                            aria-label={`${t('fleet.removeStop')} ${stop.name}`}
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card__head">
+                <h3 className="card__title">{t('fleet.rules')}</h3>
+                <Link className="btn btn--sm" to="/settings">
+                  {t('fleet.editRules')}
+                </Link>
+              </div>
+              <div className="stat-row">
+                <span>{t('fleet.maxRide')}</span>
+                <b>{n(fleet.settings.maxRideMinutes)} min</b>
+              </div>
+              <div className="stat-row">
+                <span>{t('fleet.bell')}</span>
+                <b>{fleet.settings.bellTime.slice(0, 5)}</b>
+              </div>
+              <div className="stat-row">
+                <span>{t('fleet.matrixSource')}</span>
+                <b style={{ color: matrix?.source === 'osrm' ? 'var(--ok)' : 'var(--warn)' }}>
+                  {t(matrix ? (`fleet.matrix.${matrix.source}` as TranslationKey) : 'fleet.matrix.haversine')}
+                </b>
+              </div>
+              {matrix?.note && (
+                <p className="card__hint" style={{ color: 'var(--warn)', margin: '8px 0 0' }}>
+                  {t('fleet.matrixNote', { note: matrix.note })}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   )

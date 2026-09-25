@@ -35,12 +35,23 @@ export async function authorizedFetch(
   url: string,
   init: RequestInit,
   getToken: TokenGetter,
+  /** Longer for uploads. */
+  timeoutMs?: number,
 ): Promise<Response> {
   const withAuth = async (token: string | null) =>
-    request(url, {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    })
+    request(
+      url,
+      {
+        ...init,
+        headers: {
+          'Content-Type': 'application/json',
+          // A caller's own headers win (an upload sends its own Content-Type).
+          ...(init.headers as Record<string, string> | undefined),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      },
+      timeoutMs,
+    )
 
   const first = await withAuth(await getToken())
   if (first.status !== 401) return first
