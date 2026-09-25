@@ -41,6 +41,7 @@
   --bad: #c0271c;
   --bad-soft: #fdecea;
   --warn: #a2620b;
+  --warn-soft: #fdf3e1;
   --shadow: 0 1px 2px rgba(13, 10, 70, 0.05), 0 10px 28px -14px rgba(13, 10, 70, 0.22);
   /* A softer, larger-throw shadow for chrome-level surfaces (dialogs, cards,
      the login panel) — dense data surfaces (tables, the timetable grid) keep
@@ -50,6 +51,28 @@
   /* Larger radius for card/panel-level chrome, kept separate from --radius
      (still used by the dense table/grid frames, which stay tighter). */
   --radius-lg: 20px;
+
+  /* ---- design system scales (docs/design-system.md) ---- */
+  /* Dense 4px-based spacing scale: admin screens hold many rows. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  /* Type scale. Body copy never goes below --text-sm. */
+  --text-xs: 11.5px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  /* Motion: short and purposeful; reduced-motion zeroes these globally. */
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
   --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: var(--font-latin), var(--font-arabic);
   --nav-item: #1d1d1d;
@@ -84,6 +107,7 @@
     --bad: #ff8a7d;
     --bad-soft: #2e1512;
     --warn: #e5b45f;
+    --warn-soft: #2b2210;
     --nav-item: #eceaf7;
     --nav-item-hover: #ffffff;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 34px -16px rgba(0, 0, 0, 0.8);
@@ -113,6 +137,7 @@
   --bad: #ff8a7d;
   --bad-soft: #2e1512;
   --warn: #e5b45f;
+  --warn-soft: #2b2210;
   --nav-item: #eceaf7;
   --nav-item-hover: #ffffff;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 34px -16px rgba(0, 0, 0, 0.8);
@@ -1085,5 +1110,31 @@ select {
     max-height: 42vh;
     border-inline-end: none;
     border-block-end: 1px solid var(--line);
+  }
+}
+
+/* ---- design system: global interaction rules ---- */
+/* One visible focus treatment for every interactive element that does not
+   define its own (keyboard users only, via :focus-visible). */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
