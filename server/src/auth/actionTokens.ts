@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { withoutTenant } from '../db.js'
-import type { MembershipDoc } from '../db.js'
+import type { ActionTokenDoc } from '../db.js'
 
 /**
  * A single mechanism for both "accept your invite" and "reset your
@@ -20,7 +20,7 @@ export async function createActionToken(params: {
   userId: string
   purpose: 'invite' | 'password_reset'
   /** Invite only: the membership to create once the token is accepted. */
-  grant?: { tenantId: string; role: MembershipDoc['role'] }
+  grant?: NonNullable<ActionTokenDoc['grant']>
   ttlMs: number
 }): Promise<string> {
   const token = randomBytes(32).toString('base64url')
@@ -40,7 +40,7 @@ export async function createActionToken(params: {
 }
 
 export type ConsumeResult =
-  | { ok: true; userId: string; grant: { tenantId: string; role: MembershipDoc['role'] } | null }
+  | { ok: true; userId: string; grant: ActionTokenDoc['grant'] }
   | { ok: false; error: 'INVALID' | 'EXPIRED' | 'USED' }
 
 /** Marks the token used in the same step as validating it — it cannot be

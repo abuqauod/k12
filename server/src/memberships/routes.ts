@@ -1,7 +1,9 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { withoutTenant } from '../db.js'
-import { authenticate, requirePermission } from '../auth/guard.js'
+import type { MembershipDoc } from '../db.js'
+import { authenticate, callerScopes, loadCallerMembership, requirePermission } from '../auth/guard.js'
+import { PRESETS, ROLE_KEYS, ROLE_SCOPES, scopesFor, type RoleKey } from '../auth/scopes.js'
 import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from './invite.js'
 import { changeMemberRole, listMembers, removeMember, setMemberBranches } from './service.js'
@@ -15,18 +17,75 @@ import { changeMemberRole, listMembers, removeMember, setMemberBranches } from '
  * `service.ts` functions with a tenant id from the URL instead.
  */
 
-const inviteBody = z.object({
-  email: z.string().email(),
-  role: z.enum(['owner', 'admin', 'scheduler', 'viewer']),
-  displayName: z.string().min(1).max(200).optional(),
-})
+const RANKS = ['owner', 'admin', 'scheduler', 'viewer'] as const
 
-const roleBody = z.object({ role: z.enum(['owner', 'admin', 'scheduler', 'viewer']) })
+/** Either a plain rank (`role`) or a named preset (`roleKey`, SAMS 1.8) —
+ * never both. `branchIds` may accompany a preset that must be
+ * branch-confined. */
+const grantShape = {
+  role: z.enum(RANKS).optional(),
+  roleKey: z.enum(ROLE_KEYS).optional(),
+  branchIds: z.array(z.string().min(1)).nullable().optional(),
+}
+const oneOf = (v: { role?: unknown; roleKey?: unknown }) => (v.role === undefined) !== (v.roleKey === undefined)
+
+const inviteBody = z
+  .object({ email: z.string().email(), displayName: z.string().min(1).max(200).optional(), ...grantShape })
+  .refine(oneOf)
+
+const roleBody = z.object(grantShape).refine(oneOf)
 
 /** `null` (or an empty array, normalised to null) means every branch. */
 const branchesBody = z.object({
   branchIds: z.array(z.string().min(1)).nullable(),
 })
+
+type Grant = { role: MembershipDoc['role']; roleKey: RoleKey | null; branchIds: string[] | null | undefined }
+type GrantCheck = { ok: true; grant: Grant } | { ok: false; status: number; error: string; required?: string }
+
+/**
+ * The rules every role grant passes, whether by invite or by change:
+ *  - only an owner can hand out ownership;
+ *  - nobody can grant a scope they don't hold themselves (no escalation);
+ *  - a branch-confined preset needs at least one known branch.
+ * `currentBranchIds` is the target's existing confinement, for a change that
+ * doesn't restate it.
+ */
+async function checkGrant(
+  request: FastifyRequest,
+  body: z.infer<typeof roleBody>,
+  currentBranchIds: string[] | null,
+): Promise<GrantCheck> {
+  const roleKey = body.roleKey ?? null
+  const role = roleKey ? PRESETS[roleKey].rank : body.role!
+
+  // The live membership, not the token: a just-demoted owner's JWT still
+  // says owner for up to 15 minutes.
+  const callerRole = (await loadCallerMembership(request))?.role ?? request.auth!.role
+  if (role === 'owner' && callerRole !== 'owner') {
+    return { ok: false, status: 403, error: 'FORBIDDEN', required: 'owner' }
+  }
+
+  const held = await callerScopes(request)
+  for (const scope of scopesFor(role, roleKey)) {
+    if (!held.has(scope)) return { ok: false, status: 403, error: 'SCOPE_ESCALATION', required: scope }
+  }
+
+  const given = body.branchIds === undefined ? undefined : body.branchIds?.length ? body.branchIds : null
+  // A body that states branchIds (even null) is what gets written, so it
+  // alone must satisfy the rule; otherwise the existing confinement stays.
+  const effective = body.branchIds !== undefined ? given : currentBranchIds
+  if (roleKey && PRESETS[roleKey].requiresBranches && !effective?.length) {
+    return { ok: false, status: 400, error: 'BRANCHES_REQUIRED' }
+  }
+  if (given) {
+    const known = await withoutTenant((db) =>
+      db.branches.find({ tenantId: request.auth!.tenantId!, _id: { $in: given } }).toArray(),
+    )
+    if (known.length !== given.length) return { ok: false, status: 400, error: 'UNKNOWN_BRANCH' }
+  }
+  return { ok: true, grant: { role, roleKey, branchIds: given } }
+}
 
 export function registerMembershipRoutes(app: FastifyInstance): void {
   const guarded = { preHandler: [authenticate, requirePermission('memberships.manage')] }
@@ -36,15 +95,26 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
     return reply.send({ members })
   })
 
+  /** What each rank and preset grants — the Team settings preview reads
+   * this, so the UI can never drift from what the server enforces. */
+  app.get('/memberships/roles', guarded, async (_request, reply) => {
+    return reply.send({
+      ranks: RANKS.map((rank) => ({ rank, scopes: [...ROLE_SCOPES[rank]].sort() })),
+      presets: ROLE_KEYS.map((key) => ({
+        key,
+        rank: PRESETS[key].rank,
+        requiresBranches: PRESETS[key].requiresBranches,
+        scopes: [...PRESETS[key].scopes].sort(),
+      })),
+    })
+  })
+
   app.post('/memberships/invite', guarded, async (request, reply) => {
     const parsed = inviteBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
-    // Only an owner can create another owner — an admin can invite anyone up
-    // to (and including) admin, but not hand out ownership of the school.
-    if (parsed.data.role === 'owner' && request.auth!.role !== 'owner') {
-      return reply.code(403).send({ error: 'FORBIDDEN', required: 'owner' })
-    }
+    const check = await checkGrant(request, parsed.data, null)
+    if (!check.ok) return reply.code(check.status).send({ error: check.error, required: check.required })
 
     const tenantId = request.auth!.tenantId!
     const tenant = await withoutTenant((db) => db.tenants.findOne({ _id: tenantId }))
@@ -55,7 +125,9 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
         email: parsed.data.email,
         tenantId,
         tenantName: tenant.name,
-        role: parsed.data.role,
+        role: check.grant.role,
+        roleKey: check.grant.roleKey,
+        branchIds: check.grant.branchIds ?? null,
         inviterName: request.auth!.email,
         displayName: parsed.data.displayName,
       })
@@ -74,11 +146,15 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
     const parsed = roleBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
-    if (parsed.data.role === 'owner' && request.auth!.role !== 'owner') {
-      return reply.code(403).send({ error: 'FORBIDDEN', required: 'owner' })
-    }
+    const tenantId = request.auth!.tenantId!
+    const target = await withoutTenant((db) => db.memberships.findOne({ _id: `${tenantId}:${userId}` }))
+    if (!target) return reply.code(404).send({ error: 'NOT_FOUND' })
 
-    const result = await changeMemberRole(request.auth!.tenantId!, userId, parsed.data.role)
+    const check = await checkGrant(request, parsed.data, target.branchIds ?? null)
+    if (!check.ok) return reply.code(check.status).send({ error: check.error, required: check.required })
+
+    const { role, roleKey, branchIds } = check.grant
+    const result = await changeMemberRole(tenantId, userId, role, roleKey, request.auth!.sub, branchIds)
     if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
     if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_DEMOTE_LAST_OWNER' })
     return reply.send({ ok: true })
@@ -89,15 +165,21 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
     const parsed = branchesBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
+    const tenantId = request.auth!.tenantId!
     const branchIds = parsed.data.branchIds && parsed.data.branchIds.length > 0 ? parsed.data.branchIds : null
     if (branchIds) {
       const known = await withoutTenant((db) =>
-        db.branches.find({ tenantId: request.auth!.tenantId!, _id: { $in: branchIds } }).toArray(),
+        db.branches.find({ tenantId, _id: { $in: branchIds } }).toArray(),
       )
       if (known.length !== branchIds.length) return reply.code(400).send({ error: 'UNKNOWN_BRANCH' })
+    } else {
+      const target = await withoutTenant((db) => db.memberships.findOne({ _id: `${tenantId}:${userId}` }))
+      if (target?.roleKey && PRESETS[target.roleKey]?.requiresBranches) {
+        return reply.code(400).send({ error: 'BRANCHES_REQUIRED' })
+      }
     }
 
-    const result = await setMemberBranches(request.auth!.tenantId!, userId, branchIds)
+    const result = await setMemberBranches(tenantId, userId, branchIds, request.auth!.sub)
     if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
     return reply.send({ ok: true, branchIds })
   })

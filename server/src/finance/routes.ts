@@ -12,6 +12,7 @@ import {
   requirePermission,
   callerHasPermission,
 } from '../auth/guard.js'
+import type { PermissionScope } from '../auth/scopes.js'
 import { recordAudit } from '../audit.js'
 import {
   addLineItem,
@@ -210,8 +211,9 @@ const ERROR_STATUS: Record<string, number> = {
 
 export function registerFinanceRoutes(app: FastifyInstance): void {
   const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('finance.read')] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('finance.write')] }
-  const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('finance.manage')] }
+  const scoped = (scope: PermissionScope) => ({
+    preHandler: [authenticate, requireActiveSubscription, requirePermission(scope)],
+  })
 
   // ------------------------------------------------------------ fee structures
 
@@ -244,7 +246,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.send(feeStructureResponse(doc))
   })
 
-  app.post('/finance/fee-structures', adminGuard, async (request, reply) => {
+  app.post('/finance/fee-structures', scoped('finance.feeStructure.manage'), async (request, reply) => {
     const parsed = feeStructureBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
     if (!(await callerCanUseBranch(request, parsed.data.branchId))) {
@@ -312,7 +314,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return { ok: true as const, doc }
   }
 
-  app.patch('/finance/fee-structures/:id', adminGuard, async (request, reply) => {
+  app.patch('/finance/fee-structures/:id', scoped('finance.feeStructure.manage'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = updateFeeStructureBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
@@ -346,7 +348,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.send(feeStructureResponse(result.updated!))
   })
 
-  app.post('/finance/fee-structures/:id/deactivate', adminGuard, async (request, reply) => {
+  app.post('/finance/fee-structures/:id/deactivate', scoped('finance.feeStructure.manage'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const tenantId = request.auth!.tenantId!
     const access = await requireFeeStructureBranchAccess(request, id, tenantId)
@@ -406,7 +408,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.send(invoiceResponse(doc))
   })
 
-  app.post('/finance/invoices', writeGuard, async (request, reply) => {
+  app.post('/finance/invoices', scoped('finance.invoice.create'), async (request, reply) => {
     const parsed = generateInvoiceBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
@@ -435,11 +437,11 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return { ok: true as const, invoice }
   }
 
-  app.post('/finance/invoices/:id/line-items', writeGuard, async (request, reply) => {
+  app.post('/finance/invoices/:id/line-items', scoped('finance.invoice.lineItems'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = addLineItemBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (parsed.data.discount && !callerHasPermission(request.auth?.role, 'finance.manage')) {
+    if (parsed.data.discount && !(await callerHasPermission(request, 'finance.discount.approve'))) {
       return reply.code(403).send({ error: 'DISCOUNT_REQUIRES_ADMIN' })
     }
     const tenantId = request.auth!.tenantId!
@@ -453,11 +455,11 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.code(201).send(invoiceResponse(result.invoice))
   })
 
-  app.patch('/finance/invoices/:id/line-items/:lineItemId', writeGuard, async (request, reply) => {
+  app.patch('/finance/invoices/:id/line-items/:lineItemId', scoped('finance.invoice.lineItems'), async (request, reply) => {
     const { id, lineItemId } = request.params as { id: string; lineItemId: string }
     const parsed = updateLineItemBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (parsed.data.discount !== undefined && parsed.data.discount !== null && !callerHasPermission(request.auth?.role, 'finance.manage')) {
+    if (parsed.data.discount !== undefined && parsed.data.discount !== null && !(await callerHasPermission(request, 'finance.discount.approve'))) {
       return reply.code(403).send({ error: 'DISCOUNT_REQUIRES_ADMIN' })
     }
     const tenantId = request.auth!.tenantId!
@@ -471,7 +473,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.send(invoiceResponse(result.invoice))
   })
 
-  app.delete('/finance/invoices/:id/line-items/:lineItemId', writeGuard, async (request, reply) => {
+  app.delete('/finance/invoices/:id/line-items/:lineItemId', scoped('finance.invoice.lineItems'), async (request, reply) => {
     const { id, lineItemId } = request.params as { id: string; lineItemId: string }
     const tenantId = request.auth!.tenantId!
     const access = await requireInvoiceBranchAccess(request, id, tenantId)
@@ -482,7 +484,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.send(invoiceResponse(result.invoice))
   })
 
-  app.post('/finance/invoices/:id/void', adminGuard, async (request, reply) => {
+  app.post('/finance/invoices/:id/void', scoped('finance.invoice.void'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const tenantId = request.auth!.tenantId!
     const access = await requireInvoiceBranchAccess(request, id, tenantId)
@@ -519,7 +521,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     return reply.send({ payments: result.rows.map(paymentResponse) })
   })
 
-  app.post('/finance/invoices/:id/payments', writeGuard, async (request, reply) => {
+  app.post('/finance/invoices/:id/payments', scoped('finance.payment.create'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = recordPaymentBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
@@ -538,7 +540,7 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     })
   })
 
-  app.post('/finance/payments/:id/void', adminGuard, async (request, reply) => {
+  app.post('/finance/payments/:id/void', scoped('finance.payment.void'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const tenantId = request.auth!.tenantId!
     const payment = await withTenant(tenantId, (ctx) => ctx.payments.findOne({ _id: id }))

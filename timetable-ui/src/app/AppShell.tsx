@@ -42,7 +42,7 @@ function readCollapsed(): boolean {
 
 export function AppShell() {
   const { t, lang } = useI18n()
-  const { user, signOut } = useAuth()
+  const { user, signOut, roleKey } = useAuth()
   const { branches, activeBranchId, setActiveBranchId } = useApp()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -168,7 +168,7 @@ export function AppShell() {
             </span>
             <span className="sidebar__user-text">
               <b>{displayName}</b>
-              <small>{user ? t(`settings.role.${user.role}` as TranslationKey) : ''}</small>
+              <small>{user ? t(`settings.role.${roleKey ?? user.role}` as TranslationKey) : ''}</small>
             </span>
           </div>
           <button

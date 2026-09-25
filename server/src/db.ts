@@ -1,4 +1,5 @@
 import { MongoClient } from 'mongodb'
+import type { RoleKey } from './auth/scopes.js'
 import type {
   ClientSession,
   Collection,
@@ -118,6 +119,10 @@ export interface MembershipDoc extends Document {
    * confines them: a homeroom teacher assigned to one campus.
    */
   branchIds: string[] | null
+  /** Named role preset (SAMS 1.8). Absent/null = scopes come from `role`
+   * alone, exactly as before presets existed. When set, `role` holds the
+   * preset's base rank. See auth/scopes.ts. */
+  roleKey?: RoleKey | null
   createdAt: Date
 }
 
@@ -206,7 +211,12 @@ export interface ActionTokenDoc extends Document {
   /** Only the SHA-256 is stored — same reasoning as refresh tokens. */
   tokenHash: string
   /** Invite-only: the membership to create once the invite is accepted. */
-  grant: { tenantId: string; role: MembershipDoc['role'] } | null
+  grant: {
+    tenantId: string
+    role: MembershipDoc['role']
+    roleKey?: RoleKey | null
+    branchIds?: string[] | null
+  } | null
   createdAt: Date
   expiresAt: Date
   usedAt: Date | null
