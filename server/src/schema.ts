@@ -126,6 +126,17 @@ export async function ensureIndexes(db: Db): Promise<void> {
     )
   await db.collection('feeStructures').createIndex({ tenantId: 1, academicYearId: 1 })
 
+  // Approvals (SAMS 1.10): queue by status/branch, 'mine', per-entity
+  // lookup, and at most one pending request per dedupe key.
+  await db.collection('approvalRequests').createIndex({ tenantId: 1, status: 1, branchId: 1, createdAt: -1 })
+  await db.collection('approvalRequests').createIndex({ tenantId: 1, requestedBy: 1, createdAt: -1 })
+  await db.collection('approvalRequests').createIndex({ tenantId: 1, entity: 1, entityId: 1, status: 1 })
+  await db
+    .collection('approvalRequests')
+    .createIndex(
+      { tenantId: 1, dedupeKey: 1 },
+      { unique: true, partialFilterExpression: { status: 'pending' }, name: 'approval_pending_dedupe' },
+    )
   await db.collection('invoices').createIndex({ tenantId: 1, invoiceNumber: 1 }, { unique: true })
   await db.collection('invoices').createIndex({ tenantId: 1, studentId: 1, status: 1 })
   await db

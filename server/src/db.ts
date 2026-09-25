@@ -615,6 +615,45 @@ export interface ParentStudentLinkDoc extends Document {
 
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'cheque' | 'other'
 export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
+
+// --------------------------------------------------------------- approvals --
+
+/** SAMS 1.10: one shared approval mechanism. A module registers a type
+ * (server/src/approvals/registry.ts); requests of every type live here. */
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+export interface ApprovalComment {
+  id: string
+  actorId: string
+  body: string
+  at: Date
+  kind: 'request' | 'approve' | 'reject' | 'cancel'
+}
+
+export interface ApprovalRequestDoc extends Document {
+  _id: string
+  tenantId: string
+  type: string
+  entity: string
+  entityId: string
+  /** Resolved from the entity at request time, for branch isolation. */
+  branchId: string | null
+  status: ApprovalStatus
+  /** Type-specific, validated by the type's schema; stored as submitted. */
+  payload: Record<string, unknown>
+  /** Short label for queues, so they need no per-type rendering. */
+  summary: string
+  /** One pending request per key (partial unique index), e.g. per line. */
+  dedupeKey: string
+  requestedBy: string
+  decidedBy: string | null
+  decidedAt: Date | null
+  comments: ApprovalComment[]
+  /** Compare-and-set guard: every transition bumps it. */
+  version: number
+  createdAt: Date
+  updatedAt: Date
+}
 export type DiscountType = 'amount' | 'percent'
 
 /**
@@ -1110,6 +1149,7 @@ export interface TenantContext {
   parentStudentLinks: TenantScope<ParentStudentLinkDoc>
   feeStructures: TenantScope<FeeStructureDoc>
   invoices: TenantScope<InvoiceDoc>
+  approvalRequests: TenantScope<ApprovalRequestDoc>
   payments: TenantScope<PaymentDoc>
   receipts: TenantScope<ReceiptDoc>
   financeCounters: TenantScope<FinanceCounterDoc>
@@ -1186,6 +1226,11 @@ export async function withTenant<T>(
           session,
         ),
         invoices: new TenantScope(db.collection<InvoiceDoc>('invoices'), tenantId, session),
+        approvalRequests: new TenantScope(
+          db.collection<ApprovalRequestDoc>('approvalRequests'),
+          tenantId,
+          session,
+        ),
         payments: new TenantScope(db.collection<PaymentDoc>('payments'), tenantId, session),
         receipts: new TenantScope(db.collection<ReceiptDoc>('receipts'), tenantId, session),
         financeCounters: new TenantScope(

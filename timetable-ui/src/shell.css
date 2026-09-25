@@ -1356,3 +1356,93 @@ body.is-resizing .sidebar__link {
     padding-inline-start: 56px;
   }
 }
+
+/* ========================================================== approvals ==== */
+/* SAMS 1.10: the shared approval queue and the per-entity approval panel. */
+.chip--ok {
+  border-color: transparent;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.chip--warn {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+}
+
+.chip--bad {
+  border-color: transparent;
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.approvals__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.approval-list {
+  display: grid;
+  gap: 10px;
+}
+
+.approval {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.approval__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.approval__summary {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.approval__meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.approval__comments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.approval__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.approval__actions .input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.discount-request {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}

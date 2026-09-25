@@ -16,6 +16,11 @@ import type { TokenGetter } from '../lib/http'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { ApprovalCard } from './ApprovalCard'
+import { listApprovalTypes, listApprovals, requestApproval } from '../lib/approvalsApi'
+import type { Approval } from '../lib/approvalsApi'
+
+const DISCOUNT_TYPE = 'finance.lineDiscount'
 
 /** One invoice: its line items (add/remove, discount admin-gated), its
  * payment history (record/void), and a printable receipt view. */
@@ -35,6 +40,8 @@ export function InvoiceDetailDialog({
   const canDiscount = can('finance.discount.approve')
   const canVoidPayment = can('finance.payment.void')
   const canVoidInvoice = can('finance.invoice.void')
+  // Can edit lines but not grant a discount: request one instead (SAMS 1.10).
+  const canRequestDiscount = !canDiscount && can('finance.invoice.lineItems')
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [payments, setPayments] = useState<Payment[]>([])
@@ -56,6 +63,59 @@ export function InvoiceDetailDialog({
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceId])
+
+  // ------------------------------------------------------------- approvals
+  const [approvals, setApprovals] = useState<Approval[]>([])
+  const [canDecideDiscount, setCanDecideDiscount] = useState(false)
+  const loadApprovals = async () => {
+    const [list, types] = await Promise.all([
+      listApprovals(getAccessToken, { entity: 'invoice', entityId: invoiceId }),
+      listApprovalTypes(getAccessToken),
+    ])
+    if (list.kind === 'ok') setApprovals(list.data.filter((a) => a.type === DISCOUNT_TYPE))
+    if (types.kind === 'ok') setCanDecideDiscount(types.data.some((x) => x.type === DISCOUNT_TYPE && x.canDecide))
+  }
+  useEffect(() => {
+    void loadApprovals()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceId])
+  const pendingFor = (lineId: string) =>
+    approvals.some((a) => a.status === 'pending' && a.payload.lineItemId === lineId)
+
+  const [requestLine, setRequestLine] = useState<{ id: string; amount: number } | null>(null)
+  const [requestType, setRequestType] = useState<DiscountType>('percent')
+  const [requestValue, setRequestValue] = useState('')
+  const [requestReason, setRequestReason] = useState('')
+  const sendRequest = async () => {
+    if (!requestLine) return
+    const value = requestType === 'percent' ? Number(requestValue) : parseMinorUnits(requestValue)
+    if (value === null || !Number.isInteger(value) || value <= 0 || (requestType === 'percent' && value > 100)) {
+      setError(t('billing.error.generic'))
+      return
+    }
+    const result = await requestApproval(getAccessToken, {
+      type: DISCOUNT_TYPE,
+      entityId: invoiceId,
+      payload: { lineItemId: requestLine.id, discount: { type: requestType, value }, expectedAmount: requestLine.amount },
+      comment: requestReason.trim() || null,
+    })
+    if (result.kind !== 'ok') {
+      const known: Record<string, TranslationKey> = {
+        ALREADY_PENDING: 'approvals.error.pending',
+        DISCOUNT_OUT_OF_RANGE: 'approvals.error.range',
+        STALE_REQUEST: 'approvals.error.stale',
+        INVOICE_PAID: 'approvals.error.paid',
+        LINE_ALREADY_DISCOUNTED: 'approvals.error.stale',
+        BRANCH_FORBIDDEN: 'approvals.error.branch',
+      }
+      setError(t(known[result.error] ?? 'approvals.error.generic'))
+      return
+    }
+    setRequestLine(null)
+    setRequestValue('')
+    setRequestReason('')
+    void loadApprovals()
+  }
 
   // -------------------------------------------------------------- line item
   const [lineLabel, setLineLabel] = useState('')
@@ -218,7 +278,28 @@ export function InvoiceDetailDialog({
                   <tr key={line.id}>
                     <td>{line.label}</td>
                     <td className="mono">{formatMinorUnits(line.amount)}</td>
-                    <td className="mono">{formatMinorUnits(line.netAmount)}</td>
+                    <td className="mono">
+                      {formatMinorUnits(line.netAmount)}
+                      {pendingFor(line.id) ? (
+                        <span className="chip chip--warn" style={{ marginInlineStart: 6 }}>
+                          {t('billing.discountPending')}
+                        </span>
+                      ) : (
+                        canRequestDiscount &&
+                        !isVoid &&
+                        invoice.status !== 'paid' &&
+                        !line.discount && (
+                          <button
+                            type="button"
+                            className="btn btn--sm btn--ghost"
+                            style={{ marginInlineStart: 6 }}
+                            onClick={() => setRequestLine({ id: line.id, amount: line.amount })}
+                          >
+                            {t('billing.requestDiscount')}
+                          </button>
+                        )
+                      )}
+                    </td>
                     {!isVoid && (
                       <td>
                         <button
@@ -235,6 +316,39 @@ export function InvoiceDetailDialog({
                 ))}
               </tbody>
             </table>
+            {requestLine && (
+              <div className="discount-request">
+                <select className="input input--sm" value={requestType} onChange={(e) => setRequestType(e.target.value as DiscountType)} aria-label={t('billing.discount')}>
+                  <option value="percent">{t('billing.discount.percent')}</option>
+                  <option value="amount">{t('billing.discount.amount')}</option>
+                </select>
+                <input className="input input--sm" style={{ maxWidth: 100 }} placeholder={t('billing.discount')} aria-label={t('billing.discount')} value={requestValue} onChange={(e) => setRequestValue(e.target.value)} />
+                <input className="input input--sm" style={{ flex: 1, minWidth: 140 }} placeholder={t('billing.requestReason')} aria-label={t('billing.requestReason')} value={requestReason} onChange={(e) => setRequestReason(e.target.value)} />
+                <button type="button" className="btn btn--sm btn--primary" onClick={() => void sendRequest()}>
+                  {t('billing.requestSend')}
+                </button>
+                <button type="button" className="btn btn--sm btn--ghost" onClick={() => setRequestLine(null)}>
+                  {t('approvals.cancel')}
+                </button>
+              </div>
+            )}
+            {approvals.length > 0 && (
+              <div className="approval-list" style={{ marginTop: 10 }}>
+                <h4 className="card__subtitle" style={{ margin: 0 }}>{t('approvals.title')}</h4>
+                {approvals.map((approval) => (
+                  <ApprovalCard
+                    key={approval.id}
+                    approval={approval}
+                    canDecide={canDecideDiscount}
+                    onChanged={() => {
+                      void loadApprovals()
+                      void load()
+                      onChanged()
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             {!isVoid && (
               <div className="break-card__row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                 <input className="input input--sm" style={{ minWidth: 140 }} placeholder={t('billing.col.label')} value={lineLabel} onChange={(e) => setLineLabel(e.target.value)} />
