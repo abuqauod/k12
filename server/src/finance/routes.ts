@@ -26,6 +26,7 @@ import {
 } from './service.js'
 // Registers the finance.lineDiscount approval type (SAMS 1.10).
 import './approvals.js'
+import { activeCodes, ensureDefaults } from '../settings/lookups.js'
 
 /**
  * Finance & Accounting core loop — fee structures, invoices, payments,
@@ -115,7 +116,8 @@ const invoiceListQuery = z.object({
 
 const recordPaymentBody = z.object({
   amount: z.number().int().min(1),
-  method: z.enum(['cash', 'bank_transfer', 'card', 'cheque', 'other']),
+  /** A paymentMethod lookup code; checked against the active list below. */
+  method: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/),
   reference: z.string().max(200).nullable().default(null),
   paidAt: z.string().date(),
   payerName: z.string().min(1).max(200),
@@ -530,6 +532,11 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     const tenantId = request.auth!.tenantId!
     const access = await requireInvoiceBranchAccess(request, id, tenantId)
     if (!access.ok) return reply.code(access.status).send({ error: access.error })
+    // Methods are a settings list (SAMS 1.11): new payments must use an
+    // active one; past payments keep whatever code they were recorded with.
+    await ensureDefaults(tenantId, 'paymentMethod')
+    const methods = await withTenant(tenantId, (ctx) => activeCodes(ctx, 'paymentMethod'))
+    if (!methods.has(parsed.data.method)) return reply.code(400).send({ error: 'INVALID_PAYMENT_METHOD' })
 
     const result = await withTenant(tenantId, (ctx) =>
       recordPayment(ctx, tenantId, { invoiceId: id, ...parsed.data, actorId: request.auth!.sub }),

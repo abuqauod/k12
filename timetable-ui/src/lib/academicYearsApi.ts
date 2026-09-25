@@ -37,3 +37,30 @@ export async function listAcademicYears(getToken: TokenGetter): Promise<Academic
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }
 }
+
+/** Creates an academic year (`academicYears.write`). */
+export async function createAcademicYear(
+  getToken: TokenGetter,
+  body: { name: string; startDate: string; endDate: string },
+): Promise<AcademicYearsResult<AcademicYear>> {
+  return mutate(getToken, '/academic-years', body)
+}
+
+/** Makes one year current (the server clears the flag on every other). */
+export async function setCurrentAcademicYear(getToken: TokenGetter, id: string): Promise<AcademicYearsResult<AcademicYear>> {
+  return mutate(getToken, `/academic-years/${encodeURIComponent(id)}/set-current`, {})
+}
+
+async function mutate<T>(getToken: TokenGetter, path: string, body: unknown): Promise<AcademicYearsResult<T>> {
+  try {
+    const response = await authorizedFetch(`${baseUrl()}${path}`, { method: 'POST', body: JSON.stringify(body) }, getToken)
+    const text = await response.text()
+    const parsed = text ? (JSON.parse(text) as unknown) : null
+    if (!response.ok) {
+      return { kind: 'error', error: (parsed as { error?: string } | null)?.error ?? `HTTP_${response.status}` }
+    }
+    return { kind: 'ok', data: parsed as T }
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}

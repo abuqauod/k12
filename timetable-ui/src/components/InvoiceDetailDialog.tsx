@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { DiscountType, Invoice, Payment, Receipt } from '../domain/finance'
-import { PAYMENT_METHODS, formatMinorUnits, parseMinorUnits } from '../domain/finance'
+import { formatMinorUnits, parseMinorUnits } from '../domain/finance'
+import { listLookups, lookupLabel } from '../lib/settingsApi'
+import type { LookupItem } from '../lib/settingsApi'
 import {
   addInvoiceLineItem,
   getInvoice,
@@ -35,7 +37,7 @@ export function InvoiceDetailDialog({
   onClose: () => void
   onChanged: () => void
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { can } = useAuth()
   const canDiscount = can('finance.discount.approve')
   const canVoidPayment = can('finance.payment.void')
@@ -63,6 +65,17 @@ export function InvoiceDetailDialog({
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceId])
+
+  // ------------------------------------------------- payment methods (1.11)
+  // The settings list, including inactive codes so history still labels them.
+  const [methods, setMethods] = useState<LookupItem[]>([])
+  useEffect(() => {
+    void listLookups(getAccessToken, 'paymentMethod', true).then((result) => {
+      if (result.kind === 'ok') setMethods(result.data)
+    })
+  }, [getAccessToken])
+  const methodLabel = (code: string) =>
+    lookupLabel(methods, code, lang, t(`billing.method.${code}` as TranslationKey))
 
   // ------------------------------------------------------------- approvals
   const [approvals, setApprovals] = useState<Approval[]>([])
@@ -183,6 +196,12 @@ export function InvoiceDetailDialog({
   // ---------------------------------------------------------------- payment
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<NewPayment['method']>('cash')
+  // The school may have deactivated the default; fall back to the first
+  // active method once the list is known.
+  const activeMethods = methods.filter((m) => m.active)
+  if (activeMethods.length > 0 && !activeMethods.some((m) => m.code === method)) {
+    setMethod(activeMethods[0].code)
+  }
   const [reference, setReference] = useState('')
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10))
   const [payerName, setPayerName] = useState('')
@@ -390,7 +409,7 @@ export function InvoiceDetailDialog({
                       <tr key={payment.id} style={payment.voidedAt ? { opacity: 0.5 } : undefined}>
                         <td>{payment.paidAt}</td>
                         <td className="mono">{formatMinorUnits(payment.amount)}</td>
-                        <td>{t(`billing.method.${payment.method}` as TranslationKey)}</td>
+                        <td>{methodLabel(payment.method)}</td>
                         <td>
                           <div className="row-actions">
                             {receipt && (
@@ -416,11 +435,13 @@ export function InvoiceDetailDialog({
               <div className="break-card__row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                 <input className="input input--sm" style={{ maxWidth: 100 }} placeholder={t('billing.col.amount')} value={amount} onChange={(e) => setAmount(e.target.value)} />
                 <select className="input input--sm" value={method} onChange={(e) => setMethod(e.target.value as NewPayment['method'])}>
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m}>
-                      {t(`billing.method.${m}` as TranslationKey)}
-                    </option>
-                  ))}
+                  {methods
+                    .filter((m) => m.active)
+                    .map((m) => (
+                      <option key={m.code} value={m.code}>
+                        {methodLabel(m.code)}
+                      </option>
+                    ))}
                 </select>
                 <input className="input input--sm" style={{ maxWidth: 140 }} placeholder={t('billing.reference')} value={reference} onChange={(e) => setReference(e.target.value)} />
                 <input type="date" className="input input--sm" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
@@ -456,7 +477,7 @@ export function InvoiceDetailDialog({
             <div className="dialog__body" style={{ display: 'grid', gap: 6 }}>
               <div className="stat-row"><span>{t('billing.col.date')}</span><b>{viewReceipt.issueDate}</b></div>
               <div className="stat-row"><span>{t('billing.payerName')}</span><b>{viewReceipt.payerName}</b></div>
-              <div className="stat-row"><span>{t('billing.col.method')}</span><b>{t(`billing.method.${viewReceipt.method}` as TranslationKey)}</b></div>
+              <div className="stat-row"><span>{t('billing.col.method')}</span><b>{methodLabel(viewReceipt.method)}</b></div>
               <div className="stat-row"><span>{t('billing.col.amount')}</span><b>{formatMinorUnits(viewReceipt.amount)}</b></div>
               <button type="button" className="btn btn--sm btn--primary" style={{ marginTop: 8 }} onClick={() => window.print()}>
                 {t('billing.receipt.print')}

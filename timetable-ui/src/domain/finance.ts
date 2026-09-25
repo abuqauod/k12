@@ -1,4 +1,6 @@
-export type PaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'cheque' | 'other'
+/** A paymentMethod settings-list code (SAMS 1.11) — built-ins plus any the
+ * school adds; see lib/settingsApi.ts. */
+export type PaymentMethod = string
 export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 export type DiscountType = 'amount' | 'percent'
 
@@ -91,7 +93,6 @@ export interface StudentBalance {
   outstandingBalance: number
 }
 
-export const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'bank_transfer', 'card', 'cheque', 'other']
 
 /** Minor units -> a display string, e.g. 12345 -> "123.45". Assumes a
  * 2-decimal currency (fils/cents), the common case; a 0-decimal currency
