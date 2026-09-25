@@ -24,6 +24,8 @@ import {
   voidInvoice,
   voidPayment,
 } from './service.js'
+// Registers the finance.lineDiscount approval type (SAMS 1.10).
+import './approvals.js'
 
 /**
  * Finance & Accounting core loop — fee structures, invoices, payments,

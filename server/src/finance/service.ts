@@ -149,9 +149,12 @@ async function writeLineItems(
   if (!lineItems) return { ok: false, error: 'UNKNOWN_LINE_ITEM' }
 
   const total = recomputeTotal(lineItems)
+  // A changed total can change the status too — a discount down to exactly
+  // what was already paid makes the invoice paid.
+  const status = statusFromPaid(total, await paidTotalFor(ctx, invoiceId))
   const updated = await ctx.invoices.findOneAndUpdate(
     { _id: invoiceId },
-    { $set: { lineItems, total, updatedAt: new Date() } },
+    { $set: { lineItems, total, status, updatedAt: new Date() } },
     { returnDocument: 'after' },
   )
   await recordAudit(ctx.auditLog, {
@@ -265,6 +268,9 @@ function statusFromPaid(total: number, paid: number): InvoiceStatus {
   if (paid >= total) return 'paid'
   return 'partially_paid'
 }
+
+/** Sum of non-void payments on an invoice. */
+export const invoicePaidTotal = (ctx: TenantContext, invoiceId: string) => paidTotalFor(ctx, invoiceId)
 
 async function paidTotalFor(ctx: TenantContext, invoiceId: string): Promise<number> {
   const rows = await ctx.payments.find({ invoiceId, voidedAt: null }).toArray()

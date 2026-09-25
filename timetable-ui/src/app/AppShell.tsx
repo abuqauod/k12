@@ -25,6 +25,7 @@ const NAV: NavEntry[] = [
   { to: '/attendance', key: 'nav.attendance', icon: '✓' },
   { to: '/routes', key: 'nav.routes', icon: '⌖' },
   { to: '/finance', key: 'nav.finance', icon: '⛃' },
+  { to: '/approvals', key: 'nav.approvals', icon: '⚖' },
   { to: '/logs', key: 'nav.logs', icon: '☰' },
   { to: '/settings', key: 'nav.settings', icon: '⚙' },
 ]

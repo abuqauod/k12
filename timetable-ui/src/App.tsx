@@ -15,6 +15,7 @@ import { AttendancePage } from './pages/AttendancePage'
 import { ClassesPage } from './pages/ClassesPage'
 import { LogsPage } from './pages/LogsPage'
 import { FinancePage } from './pages/FinancePage'
+import { ApprovalsPage } from './pages/ApprovalsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth()
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/logs" element={<LogsPage />} />
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/finance" element={<FinancePage />} />
+        <Route path="/approvals" element={<ApprovalsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
