@@ -63,6 +63,76 @@ export async function ping(): Promise<void> {
   await db.command({ ping: 1 })
 }
 
+// --------------------------------------------------------------- admissions --
+
+/** SAMS 2.5. `converted` is final: the applicant is now a student. */
+export type ApplicationStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'accepted'
+  | 'rejected'
+  | 'waitlisted'
+  | 'converted'
+  | 'withdrawn'
+
+/** A parent or guardian named on an application. `existingParentId` links
+ * to a parent already on file (a sibling's family); otherwise conversion
+ * creates one. */
+export interface ApplicationGuardian {
+  id: string
+  fullName: string
+  relationship: string
+  phone: string
+  email: string | null
+  preferredLanguage: GuardianLanguage
+  primaryContact: boolean
+  existingParentId: string | null
+}
+
+export interface ApplicationDoc extends Document {
+  _id: string
+  tenantId: string
+  /** APP-000123, per tenant. */
+  applicationNumber: string
+  branchId: string
+  academicYearId: string
+  /** The grade applied for, e.g. "Grade 3" — a class is chosen on conversion. */
+  gradeLevel: string
+  applicant: {
+    givenName: string
+    familyName: string
+    givenNameAr: string | null
+    familyNameAr: string | null
+    dob: string | null
+    gender: 'male' | 'female' | null
+    nationality: string | null
+    nationalId: string | null
+    previousSchool: string | null
+  }
+  guardians: ApplicationGuardian[]
+  /** An `admissionSource` settings-list code. */
+  source: string | null
+  notes: string | null
+  /** `documentCategory` codes this applicant must provide (the checklist). */
+  requiredDocuments: string[]
+  status: ApplicationStatus
+  decision: {
+    outcome: 'accepted' | 'rejected' | 'waitlisted'
+    note: string | null
+    decidedBy: string
+    decidedAt: Date
+    approvalRequestId: string
+  } | null
+  submittedAt: Date | null
+  convertedStudentId: string | null
+  convertedAt: Date | null
+  withdrawnReason: string | null
+  createdBy: string
+  createdAt: Date
+  updatedAt: Date
+}
+
 // --------------------------------------------------------------- documents --
 
 export interface TenantProfile {
@@ -712,7 +782,7 @@ export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 
 /** SAMS 2.1: records a document can be attached to. Staff and applications
  * join this list in later phases. */
-export type DocumentOwnerType = 'student' | 'parent'
+export type DocumentOwnerType = 'student' | 'parent' | 'application'
 export type DocumentVerificationStatus = 'unverified' | 'verified' | 'rejected'
 
 /**
@@ -1280,6 +1350,7 @@ export interface TenantContext {
   auditLog: TenantScope<AuditLogDoc>
   lookups: TenantScope<LookupDoc>
   documents: TenantScope<DocumentDoc>
+  applications: TenantScope<ApplicationDoc>
   /** Scoped view for a signed-in admin managing their own school's staff. */
   memberships: TenantScope<MembershipDoc>
   /** Scoped view for a signed-in admin managing their own school's API keys. */
@@ -1333,6 +1404,7 @@ export async function withTenant<T>(
         auditLog: new TenantScope(db.collection<AuditLogDoc>('auditLog'), tenantId, session),
         lookups: new TenantScope(db.collection<LookupDoc>('lookups'), tenantId, session),
         documents: new TenantScope(db.collection<DocumentDoc>('documents'), tenantId, session),
+        applications: new TenantScope(db.collection<ApplicationDoc>('applications'), tenantId, session),
         memberships: new TenantScope(db.collection<MembershipDoc>('memberships'), tenantId, session),
         apiKeys: new TenantScope(db.collection<ApiKeyDoc>('apiKeys'), tenantId, session),
         students: new TenantScope(db.collection<StudentDoc>('students'), tenantId, session),

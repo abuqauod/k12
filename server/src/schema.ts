@@ -153,6 +153,9 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { tenantId: 1, seriesId: 1 },
       { unique: true, partialFilterExpression: { isCurrent: true }, name: 'document_one_current_version' },
     )
+  // Admissions (SAMS 2.5): number unique per tenant; queue by status.
+  await db.collection('applications').createIndex({ tenantId: 1, applicationNumber: 1 }, { unique: true })
+  await db.collection('applications').createIndex({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
   // Approvals (SAMS 1.10): queue by status/branch, 'mine', per-entity
   // lookup, and at most one pending request per dedupe key.
   await db.collection('approvalRequests').createIndex({ tenantId: 1, status: 1, branchId: 1, createdAt: -1 })

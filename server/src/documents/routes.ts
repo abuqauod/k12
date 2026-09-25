@@ -43,10 +43,12 @@ const store: DocumentStore = gridFsStore
 const OWNER_READ_SCOPE: Record<DocumentOwnerType, PermissionScope> = {
   student: 'students.read',
   parent: 'parents.read',
+  // SAMS 2.5: an applicant's documents; moved to the student on conversion.
+  application: 'admissions.read',
 }
 
 const ownerQuery = z.object({
-  ownerType: z.enum(['student', 'parent']),
+  ownerType: z.enum(['student', 'parent', 'application']),
   ownerId: z.string().min(1).max(64),
 })
 
@@ -101,6 +103,14 @@ async function ownerAccess(
 ): Promise<Access> {
   if (!(await callerHasPermission(request, OWNER_READ_SCOPE[ownerType]))) {
     return { ok: false, status: 403, error: 'FORBIDDEN' }
+  }
+  if (ownerType === 'application') {
+    const app = await withTenant(tenantId, (ctx) => ctx.applications.findOne({ _id: ownerId }))
+    if (!app) return { ok: false, status: 404, error: 'OWNER_NOT_FOUND' }
+    if (!(await callerCanUseBranch(request, app.branchId))) {
+      return { ok: false, status: 403, error: 'BRANCH_FORBIDDEN' }
+    }
+    return { ok: true, branchId: app.branchId }
   }
   if (ownerType === 'student') {
     const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: ownerId }))
@@ -485,6 +495,9 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
 
 /** The owner's current branch, for a new version's `branchId`. */
 async function ownerBranch(ctx: TenantContext, doc: DocumentDoc): Promise<string | null> {
+  if (doc.ownerType === 'application') {
+    return (await ctx.applications.findOne({ _id: doc.ownerId }))?.branchId ?? doc.branchId
+  }
   if (doc.ownerType !== 'student') return null
   return (await ctx.students.findOne({ _id: doc.ownerId }))?.branchId ?? doc.branchId
 }
