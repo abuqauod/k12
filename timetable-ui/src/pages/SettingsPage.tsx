@@ -51,6 +51,7 @@ type SettingsSection =
   | 'grades-classes'
   | 'payment-methods'
   | 'document-categories'
+  | 'admission-sources'
   | 'notification-templates'
   | 'roles'
   | 'team'
@@ -77,6 +78,7 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
       { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
+      { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
       { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
     ],
   },
@@ -175,6 +177,13 @@ export function SettingsPage() {
               kind="documentCategory"
               title={t('settings.section.documentCategories')}
               hint={t('settings.documentCategories.hint')}
+            />
+          )}
+          {active?.id === 'admission-sources' && (
+            <LookupSection
+              kind="admissionSource"
+              title={t('settings.section.admissionSources')}
+              hint={t('settings.admissionSources.hint')}
             />
           )}
           {active?.id === 'notification-templates' && <NotificationTemplatesSection />}

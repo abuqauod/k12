@@ -91,8 +91,40 @@ export async function listStudents(
 
 /** What the create/update form supplies. `branchId` and the `studentGroup`
  * label are derived from `classId` server-side, so they're not sent. */
-export type NewStudent = Omit<Student, 'id' | 'active' | 'branchId' | 'studentGroup' | 'classId'> & {
+export type NewStudent = Omit<
+  Student,
+  'id' | 'active' | 'branchId' | 'studentGroup' | 'classId' | 'completeness' | 'photoDocumentId'
+> & {
   classId: string
+}
+
+/** A parent linked to the student, with the link's flags (SAMS 2.2). */
+export interface FamilyMember {
+  linkId: string
+  parentId: string
+  fullName: string
+  fullNameAr: string | null
+  primaryPhone: string
+  email: string | null
+  status: 'active' | 'inactive' | 'archived'
+  relationshipType: string
+  primaryContact: boolean
+  emergencyContact: boolean
+  authorizedPickup: boolean
+  financialResponsibility: boolean
+  /** Which absence alerts this parent gets for this child (SAMS 2.3). */
+  communicationPermissions: { email: boolean; sms: boolean }
+  preferredLanguage: 'en' | 'ar'
+}
+
+export async function getFamily(getToken: TokenGetter, id: string): Promise<StudentsResult<FamilyMember[]>> {
+  try {
+    const response = await call(`/students/${encodeURIComponent(id)}/family`, { method: 'GET' }, getToken)
+    const result = await parse<{ family: FamilyMember[] }>(response)
+    return result.kind === 'ok' ? { kind: 'ok', data: result.data.family } : result
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
 }
 
 /** One student by id — e.g. to open `StudentDetailDialog` from a card that

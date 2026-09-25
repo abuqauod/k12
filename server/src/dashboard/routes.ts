@@ -10,6 +10,7 @@ import {
 } from '../auth/guard.js'
 import { parentsHiddenFromBranches } from '../parents/service.js'
 import { toDecideFilter } from '../approvals/routes.js'
+import { computeCompleteness } from '../students/completeness.js'
 
 /**
  * Dashboard summary (SAMS 1.12): counts computed server-side from the same
@@ -38,6 +39,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
     const can = {
       parents: await callerHasPermission(request, 'parents.read'),
       enrollments: await callerHasPermission(request, 'enrollments.read'),
+      students: await callerHasPermission(request, 'students.read'),
     }
     const toDecide = await toDecideFilter(request)
 
@@ -70,6 +72,16 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
           multiChild: parents.filter((p) => (children.get(p._id) ?? 0) >= 2).length,
           // Incomplete: not linked to any child yet, or no national ID.
           incomplete: parents.filter((p) => !linked.has(p._id) || !p.nationalId).length,
+        }
+      }
+
+      if (can.students) {
+        // SAMS 2.2: enrolled students whose record is missing something.
+        const enrolled = await ctx.students.find({ status: 'enrolled', ...branchFilter }).toArray()
+        const completeness = await computeCompleteness(ctx, enrolled)
+        result.students = {
+          enrolled: enrolled.length,
+          incomplete: enrolled.filter((s) => !completeness.get(s._id)?.complete).length,
         }
       }
 

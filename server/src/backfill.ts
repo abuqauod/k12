@@ -319,43 +319,56 @@ export async function backfillEnrollmentModel(db: Db): Promise<void> {
   }
 }
 
+/** A phone's matching key: its last nine digits, so "+962 79 555 6666",
+ * "00962795556666" and "0795556666" are the same number (a Jordanian
+ * mobile is nine digits after the country code or trunk 0). Shorter
+ * numbers compare on all their digits. */
 function normalizePhoneDigits(phone: string): string {
-  return phone.replace(/[^\d]/g, '')
+  const digits = phone.replace(/[^\d]/g, '')
+  return digits.length > 9 ? digits.slice(-9) : digits.replace(/^0+/, '')
 }
 
 /**
- * One-time seed for the new normalized Parent Management model
- * (ParentDoc / ParentStudentLinkDoc — see db.ts's parents section) from the
- * embedded `StudentDoc.guardians` that predates it. Read-only against its
- * source: never writes to `guardians`, which keeps driving absence
- * notifications exactly as before.
+ * SAMS 2.3: moves every student's embedded `guardians[]` onto the Parent
+ * Management model (ParentDoc + ParentStudentLinkDoc, see db.ts) and
+ * retires the embedded list. Runs from migrate.ts on every deploy and is
+ * idempotent: a student is handled once, then its list is renamed to
+ * `legacyGuardians` (kept as history, never read), so a rerun finds nothing.
+ *
+ * For each guardian:
+ *  - Parent: the one an earlier run of this backfill linked it to (link id
+ *    `…:bf:<student>:<guardian>`), else a match on normalized phone, else
+ *    on exact name, else a new parent. The guardian's language is copied to
+ *    a parent that has none yet.
+ *  - Link: a link this backfill created before is brought up to date with
+ *    the guardian's current flags. Until now the guardian was what absence
+ *    notifications read, so its opt-ins are the live ones. A link a person
+ *    created or edited by hand in Parents is left exactly as it is. With no
+ *    link for the pair, one is created.
  *
  * Dedup is a best-effort heuristic, not a guarantee: `Guardian` carries no
- * national ID to key on, so a normalized phone match is the only reliable
- * signal available. Two different guardians who share a household phone
- * number but are genuinely different people will be merged into one parent
- * record here — spot-check real tenant data after running this in
- * production, and expect to manually split a few. Falling back to an
- * exact-name match when there is no phone reduces false negatives (missed
- * merges) at the cost of more false positives (wrongly merged); that
- * trade-off is deliberate — an over-merged parent is easier to notice and
- * fix by hand than a silently duplicated one.
+ * national ID to key on. Two different people sharing a household phone
+ * are merged into one parent; spot-check real tenant data after the
+ * migration and split any by hand. An over-merged parent is easier to
+ * notice and fix than a silently duplicated one.
  */
-export async function backfillParentsFromGuardians(db: Db): Promise<void> {
+export async function retireEmbeddedGuardians(db: Db): Promise<{ students: number; links: number; parents: number }> {
   const now = new Date()
   const tenantsCol = db.collection<TenantDoc>('tenants')
   const studentsCol = db.collection<StudentDoc>('students')
   const parentsCol = db.collection<ParentDoc>('parents')
   const linksCol = db.collection<ParentStudentLinkDoc>('parentStudentLinks')
+  const counts = { students: 0, links: 0, parents: 0 }
 
   const tenants = await tenantsCol.find({}, { projection: { _id: 1 } }).toArray()
 
   for (const tenant of tenants) {
     const tenantId = tenant._id
-    const students = await studentsCol.find({ tenantId }).toArray()
+    const students = await studentsCol.find({ tenantId, guardians: { $exists: true } }).toArray()
     if (students.length === 0) continue
 
     const existingParents = await parentsCol.find({ tenantId }).toArray()
+    const byId = new Map(existingParents.map((p) => [p._id, p]))
     const byPhone = new Map<string, ParentDoc>()
     const byName = new Map<string, ParentDoc>()
     for (const p of existingParents) {
@@ -366,11 +379,15 @@ export async function backfillParentsFromGuardians(db: Db): Promise<void> {
 
     for (const student of students) {
       for (const guardian of student.guardians ?? []) {
-        const linkId = `${tenantId}:bf:${student._id}:${guardian.id}`
-        if (await linksCol.findOne({ _id: linkId })) continue // already backfilled
+        if (!guardian?.name) continue
+        const backfillId = `${tenantId}:bf:${student._id}:${guardian.id}`
+        const earlier = await linksCol.findOne({ _id: backfillId })
 
-        const digits = normalizePhoneDigits(guardian.phone)
-        let parent = (digits && byPhone.get(digits)) || byName.get(guardian.name.trim().toLowerCase())
+        const digits = normalizePhoneDigits(guardian.phone ?? '')
+        let parent =
+          (earlier && byId.get(earlier.parentId)) ||
+          (digits && byPhone.get(digits)) ||
+          byName.get(guardian.name.trim().toLowerCase())
 
         if (!parent) {
           parent = {
@@ -379,18 +396,19 @@ export async function backfillParentsFromGuardians(db: Db): Promise<void> {
             fullName: guardian.name,
             fullNameAr: null,
             nationalId: null,
-            primaryPhone: guardian.phone,
-            alternativePhone: guardian.secondaryPhone,
-            email: guardian.email,
+            primaryPhone: guardian.phone ?? '',
+            alternativePhone: guardian.secondaryPhone ?? null,
+            email: guardian.email ?? null,
             address: null,
             city: null,
             preferredContactMethod: 'phone',
-            status: guardian.active ? 'active' : 'inactive',
+            preferredLanguage: guardian.preferredLanguage ?? 'en',
+            status: guardian.active === false ? 'inactive' : 'active',
             occupation: null,
             employer: null,
             emergencyContactName: null,
             emergencyContactPhone: null,
-            notes: 'Backfilled from student guardian record.',
+            notes: 'Created from a student guardian record.',
             portalAccess: { enabled: false, userId: null },
             createdAt: now,
             updatedAt: now,
@@ -399,33 +417,51 @@ export async function backfillParentsFromGuardians(db: Db): Promise<void> {
             archivedBy: null,
           }
           await parentsCol.insertOne(parent)
+          counts.parents++
+          byId.set(parent._id, parent)
           if (digits) byPhone.set(digits, parent)
           byName.set(parent.fullName.trim().toLowerCase(), parent)
+        } else if (!parent.preferredLanguage && guardian.preferredLanguage) {
+          await parentsCol.updateOne({ _id: parent._id }, { $set: { preferredLanguage: guardian.preferredLanguage } })
+          parent.preferredLanguage = guardian.preferredLanguage
         }
 
-        const link: ParentStudentLinkDoc = {
-          _id: linkId,
+        const fromGuardian = {
+          relationshipType: guardian.relationship || 'guardian',
+          primaryContact: guardian.isPrimary ?? false,
+          communicationPermissions: { email: guardian.notifyByEmail ?? true, sms: guardian.notifyBySms ?? false },
+          active: guardian.active !== false,
+        }
+        const pair = await linksCol.findOne({ tenantId, parentId: parent._id, studentId: student._id })
+        if (pair) {
+          // Only a link this backfill made follows the guardian; a
+          // hand-made one is the school's own record and wins.
+          if (pair._id === backfillId) {
+            await linksCol.updateOne({ _id: pair._id }, { $set: { ...fromGuardian, updatedAt: now } })
+          }
+          continue
+        }
+        await linksCol.insertOne({
+          _id: backfillId,
           tenantId,
           parentId: parent._id,
           studentId: student._id,
-          relationshipType: guardian.relationship,
-          primaryContact: guardian.isPrimary,
+          ...fromGuardian,
           secondaryContact: false,
           emergencyContact: false,
           authorizedPickup: false,
           financialResponsibility: false,
-          communicationPermissions: {
-            email: guardian.notifyByEmail,
-            sms: guardian.notifyBySms,
-          },
           portalAccess: false,
-          active: guardian.active,
           createdAt: now,
           updatedAt: now,
           createdBy: null,
-        }
-        await linksCol.insertOne(link)
+        })
+        counts.links++
       }
+      // Done with this student: freeze the list as history.
+      await studentsCol.updateOne({ _id: student._id }, { $rename: { guardians: 'legacyGuardians' } })
+      counts.students++
     }
   }
+  return counts
 }

@@ -143,12 +143,29 @@ first because every later phase depends on them.
   from Finance — never stored on the student.
 - Student detail becomes a full page with tabs: Profile, Family, Enrollment
   history, Finance, Documents, Activity (audit).
+- **Built**: new scope `students.custody` (admins, registrars); custody
+  text is never written to the audit log. Admission source is a settings
+  list (`admissionSource`). Completeness items: date of birth, gender,
+  nationality, national ID, address, primary phone, a parent or guardian,
+  an emergency contact, a birth certificate and a photo that aren't
+  rejected. Only enrolled students count. The photo is the student's
+  current `photo` document, not a separate field. The student dialog is
+  gone; `/students/:id` replaces it.
 
 ### 2.3 Unify the guardian models
 - Absence notifications switch from `StudentDoc.guardians` to
   `ParentStudentLinkDoc.communicationPermissions`; backfill any embedded
   guardian not yet represented as a link; stop writing the embedded array.
   Removes the documented dual-model debt.
+- **Built**: `retireEmbeddedGuardians` (migrate.ts) moves every guardian
+  onto a parent link, then renames the list to `legacyGuardians` (history,
+  never read). Hand-made links are left alone; links from the earlier
+  backfill take the guardian's current opt-ins. Phones match on their last
+  nine digits. Parents gain a preferred language. The student API refuses a
+  guardian list (`GUARDIANS_MOVED`). Absence-alert channels are switched
+  per child on the parent. Also fixed: backfilled link ids (~130 chars)
+  were over Fastify's 100-character path parameter limit, so those links
+  could not be edited or removed.
 
 ### 2.4 Enrollment expansion
 - Add `pending` status, withdrawal reason codes (lookup), re-enrollment as a

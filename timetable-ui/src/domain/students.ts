@@ -14,43 +14,6 @@ export type StudentStatus = 'enrolled' | 'graduated' | 'withdrawn' | 'inquiry'
 
 export type GuardianLanguage = 'en' | 'ar'
 
-export interface Guardian {
-  /** Stable id from the server; absent only on a guardian the form just
-   * added and hasn't saved yet. */
-  id?: string
-  name: string
-  relationship: string
-  phone: string
-  secondaryPhone: string | null
-  email: string | null
-  /** The contact a school calls first — a display hint, not how notification
-   * recipients are chosen. */
-  isPrimary: boolean
-  /** Language this guardian's absence notifications are written in. */
-  preferredLanguage: GuardianLanguage
-  /** Per-channel opt-in — a guardian with neither is never messaged. */
-  notifyByEmail: boolean
-  notifyBySms: boolean
-  /** A former guardian kept for history; excluded from notifications. */
-  active: boolean
-}
-
-/** A blank guardian for the "add" button. */
-export function emptyGuardian(): Guardian {
-  return {
-    name: '',
-    relationship: 'guardian',
-    phone: '',
-    secondaryPhone: null,
-    email: null,
-    isPrimary: false,
-    preferredLanguage: 'en',
-    notifyByEmail: true,
-    notifyBySms: false,
-    active: true,
-  }
-}
-
 export interface Student {
   id: string
   studentNumber: string
@@ -91,7 +54,47 @@ export interface Student {
   admissionDate?: string | null
   address?: string | null
   medicalNotes?: string | null
-  guardians?: Guardian[]
+  // ------------------------------------------------------- profile (2.2) —
+  preferredName?: string | null
+  nationality?: string | null
+  nationalId?: string | null
+  /** An `admissionSource` settings-list code. */
+  admissionSource?: string | null
+  previousSchool?: string | null
+  emergencyContacts?: EmergencyContact[]
+  /** Only present when the viewer holds `students.custody`. */
+  custodyNotes?: string | null
+  /** Computed by the server on read; never sent back. */
+  completeness?: Completeness
+  /** The current photo document, from GET /students/:id only. */
+  photoDocumentId?: string | null
+}
+
+export interface EmergencyContact {
+  /** Absent on a contact not yet saved. */
+  id?: string
+  name: string
+  relationship: string
+  phone: string
+  alternatePhone: string | null
+  notes: string | null
+}
+
+export type CompletenessItem =
+  | 'dob'
+  | 'gender'
+  | 'nationality'
+  | 'nationalId'
+  | 'address'
+  | 'primaryPhone'
+  | 'guardian'
+  | 'emergencyContact'
+  | 'birthCertificate'
+  | 'photo'
+
+export interface Completeness {
+  complete: boolean
+  missing: CompletenessItem[]
 }
 
 /** Does this student ride on the given run? */

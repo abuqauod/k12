@@ -4,17 +4,15 @@ import { formatMinorUnits } from '../domain/finance'
 import { PREFERRED_CONTACT_METHODS, emptyLink, emptyParent } from '../domain/parents'
 import type { NewLink, NewParent } from '../lib/parentsApi'
 import { ReasonDialog } from './ReasonDialog'
-import { createParent, createParentLink, deactivateParentLink, getParent, updateParent } from '../lib/parentsApi'
-import { listClasses } from '../lib/classesApi'
-import { listStudents, getStudent } from '../lib/studentsApi'
+import { createParent, createParentLink, deactivateParentLink, getParent, updateParent, updateParentLink } from '../lib/parentsApi'
+import { listStudents } from '../lib/studentsApi'
 import type { Student } from '../domain/students'
-import type { SchoolClass } from '../domain/classes'
 import { useAuth } from '../auth/AuthContext'
 import { useApp } from '../state/AppContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { useNavigate } from 'react-router-dom'
 import { DocumentsPanel } from './DocumentsPanel'
-import { StudentDetailDialog } from './StudentDetailDialog'
 
 type Tab = 'basic' | 'contact' | 'work' | 'status'
 
@@ -45,7 +43,7 @@ export function ParentDetailDialog({
     const text = t(key)
     return text === key ? t('parents.error.generic') : text
   }
-  const { getAccessToken } = useAuth()
+  const { getAccessToken, can } = useAuth()
   const { fleet, activeBranchId } = useApp()
 
   const [id, setId] = useState<string | null>(parentId)
@@ -58,11 +56,28 @@ export function ParentDetailDialog({
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<DuplicateCandidate[]>([])
   const [students, setStudents] = useState<LinkedStudentSummary[]>([])
-  const [openStudentId, setOpenStudentId] = useState<string | null>(null)
-  const [openStudent, setOpenStudent] = useState<Student | null>(null)
-  const [openStudentClasses, setOpenStudentClasses] = useState<SchoolClass[]>([])
+  const navigate = useNavigate()
 
   const patch = (changes: Partial<typeof form>) => setForm((f) => ({ ...f, ...changes }))
+
+  // Absence alerts per child: saved at once, like a switch.
+  const [savingAlerts, setSavingAlerts] = useState<string | null>(null)
+  const setAlert = async (s: LinkedStudentSummary, channel: 'email' | 'sms', on: boolean) => {
+    if (!id) return
+    const previous = s.communicationPermissions
+    const communicationPermissions = { ...previous, [channel]: on }
+    const apply = (perms: typeof previous) =>
+      setStudents((all) => all.map((x) => (x.linkId === s.linkId ? { ...x, communicationPermissions: perms } : x)))
+    // Shown at once, put back if the save fails.
+    apply(communicationPermissions)
+    setSavingAlerts(s.linkId)
+    const res = await updateParentLink(getAccessToken, id, s.linkId, { communicationPermissions })
+    setSavingAlerts(null)
+    if (res.kind !== 'ok') {
+      apply(previous)
+      setError(errorText(res.error))
+    }
+  }
 
   const load = async () => {
     if (!id) return
@@ -84,6 +99,7 @@ export function ParentDetailDialog({
       address: parent.address,
       city: parent.city,
       preferredContactMethod: parent.preferredContactMethod,
+      preferredLanguage: parent.preferredLanguage ?? 'en',
       status: parent.status,
       occupation: parent.occupation,
       employer: parent.employer,
@@ -169,14 +185,7 @@ export function ParentDetailDialog({
     return null
   }
 
-  const openStudentProfile = async (studentId: string) => {
-    const res = await getStudent(getAccessToken, studentId)
-    if (res.kind !== 'ok') return
-    const classesRes = await listClasses(getAccessToken, { branchId: res.data.branchId })
-    setOpenStudent(res.data)
-    setOpenStudentClasses(classesRes.kind === 'ok' ? classesRes.data : [])
-    setOpenStudentId(studentId)
-  }
+  const openStudentProfile = (studentId: string) => navigate(`/students/${encodeURIComponent(studentId)}`)
 
   const activeStudents = useMemo(() => students.filter((s) => s.linkActive), [students])
 
@@ -265,6 +274,17 @@ export function ParentDetailDialog({
                           {t(`parents.contactMethod.${method}` as TranslationKey)}
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="field" style={{ minWidth: 160 }}>
+                    <span>{t('parents.preferredLanguage')}</span>
+                    <select
+                      className="input"
+                      value={form.preferredLanguage}
+                      onChange={(e) => patch({ preferredLanguage: e.target.value as 'en' | 'ar' })}
+                    >
+                      <option value="en">English</option>
+                      <option value="ar">العربية</option>
                     </select>
                   </label>
                   <label className="field" style={{ minWidth: 320, flexBasis: '100%' }}>
@@ -423,6 +443,24 @@ export function ParentDetailDialog({
                           {t('parents.link.portalAccess')}
                         </label>
                       </div>
+                      <div className="break-card__row" style={{ gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
+                        <span className="card__hint">{t('parents.alerts')}</span>
+                        {(['email', 'sms'] as const).map((channel) => (
+                          <label key={channel} className="inline-field">
+                            <input
+                              type="checkbox"
+                              checked={link.communicationPermissions[channel]}
+                              onChange={(e) =>
+                                setLink((l) => ({
+                                  ...l,
+                                  communicationPermissions: { ...l.communicationPermissions, [channel]: e.target.checked },
+                                }))
+                              }
+                            />
+                            {t(`parents.alerts.${channel}` as TranslationKey)}
+                          </label>
+                        ))}
+                      </div>
                       {linkError && <p className="login__error">{linkError}</p>}
                       <div className="page__actions" style={{ marginTop: 8 }}>
                         <button
@@ -451,7 +489,7 @@ export function ParentDetailDialog({
                               type="button"
                               className="btn btn--ghost btn--sm"
                               style={{ fontWeight: 600, padding: 0 }}
-                              onClick={() => void openStudentProfile(s.studentId)}
+                              onClick={() => openStudentProfile(s.studentId)}
                             >
                               {s.givenName} {s.familyName}
                             </button>
@@ -482,6 +520,21 @@ export function ParentDetailDialog({
                             {s.authorizedPickup && <span className="chip">{t('parents.link.authorizedPickup')}</span>}
                             {s.financialResponsibility && <span className="chip">{t('parents.link.financialResponsibility')}</span>}
                           </div>
+                          {/* SAMS 2.3: these decide who gets absence alerts. */}
+                          <div className="break-card__row" style={{ flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+                            <span className="card__hint">{t('parents.alerts')}</span>
+                            {(['email', 'sms'] as const).map((channel) => (
+                              <label key={channel} className="inline-field">
+                                <input
+                                  type="checkbox"
+                                  checked={s.communicationPermissions[channel]}
+                                  disabled={!can('parents.write') || savingAlerts === s.linkId}
+                                  onChange={(e) => void setAlert(s, channel, e.target.checked)}
+                                />
+                                {t(`parents.alerts.${channel}` as TranslationKey)}
+                              </label>
+                            ))}
+                          </div>
                         </div>
                       )
                     })}
@@ -499,21 +552,6 @@ export function ParentDetailDialog({
         </div>
       </div>
 
-      {openStudentId &&
-        openStudent &&
-        (() => {
-          const studentForDialog = openStudent
-          return (
-            <StudentDetailDialog
-              student={studentForDialog}
-              classes={openStudentClasses}
-              fleet={fleet}
-              getAccessToken={getAccessToken}
-              onClose={() => setOpenStudentId(null)}
-              onChanged={(updated) => setOpenStudent(updated)}
-            />
-          )
-        })()}
       {removingLink && (
         <ReasonDialog
           title={t('parents.link.remove')}

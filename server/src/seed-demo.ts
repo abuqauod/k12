@@ -1,6 +1,3 @@
-import { MongoClient } from 'mongodb'
-import { config } from './config.js'
-import { backfillParentsFromGuardians } from './backfill.js'
 
 /**
  * Fills the two base tenants (created by `npm run seed`) with realistic
@@ -216,21 +213,28 @@ async function seedTenant(plan: SeedPlan): Promise<void> {
               admissionDate: isoDaysAgo(300),
               stopId: rides ? pick(stopIds) : '',
               transportMode: rides ? pick(TRANSPORT_MODES) : 'NONE',
-              guardians: [
-                {
-                  name: parentName,
-                  relationship: random() > 0.5 ? 'father' : 'mother',
-                  phone: `+9627${String(90000000 + Math.floor(random() * 9_000_000))}`,
-                  email: `${parentName.toLowerCase().replace(/\s+/g, '.')}@example.test`,
-                  isPrimary: true,
-                  notifyByEmail: true,
-                  notifyBySms: false,
-                  preferredLanguage: random() > 0.5 ? 'ar' : 'en',
-                },
-              ],
             }),
           }, token)
           studentIds.push(student.id as string)
+          // The family, the way the Parents screen records it (SAMS 2.3).
+          const parent = await call('/parents', {
+            method: 'POST',
+            body: JSON.stringify({
+              fullName: parentName,
+              primaryPhone: `+9627${String(90000000 + Math.floor(random() * 9_000_000))}`,
+              email: `${parentName.toLowerCase().replace(/\s+/g, '.')}@example.test`,
+              preferredLanguage: random() > 0.5 ? 'ar' : 'en',
+            }),
+          }, token)
+          await call(`/parents/${(parent.parent as { id: string }).id}/links`, {
+            method: 'POST',
+            body: JSON.stringify({
+              studentId: student.id,
+              relationshipType: random() > 0.5 ? 'father' : 'mother',
+              primaryContact: true,
+              communicationPermissions: { email: true, sms: false },
+            }),
+          }, token)
         }
 
         // Attendance for the last 4 school days — mostly present, a few
@@ -288,17 +292,6 @@ async function main(): Promise<void> {
   for (const plan of PLANS) {
     await seedTenant(plan)
   }
-
-  // The routes above only write the per-student embedded `guardians[]` —
-  // the normalized `parents` / `parentStudentLinks` collections that the
-  // Parents screen reads are a backfill, same as `migrate.ts` runs for a
-  // real tenant's existing data.
-  console.log('\nbackfilling normalized parent records...')
-  const client = new MongoClient(config.databaseUrl)
-  await client.connect()
-  await backfillParentsFromGuardians(client.db())
-  await client.close()
-  console.log('  done')
 
   console.log('\ndemo data complete')
 }

@@ -25,7 +25,7 @@ const GROUP_KEY: Record<SearchResultType, TranslationKey> = {
 function resultPath(result: SearchResult): string {
   switch (result.type) {
     case 'student':
-      return `/students?student=${encodeURIComponent(result.id)}`
+      return `/students/${encodeURIComponent(result.id)}`
     case 'parent':
       return `/parents?parent=${encodeURIComponent(result.id)}`
     case 'class':
@@ -35,7 +35,7 @@ function resultPath(result: SearchResult): string {
     case 'stop':
       return `/routes?stop=${encodeURIComponent(result.id)}`
     case 'enrollment':
-      return `/students?student=${encodeURIComponent(result.id)}`
+      return `/students/${encodeURIComponent(result.id)}`
     // A payment result carries its invoice's id.
     case 'invoice':
     case 'payment':

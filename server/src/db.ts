@@ -307,6 +307,17 @@ export interface Guardian {
  * "students"); the new SIS fields (guardians, dob, ...) are additions to
  * the same shape, not a rename of it.
  */
+/** SAMS 2.2: someone to call in an emergency who is not necessarily a
+ * parent or guardian (a grandparent, a neighbour). */
+export interface EmergencyContact {
+  id: string
+  name: string
+  relationship: string
+  phone: string
+  alternatePhone: string | null
+  notes: string | null
+}
+
 export interface StudentDoc extends Document {
   _id: string
   tenantId: string
@@ -336,7 +347,29 @@ export interface StudentDoc extends Document {
   admissionDate: string | null
   address: string | null
   medicalNotes: string | null
-  guardians: Guardian[]
+  /**
+   * The old per-student guardian list. SAMS 2.3 moved every guardian onto
+   * a parent link (`ParentStudentLinkDoc`, backfill.ts's
+   * `retireEmbeddedGuardians`), which renames this to `legacyGuardians`.
+   * Present only on a record the migration hasn't reached yet; nothing
+   * writes it any more.
+   */
+  guardians?: Guardian[]
+  /** The frozen pre-2.3 guardian list, kept as history. Never read by the app. */
+  legacyGuardians?: Guardian[]
+  // SAMS 2.2 profile. Optional: records created before 2.2 lack them, and
+  // every reader treats a missing field as null / [].
+  preferredName?: string | null
+  nationality?: string | null
+  nationalId?: string | null
+  /** An `admissionSource` lookup code (settings lists, SAMS 1.11). */
+  admissionSource?: string | null
+  previousSchool?: string | null
+  emergencyContacts?: EmergencyContact[]
+  /** Custody or pickup restrictions ("father may not collect"). Returned
+   * and editable only with `students.custody`, and its text never enters
+   * the audit log (only that it changed). */
+  custodyNotes?: string | null
   /** Where this student boards. Empty means not yet placed on a route. */
   stopId: string
   transportMode: 'TWO_WAY' | 'MORNING' | 'EVENING' | 'NONE'
@@ -566,6 +599,9 @@ export interface ParentDoc extends Document {
   address: string | null
   city: string | null
   preferredContactMethod: PreferredContactMethod
+  /** Language for messages to this parent (absence notifications). Absent
+   * on records created before SAMS 2.3: read as 'en'. */
+  preferredLanguage?: GuardianLanguage
   /** `archived` is a status flip, never a delete — historical
    * `ParentStudentLinkDoc` rows referencing this id must keep resolving. */
   status: ParentStatus
@@ -1098,6 +1134,8 @@ export interface NotificationJobDoc extends Document {
   tenantId: string
   branchId: string
   studentId: string
+  /** The recipient: a parent's id since SAMS 2.3 (an embedded guardian's
+   * id on older jobs). The name is kept so the log doesn't change shape. */
   guardianId: string
   date: string
   channel: NotifyChannel

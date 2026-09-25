@@ -4,14 +4,17 @@ import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import { readReason, setAuditReason } from '../requestContext.js'
-import type { Guardian, StudentDoc } from '../db.js'
+import type { EmergencyContact, StudentDoc, TenantContext } from '../db.js'
 import {
   authenticate,
   callerBranchIds,
   callerCanUseBranch,
+  callerHasPermission,
   requireActiveSubscription,
   requirePermission,
 } from '../auth/guard.js'
+import { activeCodes, ensureDefaults } from '../settings/lookups.js'
+import { computeCompleteness, type Completeness } from './completeness.js'
 import type { PermissionScope } from '../auth/scopes.js'
 import { recordAudit } from '../audit.js'
 import { verify } from '@node-rs/argon2'
@@ -21,7 +24,7 @@ import { createInitialEnrollment, resolveAcademicYearId } from '../enrollments/s
 import { gridFsStore } from '../documents/store.js'
 
 /**
- * The student roster. A student's *demographics, guardians and transport*
+ * The student roster. A student's *demographics, emergency contacts and transport*
  * are edited here; where the student sits (branch / class / academic year)
  * is an enrollment concern and moves through `enrollments/routes.ts`
  * (transfer / withdraw). `branchId`, `classId`, `academicYearId` and
@@ -30,20 +33,14 @@ import { gridFsStore } from '../documents/store.js'
  * from a request body.
  */
 
-const guardianSchema = z.object({
-  /** Optional on input — kept if given (an edit), generated if not (a new
-   * guardian). Lets the client round-trip a guardian without losing its id. */
+const emergencyContactSchema = z.object({
+  /** Kept when given (an edit), generated when not. */
   id: z.string().min(1).max(64).optional(),
-  name: z.string().min(1).max(200),
-  relationship: z.string().min(1).max(50),
-  phone: z.string().min(5).max(30),
-  secondaryPhone: z.string().max(30).nullable().default(null),
-  email: z.string().email().nullable().default(null),
-  isPrimary: z.boolean().default(false),
-  preferredLanguage: z.enum(['en', 'ar']).default('en'),
-  notifyByEmail: z.boolean().default(true),
-  notifyBySms: z.boolean().default(false),
-  active: z.boolean().default(true),
+  name: z.string().trim().min(1).max(200),
+  relationship: z.string().trim().min(1).max(50),
+  phone: z.string().trim().min(5).max(30),
+  alternatePhone: z.string().trim().max(30).nullable().default(null),
+  notes: z.string().trim().max(300).nullable().default(null),
 })
 
 const studentBody = z.object({
@@ -60,17 +57,34 @@ const studentBody = z.object({
   admissionDate: z.string().date().nullable().default(null),
   address: z.string().max(500).nullable().default(null),
   medicalNotes: z.string().max(2000).nullable().default(null),
-  guardians: z.array(guardianSchema).max(10).default([]),
+  /** SAMS 2.3: guardians are parent links now (Parents module). Accepted
+   * only as an empty list, so an older client that always sends `[]` keeps
+   * working; anything else is refused with GUARDIANS_MOVED. */
+  guardians: z.array(z.unknown()).max(0, 'GUARDIANS_MOVED').optional(),
   stopId: z.string().default(''),
   transportMode: z.enum(['TWO_WAY', 'MORNING', 'EVENING', 'NONE']).default('NONE'),
   lat: z.number().min(-90).max(90).nullable().default(null),
   lng: z.number().min(-180).max(180).nullable().default(null),
   primaryPhone: z.string().max(30).default(''),
   secondaryPhone: z.string().max(30).default(''),
+  // SAMS 2.2 profile
+  preferredName: z.string().trim().max(100).nullable().default(null),
+  nationality: z.string().trim().max(100).nullable().default(null),
+  nationalId: z.string().trim().max(50).nullable().default(null),
+  admissionSource: z.string().max(64).nullable().default(null),
+  previousSchool: z.string().trim().max(200).nullable().default(null),
+  emergencyContacts: z.array(emergencyContactSchema).max(5).default([]),
+  custodyNotes: z.string().trim().max(2000).nullable().default(null),
 })
 
 /** PATCH cannot move a student — `classId` is intentionally absent. */
 const updateStudentBody = studentBody.omit({ classId: true, studentNumber: true }).partial()
+
+/** GUARDIANS_MOVED when the only problem is a non-empty guardian list, so
+ * an integration still sending guardians learns where they went. */
+function bodyError(error: z.ZodError): string {
+  return error.issues.some((i) => i.message === 'GUARDIANS_MOVED') ? 'GUARDIANS_MOVED' : 'INVALID_BODY'
+}
 
 const listQuery = z.object({
   branchId: z.string().optional(),
@@ -79,20 +93,28 @@ const listQuery = z.object({
   academicYearId: z.string().optional(),
   status: z.enum(['enrolled', 'graduated', 'withdrawn', 'inquiry']).optional(),
   search: z.string().max(200).optional(),
+  /** Only enrolled students whose record is incomplete (SAMS 2.2). */
+  incomplete: z.enum(['1']).optional(),
 })
 
-function atMostOnePrimary(guardians: { isPrimary: boolean }[]): boolean {
-  return guardians.filter((g) => g.isPrimary).length <= 1
+function withContactIds(contacts: z.infer<typeof emergencyContactSchema>[]): EmergencyContact[] {
+  return contacts.map((c) => ({ ...c, id: c.id ?? randomUUID() }))
 }
 
-/** Assign a stable id to any guardian that arrived without one. */
-function withGuardianIds(
-  guardians: z.infer<typeof guardianSchema>[],
-): Guardian[] {
-  return guardians.map((g) => ({ ...g, id: g.id ?? randomUUID() }))
+/** Checks a submitted admission source against the school's active list. */
+async function admissionSourceOk(ctx: TenantContext, code: string | null | undefined): Promise<boolean> {
+  if (!code) return true
+  return (await activeCodes(ctx, 'admissionSource')).has(code)
 }
 
-function toResponse(doc: StudentDoc) {
+interface ResponseExtras {
+  /** Caller holds `students.custody`; otherwise custody notes are withheld. */
+  custody: boolean
+  completeness?: Completeness
+  photoDocumentId?: string | null
+}
+
+function toResponse(doc: StudentDoc, extras: ResponseExtras) {
   return {
     id: doc._id,
     studentNumber: doc.studentNumber,
@@ -110,13 +132,23 @@ function toResponse(doc: StudentDoc) {
     admissionDate: doc.admissionDate,
     address: doc.address,
     medicalNotes: doc.medicalNotes,
-    guardians: doc.guardians,
     stopId: doc.stopId,
     transportMode: doc.transportMode,
     lat: doc.lat,
     lng: doc.lng,
     primaryPhone: doc.primaryPhone,
     secondaryPhone: doc.secondaryPhone,
+    preferredName: doc.preferredName ?? null,
+    nationality: doc.nationality ?? null,
+    nationalId: doc.nationalId ?? null,
+    admissionSource: doc.admissionSource ?? null,
+    previousSchool: doc.previousSchool ?? null,
+    emergencyContacts: doc.emergencyContacts ?? [],
+    // Absent (not null) without the scope, so a client can tell "none
+    // recorded" from "not yours to see".
+    ...(extras.custody ? { custodyNotes: doc.custodyNotes ?? null } : {}),
+    ...(extras.completeness ? { completeness: extras.completeness } : {}),
+    ...(extras.photoDocumentId !== undefined ? { photoDocumentId: extras.photoDocumentId } : {}),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   }
@@ -149,7 +181,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
   app.get('/students', readGuard, async (request, reply) => {
     const parsed = listQuery.safeParse(request.query)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_QUERY' })
-    const { branchId, classId, studentGroup, academicYearId, status, search } = parsed.data
+    const { branchId, classId, studentGroup, academicYearId, status, search, incomplete } = parsed.data
 
     const allowed = await callerBranchIds(request)
     if (branchId && allowed !== null && !allowed.includes(branchId)) {
@@ -165,31 +197,99 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     if (status) filter.status = status
     if (search) {
       const pattern = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' }
-      filter.$or = [{ givenName: pattern }, { familyName: pattern }, { studentNumber: pattern }]
+      filter.$or = [
+        { givenName: pattern },
+        { familyName: pattern },
+        { preferredName: pattern },
+        { studentNumber: pattern },
+        { nationalId: pattern },
+      ]
     }
+    if (incomplete) filter.status = 'enrolled'
 
-    const students = await withTenant(request.auth!.tenantId!, (ctx) =>
-      ctx.students.find(filter).sort({ familyName: 1, givenName: 1 }).toArray(),
-    )
-    return reply.send({ students: students.map(toResponse) })
+    const custody = await callerHasPermission(request, 'students.custody')
+    const { students, completeness } = await withTenant(request.auth!.tenantId!, async (ctx) => {
+      const students = await ctx.students.find(filter).sort({ familyName: 1, givenName: 1 }).toArray()
+      return { students, completeness: await computeCompleteness(ctx, students) }
+    })
+    return reply.send({
+      students: students
+        .filter((s) => !incomplete || !completeness.get(s._id)?.complete)
+        .map((s) => toResponse(s, { custody, completeness: completeness.get(s._id) })),
+    })
   })
 
   app.get('/students/:id', readGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const access = await requireStudentBranchAccess(request, id, request.auth!.tenantId!)
+    const tenantId = request.auth!.tenantId!
+    const access = await requireStudentBranchAccess(request, id, tenantId)
     if (!access.ok) return reply.code(access.status).send({ error: access.error })
-    return reply.send(toResponse(access.student))
+    const custody = await callerHasPermission(request, 'students.custody')
+    const extras = await withTenant(tenantId, async (ctx) => {
+      const completeness = (await computeCompleteness(ctx, [access.student])).get(id)
+      const photo = await ctx.documents
+        .find({ ownerType: 'student', ownerId: id, categoryCode: 'photo', isCurrent: true, archivedAt: null })
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .toArray()
+      return { completeness, photoDocumentId: photo[0]?._id ?? null }
+    })
+    return reply.send(toResponse(access.student, { custody, ...extras }))
+  })
+
+  /**
+   * The student's family (SAMS 2.2): parents linked through active
+   * `parentStudentLinks`, with the link's flags. Needs `parents.read` on
+   * top of the student's own access.
+   */
+  app.get('/students/:id/family', readGuard, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const tenantId = request.auth!.tenantId!
+    if (!(await callerHasPermission(request, 'parents.read'))) {
+      return reply.code(403).send({ error: 'FORBIDDEN', required: 'parents.read' })
+    }
+    const access = await requireStudentBranchAccess(request, id, tenantId)
+    if (!access.ok) return reply.code(access.status).send({ error: access.error })
+    const family = await withTenant(tenantId, async (ctx) => {
+      const links = await ctx.parentStudentLinks.find({ studentId: id, active: true }).toArray()
+      const parents = await ctx.parents.find({ _id: { $in: links.map((l) => l.parentId) } }).toArray()
+      const byId = new Map(parents.map((p) => [p._id, p]))
+      return links.flatMap((link) => {
+        const parent = byId.get(link.parentId)
+        if (!parent) return []
+        return [
+          {
+            linkId: link._id,
+            parentId: parent._id,
+            fullName: parent.fullName,
+            fullNameAr: parent.fullNameAr,
+            primaryPhone: parent.primaryPhone,
+            email: parent.email,
+            status: parent.status,
+            relationshipType: link.relationshipType,
+            primaryContact: link.primaryContact,
+            emergencyContact: link.emergencyContact,
+            authorizedPickup: link.authorizedPickup,
+            financialResponsibility: link.financialResponsibility,
+            // Who gets absence alerts, and in which language (SAMS 2.3).
+            communicationPermissions: link.communicationPermissions,
+            preferredLanguage: parent.preferredLanguage ?? 'en',
+          },
+        ]
+      })
+    })
+    return reply.send({ family })
   })
 
   app.post('/students', scoped('students.create'), async (request, reply) => {
     const parsed = studentBody.safeParse(request.body)
-    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    const guardians = withGuardianIds(parsed.data.guardians)
-    if (!atMostOnePrimary(guardians)) {
-      return reply.code(400).send({ error: 'MULTIPLE_PRIMARY_GUARDIANS' })
-    }
+    if (!parsed.success) return reply.code(400).send({ error: bodyError(parsed.error) })
 
     const tenantId = request.auth!.tenantId!
+    if (parsed.data.custodyNotes && !(await callerHasPermission(request, 'students.custody'))) {
+      return reply.code(403).send({ error: 'FORBIDDEN', required: 'students.custody' })
+    }
+    if (parsed.data.admissionSource) await ensureDefaults(tenantId, 'admissionSource')
     // The new student's branch follows from the class, not known until it's
     // resolved — pre-fetched here, before the write transaction, same
     // reasoning as the branch check itself: a check that ran after the
@@ -208,15 +308,16 @@ export function registerStudentRoutes(app: FastifyInstance): void {
         if (!klass) return 'unknown_class' as const
         const existing = await ctx.students.findOne({ studentNumber: parsed.data.studentNumber })
         if (existing) return 'number_taken' as const
+        if (!(await admissionSourceOk(ctx, parsed.data.admissionSource))) return 'bad_source' as const
         const academicYearId = await resolveAcademicYearId(ctx, klass.academicYearId)
         if (!academicYearId) return 'no_year' as const
 
         const _id = randomUUID()
-        const { classId: _c, guardians: _g, ...rest } = parsed.data
+        const { classId: _c, guardians: _g, emergencyContacts, ...rest } = parsed.data
         await ctx.students.insertOne({
           _id,
           ...rest,
-          guardians,
+          emergencyContacts: withContactIds(emergencyContacts),
           // Cache of the enrollment created just below.
           branchId: klass.branchId,
           classId: klass._id,
@@ -247,6 +348,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
       if (result === 'unknown_class') return reply.code(404).send({ error: 'UNKNOWN_CLASS' })
       if (result === 'number_taken') return reply.code(409).send({ error: 'STUDENT_NUMBER_TAKEN' })
       if (result === 'no_year') return reply.code(409).send({ error: 'NO_ACADEMIC_YEAR' })
+      if (result === 'bad_source') return reply.code(400).send({ error: 'INVALID_ADMISSION_SOURCE' })
       if (result === 'ALREADY_ENROLLED' || result === 'NO_ACADEMIC_YEAR' || result === 'UNKNOWN_CLASS') {
         return reply.code(409).send({ error: result })
       }
@@ -260,28 +362,40 @@ export function registerStudentRoutes(app: FastifyInstance): void {
   app.patch('/students/:id', scoped('students.update'), async (request, reply) => {
     const { id } = request.params as { id: string }
     const parsed = updateStudentBody.safeParse(request.body)
-    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
-
-    const guardians = parsed.data.guardians ? withGuardianIds(parsed.data.guardians) : undefined
-    if (guardians && !atMostOnePrimary(guardians)) {
-      return reply.code(400).send({ error: 'MULTIPLE_PRIMARY_GUARDIANS' })
-    }
+    if (!parsed.success) return reply.code(400).send({ error: bodyError(parsed.error) })
+    const { guardians: _ignored, ...fields } = parsed.data
+    if (Object.keys(fields).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
 
     const tenantId = request.auth!.tenantId!
+    const custody = await callerHasPermission(request, 'students.custody')
+    if ('custodyNotes' in fields && !custody) {
+      return reply.code(403).send({ error: 'FORBIDDEN', required: 'students.custody' })
+    }
     const access = await requireStudentBranchAccess(request, id, tenantId)
     if (!access.ok) return reply.code(access.status).send({ error: access.error })
+    if (fields.admissionSource) await ensureDefaults(tenantId, 'admissionSource')
 
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.students.findOne({ _id: id })
       if (!before) return null
-      const { guardians: _drop, ...scalar } = parsed.data
+      if (!(await admissionSourceOk(ctx, fields.admissionSource))) return 'bad_source' as const
+      const { emergencyContacts: contactsIn, ...scalar } = fields
+      const emergencyContacts = contactsIn ? withContactIds(contactsIn) : undefined
       const updated = await ctx.students.findOneAndUpdate(
         { _id: id },
-        { $set: { ...scalar, ...(guardians ? { guardians } : {}), updatedAt: new Date() } },
+        {
+          $set: {
+            ...scalar,
+            ...(emergencyContacts ? { emergencyContacts } : {}),
+            updatedAt: new Date(),
+          },
+        },
         { returnDocument: 'after' },
       )
       // Only the fields this request changed, before and after (SAMS 1.12).
+      // Custody notes are sensitive: the log records that they changed,
+      // never their text (audit readers need not hold students.custody).
+      const shown = (k: string, v: unknown) => (k === 'custodyNotes' ? (v ? '[redacted]' : null) : (v ?? null))
       const changed = Object.keys(scalar) as (keyof typeof scalar)[]
       if (updated && changed.length > 0) {
         await recordAudit(ctx.auditLog, {
@@ -290,25 +404,28 @@ export function registerStudentRoutes(app: FastifyInstance): void {
           entity: 'student',
           entityId: id,
           branchId: before.branchId,
-          before: Object.fromEntries(changed.map((k) => [k, before[k as keyof typeof before] ?? null])),
-          after: Object.fromEntries(changed.map((k) => [k, scalar[k] ?? null])),
+          before: Object.fromEntries(changed.map((k) => [k, shown(k, before[k as keyof typeof before])])),
+          after: Object.fromEntries(changed.map((k) => [k, shown(k, scalar[k])])),
         })
       }
-      if (updated && guardians) {
+      if (updated && emergencyContacts) {
         await recordAudit(ctx.auditLog, {
           actorId: request.auth!.sub,
-          action: 'guardians.update',
+          action: 'emergencyContacts.update',
           entity: 'student',
           entityId: id,
           branchId: before.branchId,
-          before: before.guardians,
-          after: guardians,
+          before: before.emergencyContacts ?? [],
+          after: emergencyContacts,
         })
       }
-      return updated
+      if (!updated) return null
+      const completeness = (await computeCompleteness(ctx, [updated])).get(id)
+      return { updated, completeness }
     })
+    if (result === 'bad_source') return reply.code(400).send({ error: 'INVALID_ADMISSION_SOURCE' })
     if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
-    return reply.send(toResponse(result))
+    return reply.send(toResponse(result.updated, { custody, completeness: result.completeness }))
   })
 
   /**
