@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { parentsHiddenFromBranches } from '../parents/service.js'
 import type { BusDoc, ParentDoc, SchoolClassDoc, StopDoc, StudentDoc, TenantContext } from '../db.js'
 import { authenticate, callerBranchIds, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 
@@ -75,6 +76,8 @@ async function runSearch(
   ctx: TenantContext,
   pattern: { $regex: string; $options: string },
   branchFilter: { branchId?: string | { $in: string[] } },
+  /** Parents outside the caller's branches (SAMS 1.9) — see parents/service.ts. */
+  hiddenParentIds: Set<string> = new Set(),
 ): Promise<SearchResult[]> {
   const [students, parents, classes, buses, stops] = await Promise.all([
     ctx.students
@@ -94,6 +97,7 @@ async function runSearch(
     ctx.parents
       .find({
         status: { $ne: 'archived' },
+        ...(hiddenParentIds.size > 0 ? { _id: { $nin: [...hiddenParentIds] } } : {}),
         $or: [
           { fullName: pattern },
           { fullNameAr: pattern },
@@ -144,7 +148,16 @@ export function registerSearchRoutes(app: FastifyInstance): void {
     else if (allowed !== null) branchFilter.branchId = { $in: allowed }
 
     const pattern = { $regex: escapeRegex(q), $options: 'i' }
-    const results = await withTenant(request.auth!.tenantId!, (ctx) => runSearch(ctx, pattern, branchFilter))
+    // Parents have no branch of their own; they follow their children's.
+    const parentScope = branchId ? [branchId] : allowed
+    const results = await withTenant(request.auth!.tenantId!, async (ctx) =>
+      runSearch(
+        ctx,
+        pattern,
+        branchFilter,
+        parentScope ? await parentsHiddenFromBranches(ctx, parentScope) : undefined,
+      ),
+    )
     return reply.send({ results })
   })
 }

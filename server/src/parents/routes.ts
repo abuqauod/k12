@@ -1,12 +1,25 @@
 import { randomUUID } from 'node:crypto'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
-import type { ParentDoc, ParentStudentLinkDoc } from '../db.js'
-import { authenticate, requireActiveSubscription, callerHasPermission, requirePermission } from '../auth/guard.js'
+import type { ParentDoc, ParentStudentLinkDoc, TenantContext } from '../db.js'
+import {
+  authenticate,
+  callerBranchIds,
+  callerHasPermission,
+  requireActiveSubscription,
+  requirePermission,
+} from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
-import { composeLinkedStudents, createLink, findDuplicateCandidates, linkedStudentCounts } from './service.js'
+import {
+  composeLinkedStudents,
+  createLink,
+  findDuplicateCandidates,
+  linkedStudentCounts,
+  parentHiddenFromBranches,
+  parentsHiddenFromBranches,
+} from './service.js'
 import type { DuplicateCandidate } from './service.js'
 
 /**
@@ -129,12 +142,53 @@ export function registerParentRoutes(app: FastifyInstance): void {
   const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('parents.write')] }
   const adminGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('parents.manage')] }
 
+  /** SAMS 1.9: a branch-confined caller may only reach parents linked to a
+   * student in their branches (or not yet linked at all). */
+  const hiddenFromCaller = async (request: FastifyRequest, tenantId: string, parentId: string) => {
+    const allowed = await callerBranchIds(request)
+    if (allowed === null) return false
+    return withTenant(tenantId, (ctx) => parentHiddenFromBranches(ctx, parentId, allowed))
+  }
+  const BRANCH_FORBIDDEN = { error: 'BRANCH_FORBIDDEN' }
+
+  /** A link edit on a shared family must still target a child in the
+   * caller's branches. Unknown links fall through to the handler's 404. */
+  const linkOutsideCaller = async (request: FastifyRequest, tenantId: string, linkId: string) => {
+    const allowed = await callerBranchIds(request)
+    if (allowed === null) return false
+    return withTenant(tenantId, async (ctx) => {
+      const link = await ctx.parentStudentLinks.findOne({ _id: linkId })
+      if (!link) return false
+      const student = await ctx.students.findOne({ _id: link.studentId })
+      return !student || !allowed.includes(student.branchId)
+    })
+  }
+
+  /** A duplicate match the caller can't see still warns — so the same family
+   * isn't entered twice across branches — but carries no personal details. */
+  const redactHidden = async (
+    request: FastifyRequest,
+    ctx: TenantContext,
+    candidates: DuplicateCandidate[],
+  ): Promise<DuplicateCandidate[]> => {
+    const allowed = await callerBranchIds(request)
+    if (allowed === null || candidates.length === 0) return candidates
+    const hidden = await parentsHiddenFromBranches(ctx, allowed)
+    return candidates.map((c) =>
+      hidden.has(c.id)
+        ? { id: c.id, fullName: '', primaryPhone: '', email: null, nationalId: null, matchedOn: c.matchedOn, restricted: true }
+        : c,
+    )
+  }
+
   app.get('/parents', readGuard, async (request, reply) => {
     const parsed = listQuery.safeParse(request.query)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_QUERY' })
     const { search, studentName, branchId, classId, gradeLevel, status } = parsed.data
 
     const tenantId = request.auth!.tenantId!
+    const allowed = await callerBranchIds(request)
+    if (branchId && allowed !== null && !allowed.includes(branchId)) return reply.code(403).send(BRANCH_FORBIDDEN)
     const result = await withTenant(tenantId, async (ctx) => {
       // A student-side filter narrows to a set of parentIds via their links
       // before the parent query runs at all.
@@ -142,6 +196,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
       if (studentName || branchId || classId || gradeLevel) {
         const studentFilter: Record<string, unknown> = {}
         if (branchId) studentFilter.branchId = branchId
+        else if (allowed !== null) studentFilter.branchId = { $in: allowed }
         if (classId) studentFilter.classId = classId
         if (studentName) {
           const pattern = { $regex: escapeRegex(studentName), $options: 'i' }
@@ -173,10 +228,12 @@ export function registerParentRoutes(app: FastifyInstance): void {
           { nationalId: pattern },
         ]
       }
-      if (restrictToParentIds) filter._id = { $in: [...restrictToParentIds] }
+      const hidden = allowed === null ? new Set<string>() : await parentsHiddenFromBranches(ctx, allowed)
+      if (restrictToParentIds) filter._id = { $in: [...restrictToParentIds].filter((id) => !hidden.has(id)) }
+      else if (hidden.size > 0) filter._id = { $nin: [...hidden] }
 
       const parents = await ctx.parents.find(filter).sort({ fullName: 1 }).toArray()
-      const counts = await linkedStudentCounts(ctx, parents.map((p) => p._id))
+      const counts = await linkedStudentCounts(ctx, parents.map((p) => p._id), allowed)
       return { parents, counts }
     })
 
@@ -188,10 +245,15 @@ export function registerParentRoutes(app: FastifyInstance): void {
   app.get('/parents/:id', readGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
     const tenantId = request.auth!.tenantId!
+    if (await hiddenFromCaller(request, tenantId, id)) return reply.code(403).send(BRANCH_FORBIDDEN)
+    const allowed = await callerBranchIds(request)
     const result = await withTenant(tenantId, async (ctx) => {
       const parent = await ctx.parents.findOne({ _id: id })
       if (!parent) return null
-      const students = await composeLinkedStudents(ctx, id)
+      // Siblings in other branches stay out of a branch-confined view.
+      const students = (await composeLinkedStudents(ctx, id)).filter(
+        (s) => allowed === null || (s.branchId !== null && allowed.includes(s.branchId)),
+      )
       return { parent, students }
     })
     if (!result) return reply.code(404).send({ error: 'NOT_FOUND' })
@@ -217,11 +279,15 @@ export function registerParentRoutes(app: FastifyInstance): void {
     if (rest.email) rest.email = rest.email.toLowerCase()
     let warnings: DuplicateCandidate[] = []
     const created = await withTenant(tenantId, async (ctx) => {
-      warnings = await findDuplicateCandidates(ctx, {
-        nationalId: rest.nationalId,
-        primaryPhone: rest.primaryPhone,
-        email: rest.email,
-      })
+      warnings = await redactHidden(
+        request,
+        ctx,
+        await findDuplicateCandidates(ctx, {
+          nationalId: rest.nationalId,
+          primaryPhone: rest.primaryPhone,
+          email: rest.email,
+        }),
+      )
       const _id = randomUUID()
       const doc: ParentDoc = {
         _id,
@@ -262,6 +328,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
     }
 
     const tenantId = request.auth!.tenantId!
+    if (await hiddenFromCaller(request, tenantId, id)) return reply.code(403).send(BRANCH_FORBIDDEN)
     const { portalAccessEnabled, ...scalar } = parsed.data
     if (scalar.email) scalar.email = scalar.email.toLowerCase()
     let warnings: DuplicateCandidate[] = []
@@ -269,14 +336,18 @@ export function registerParentRoutes(app: FastifyInstance): void {
       const before = await ctx.parents.findOne({ _id: id })
       if (!before) return null
       if (scalar.nationalId !== undefined || scalar.primaryPhone !== undefined || scalar.email !== undefined) {
-        warnings = await findDuplicateCandidates(
+        warnings = await redactHidden(
+          request,
           ctx,
-          {
-            nationalId: scalar.nationalId !== undefined ? scalar.nationalId : before.nationalId,
-            primaryPhone: scalar.primaryPhone ?? before.primaryPhone,
-            email: scalar.email !== undefined ? scalar.email : before.email,
-          },
-          id,
+          await findDuplicateCandidates(
+            ctx,
+            {
+              nationalId: scalar.nationalId !== undefined ? scalar.nationalId : before.nationalId,
+              primaryPhone: scalar.primaryPhone ?? before.primaryPhone,
+              email: scalar.email !== undefined ? scalar.email : before.email,
+            },
+            id,
+          ),
         )
       }
       const update: Record<string, unknown> = { ...scalar, updatedAt: new Date() }
@@ -305,6 +376,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
   app.post('/parents/:id/archive', adminGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
     const tenantId = request.auth!.tenantId!
+    if (await hiddenFromCaller(request, tenantId, id)) return reply.code(403).send(BRANCH_FORBIDDEN)
     const now = new Date()
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.parents.findOne({ _id: id })
@@ -331,6 +403,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
   app.post('/parents/:id/reactivate', adminGuard, async (request, reply) => {
     const { id } = request.params as { id: string }
     const tenantId = request.auth!.tenantId!
+    if (await hiddenFromCaller(request, tenantId, id)) return reply.code(403).send(BRANCH_FORBIDDEN)
     const now = new Date()
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.parents.findOne({ _id: id })
@@ -368,6 +441,12 @@ export function registerParentRoutes(app: FastifyInstance): void {
     }
 
     const tenantId = request.auth!.tenantId!
+    if (await hiddenFromCaller(request, tenantId, parentId)) return reply.code(403).send(BRANCH_FORBIDDEN)
+    const allowed = await callerBranchIds(request)
+    if (allowed !== null) {
+      const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: parsed.data.studentId }))
+      if (student && !allowed.includes(student.branchId)) return reply.code(403).send(BRANCH_FORBIDDEN)
+    }
     const result = await withTenant(tenantId, (ctx) =>
       createLink(ctx, tenantId, { parentId, ...parsed.data, actorId: request.auth!.sub }),
     )
@@ -393,6 +472,8 @@ export function registerParentRoutes(app: FastifyInstance): void {
     }
 
     const tenantId = request.auth!.tenantId!
+    if (await hiddenFromCaller(request, tenantId, parentId)) return reply.code(403).send(BRANCH_FORBIDDEN)
+    if (await linkOutsideCaller(request, tenantId, linkId)) return reply.code(403).send(BRANCH_FORBIDDEN)
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.parentStudentLinks.findOne({ _id: linkId, parentId })
       if (!before) return null
@@ -420,6 +501,8 @@ export function registerParentRoutes(app: FastifyInstance): void {
   app.post('/parents/:parentId/links/:linkId/deactivate', adminGuard, async (request, reply) => {
     const { parentId, linkId } = request.params as { parentId: string; linkId: string }
     const tenantId = request.auth!.tenantId!
+    if (await hiddenFromCaller(request, tenantId, parentId)) return reply.code(403).send(BRANCH_FORBIDDEN)
+    if (await linkOutsideCaller(request, tenantId, linkId)) return reply.code(403).send(BRANCH_FORBIDDEN)
     const result = await withTenant(tenantId, async (ctx) => {
       const before = await ctx.parentStudentLinks.findOne({ _id: linkId, parentId })
       if (!before) return null

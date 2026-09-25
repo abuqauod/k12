@@ -99,6 +99,8 @@ export interface DuplicateCandidate {
   email: string | null
   nationalId: string | null
   matchedOn: Array<'nationalId' | 'primaryPhone' | 'alternativePhone' | 'email'>
+  /** Another branch's family — no personal details are returned. */
+  restricted?: boolean
 }
 
 export const PREFERRED_CONTACT_METHODS: PreferredContactMethod[] = ['phone', 'email', 'sms', 'whatsapp']

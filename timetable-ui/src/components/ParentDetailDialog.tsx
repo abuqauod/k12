@@ -197,8 +197,14 @@ export function ParentDetailDialog({
                   <ul style={{ margin: '6px 0 0', paddingInlineStart: 18 }}>
                     {warnings.map((w) => (
                       <li key={w.id}>
-                        {w.fullName} · {w.primaryPhone}
-                        {w.email ? ` · ${w.email}` : ''}
+                        {w.restricted ? (
+                          t('parents.duplicateRestricted')
+                        ) : (
+                          <>
+                            {w.fullName} · {w.primaryPhone}
+                            {w.email ? ` · ${w.email}` : ''}
+                          </>
+                        )}
                       </li>
                     ))}
                   </ul>

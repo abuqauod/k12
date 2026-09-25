@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
+import { parentsHiddenFromBranches } from '../parents/service.js'
 import type { AuditLogDoc } from '../db.js'
 import { authenticate, callerBranchIds, requirePermission } from '../auth/guard.js'
 
@@ -38,7 +39,17 @@ async function buildFilter(
   if (query.actorId) filter.actorId = query.actorId
   if (query.action) filter.action = query.action
   if (query.branchId) filter.branchId = query.branchId
-  else if (allowed !== null) filter.branchId = { $in: [...allowed, null] }
+  else if (allowed !== null) {
+    // SAMS 1.9: rows with no branch are tenant-wide (memberships, settings)
+    // or parent records, which belong to branches only through their
+    // children. A confined caller sees parent rows for families they can
+    // see, and no other branchless rows.
+    const hidden = await withTenant(request.auth!.tenantId!, (ctx) => parentsHiddenFromBranches(ctx, allowed))
+    filter.$or = [
+      { branchId: { $in: allowed } },
+      { branchId: null, entity: 'parent', entityId: { $nin: [...hidden] } },
+    ]
+  }
   if (query.dateFrom || query.dateTo) {
     const range: { $gte?: Date; $lte?: Date } = {}
     if (query.dateFrom) range.$gte = new Date(`${query.dateFrom}T00:00:00.000Z`)
