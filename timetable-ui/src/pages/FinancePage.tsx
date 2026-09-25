@@ -16,8 +16,8 @@ type StatusFilter = InvoiceStatus | 'ALL'
 export function FinancePage() {
   const { t } = useI18n()
   const { branches, activeBranchId } = useApp()
-  const { getAccessToken, user } = useAuth()
-  const isAdmin = user?.role === 'admin' || user?.role === 'owner'
+  const { getAccessToken, can } = useAuth()
+  const canManageFees = can('finance.feeStructure.manage')
 
   const [years, setYears] = useState<AcademicYear[]>([])
   const [branchId, setBranchId] = useState(activeBranchId ?? '')
@@ -98,7 +98,7 @@ export function FinancePage() {
         <section className="card">
           <div className="page__actions" style={{ marginBottom: 8 }}>
             <h2 className="card__title" style={{ margin: 0, flex: 1 }}>{t('billing.feeStructures')}</h2>
-            {isAdmin && branchId && (
+            {canManageFees && branchId && (
               <button type="button" className="btn btn--sm" onClick={() => setEditingStructure('new')}>
                 {t('billing.feeStructure.new')}
               </button>

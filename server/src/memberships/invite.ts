@@ -23,6 +23,10 @@ export async function inviteUserToTenant(params: {
   tenantId: string
   tenantName: string
   role: MembershipDoc['role']
+  /** Named preset (SAMS 1.8); `role` must already be its base rank. */
+  roleKey?: MembershipDoc['roleKey']
+  /** Null = every branch. Required non-null for a branch-confined preset. */
+  branchIds?: string[] | null
   inviterName: string
   /** Used only if a brand-new user record has to be created. */
   displayName?: string
@@ -62,9 +66,10 @@ export async function inviteUserToTenant(params: {
         tenantId: params.tenantId,
         userId: user._id,
         role: params.role,
-        // Tenant-wide by default — an admin can confine them to a branch
-        // afterwards from the Team settings.
-        branchIds: null,
+        roleKey: params.roleKey ?? null,
+        // Tenant-wide unless the invite named branches — an admin can confine
+        // them afterwards from the Team settings.
+        branchIds: params.branchIds ?? null,
         createdAt: new Date(),
       })
       // Best-effort: they're in either way (the membership above is what
@@ -83,7 +88,12 @@ export async function inviteUserToTenant(params: {
     const token = await createActionToken({
       userId: user._id,
       purpose: 'invite',
-      grant: { tenantId: params.tenantId, role: params.role },
+      grant: {
+        tenantId: params.tenantId,
+        role: params.role,
+        roleKey: params.roleKey ?? null,
+        branchIds: params.branchIds ?? null,
+      },
       ttlMs: INVITE_TTL_MS,
     })
     await sendInviteEmail({

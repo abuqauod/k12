@@ -3,6 +3,8 @@ import { withoutTenant } from '../db.js'
 import { hashApiKey } from '../apikeys/hash.js'
 import { verifyAccessToken } from './tokens.js'
 import type { AccessClaims, Role } from './tokens.js'
+import { scopesFor, type PermissionScope } from './scopes.js'
+import type { MembershipDoc } from '../db.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -58,10 +60,23 @@ export async function callerBranchIds(request: FastifyRequest): Promise<string[]
   const auth = request.auth
   if (!auth?.tenantId) return null
   if (auth.sub.startsWith('apikey:')) return null
-  const membership = await withoutTenant((db) =>
-    db.memberships.findOne({ _id: `${auth.tenantId}:${auth.sub}` }),
-  )
+  const membership = await loadCallerMembership(request)
   return membership?.branchIds ?? null
+}
+
+const membershipCache = new WeakMap<FastifyRequest, Promise<MembershipDoc | null>>()
+
+/** The caller's own membership, read once per request — branch scoping and
+ * scope resolution both need it. Null for API keys and platform sessions. */
+export function loadCallerMembership(request: FastifyRequest): Promise<MembershipDoc | null> {
+  const auth = request.auth
+  if (!auth?.tenantId || auth.sub.startsWith('apikey:')) return Promise.resolve(null)
+  let cached = membershipCache.get(request)
+  if (!cached) {
+    cached = withoutTenant((db) => db.memberships.findOne({ _id: `${auth.tenantId}:${auth.sub}` }))
+    membershipCache.set(request, cached)
+  }
+  return cached
 }
 
 /** True when the caller may act in `branchId`. */
@@ -92,144 +107,43 @@ export function requireRole(minimum: Role) {
 
 // -------------------------------------------------------------- permissions
 //
-// A named-scope layer on top of the 4-role rank system above. Since SAMS 1.7
-// every route authorizes through `requirePermission`/`callerHasPermission`
-// (pinned by src/test/permissions.test.ts); `requireRole`/`roleAtLeast`
-// remain for rank rules only (who may grant which role), because a rank
-// comparison can only
-// ever express "this action needs at least role X." It cannot express "can
-// approve a refund but not manage fee structures" (two admin-tier actions
-// with no rank relationship to each other) — real cases this app already
-// needs (finance/routes.ts's discount gate, parents/routes.ts's
-// financialResponsibility gate) and will need more of as the admin surface
-// grows.
+// Named-scope authorization (SAMS 1.1, 1.8). Scope names, the rank bundles
+// and the named role presets live in ./scopes.ts. Every route authorizes
+// through `requirePermission` / `callerHasPermission` (pinned by
+// src/test/permissions.test.ts and src/test/roles.test.ts);
+// `requireRole` / `roleAtLeast` remain only for rank rules such as who may
+// grant which role.
 //
-// `ROLE_SCOPES` below is DERIVED from today's `requireRole` call sites, not
-// designed fresh — every existing route's authorization behavior is
-// reproduced exactly once it's switched from `requireRole(x)` to
-// `requirePermission('module.write')`, so migrating a route is a no-op for
-// callers, not a silent behavior change. A handful of scopes with no route
-// yet (branches.manage, settings.*, search.read, dashboard.read,
-// audit.export) are declared now so the bundle table doesn't need touching
-// again for each of the several PRs that will consume them.
-//
-// This is Layer 1 of a two-layer design. Layer 2 — per-membership
-// `customScopes`/`deniedScopes` fields on `MembershipDoc` for real
-// per-tenant customization beyond a role's bundle — is deliberately NOT
-// built here. Nothing today needs a school to define its own named role;
-// they need finer per-action gates, which this layer already provides.
-// Build Layer 2 only once a real case appears that this doesn't cover.
+// A member's scopes come from their membership's `roleKey` preset when set,
+// else from their rank. The membership is read per request (memoized, and
+// shared with `callerBranchIds`), so a preset change applies on the next
+// request rather than after the access token expires. API keys carry a
+// rank only.
+export type { PermissionScope } from './scopes.js'
 
-export type PermissionScope =
-  | 'academicYears.read'
-  | 'academicYears.write'
-  | 'attendance.read'
-  | 'attendance.write'
-  | 'audit.export'
-  | 'audit.read'
-  | 'branches.manage'
-  | 'branches.read'
-  | 'classes.read'
-  | 'classes.write'
-  | 'dashboard.read'
-  | 'datasets.read'
-  | 'datasets.write'
-  | 'enrollments.read'
-  | 'enrollments.write'
-  | 'finance.manage'
-  | 'finance.read'
-  | 'finance.write'
-  | 'memberships.manage'
-  | 'notifications.manage'
-  | 'notifications.run'
-  | 'parents.manage'
-  | 'parents.read'
-  | 'parents.write'
-  | 'search.read'
-  | 'settings.manage'
-  | 'settings.read'
-  | 'students.read'
-  | 'students.write'
-  | 'transport.manage'
-  | 'transport.read'
-  | 'transport.write'
-
-/** Every read-only scope, granted at every role including `viewer`. Mirrors
- * every module's existing `readGuard`/`authenticate`-only route today.
- * `audit.read` is deliberately NOT here — it's admin-only today
- * (`auditlog/routes.ts`), unlike every other module's read side. */
-const VIEWER_SCOPES: readonly PermissionScope[] = [
-  'academicYears.read',
-  'attendance.read',
-  'branches.read',
-  'classes.read',
-  'dashboard.read',
-  'datasets.read',
-  'enrollments.read',
-  'finance.read',
-  'parents.read',
-  'search.read',
-  'settings.read',
-  'students.read',
-  'transport.read',
-]
-
-/** Adds the routine day-to-day write actions — mirrors every module's
- * existing `requireRole('scheduler')` write guard. */
-const SCHEDULER_SCOPES: readonly PermissionScope[] = [
-  ...VIEWER_SCOPES,
-  'academicYears.write',
-  'attendance.write',
-  'datasets.write',
-  'finance.write',
-  'notifications.run',
-  'parents.write',
-  'students.write',
-  'transport.write',
-]
-
-/** Adds the higher-trust actions — mirrors every module's existing
- * `requireRole('admin')` guard (`classes.write`/`enrollments.write` are
- * admin-only today, not scheduler, unlike most other modules' write side —
- * reproduced here exactly, not normalized to match the others). */
-const ADMIN_SCOPES: readonly PermissionScope[] = [
-  ...SCHEDULER_SCOPES,
-  'audit.export',
-  'audit.read',
-  'branches.manage',
-  'classes.write',
-  'enrollments.write',
-  'finance.manage',
-  'memberships.manage',
-  'notifications.manage',
-  'parents.manage',
-  'settings.manage',
-  'transport.manage',
-]
-
-/** Same bundle as admin for now — owner's extra powers (e.g. "only an owner
- * can grant the owner role") stay an explicit separate check in
- * memberships/service.ts, not modeled as a scope, matching how that rule
- * already works today under plain rank comparison. */
-const OWNER_SCOPES: readonly PermissionScope[] = ADMIN_SCOPES
-
-const ROLE_SCOPES: Record<Role, ReadonlySet<PermissionScope>> = {
-  viewer: new Set(VIEWER_SCOPES),
-  scheduler: new Set(SCHEDULER_SCOPES),
-  admin: new Set(ADMIN_SCOPES),
-  owner: new Set(OWNER_SCOPES),
+/** The scopes the caller holds right now. */
+export async function callerScopes(request: FastifyRequest): Promise<ReadonlySet<PermissionScope>> {
+  const auth = request.auth
+  if (!auth) return new Set()
+  if (!auth.tenantId || auth.sub.startsWith('apikey:')) return scopesFor(auth.role)
+  const membership = await loadCallerMembership(request)
+  // The membership's rank, not the token's: a demotion applies on the next
+  // request, same as a preset change.
+  return scopesFor(membership?.role ?? auth.role, membership?.roleKey)
 }
 
-/** For an inline check inside a handler body — same idiom as `roleAtLeast`,
- * e.g. when only part of a route's behavior needs a scope a lower-privilege
- * caller of the same route doesn't. */
-export function callerHasPermission(role: Role | undefined, scope: PermissionScope): boolean {
-  return role !== undefined && (ROLE_SCOPES[role]?.has(scope) ?? false)
+/** For an inline check inside a handler body — when only part of a route's
+ * behavior needs a scope that other callers of the same route lack. */
+export async function callerHasPermission(
+  request: FastifyRequest,
+  scope: PermissionScope,
+): Promise<boolean> {
+  return (await callerScopes(request)).has(scope)
 }
 
 export function requirePermission(scope: PermissionScope) {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    if (!callerHasPermission(request.auth?.role, scope)) {
+    if (!(await callerHasPermission(request, scope))) {
       await reply.code(403).send({ error: 'FORBIDDEN', required: scope })
     }
   }

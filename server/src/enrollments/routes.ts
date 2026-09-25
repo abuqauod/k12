@@ -8,6 +8,7 @@ import {
   requireActiveSubscription,
   requirePermission,
 } from '../auth/guard.js'
+import type { PermissionScope } from '../auth/scopes.js'
 import {
   bulkAssignToClass,
   enrollmentHistory,
@@ -69,7 +70,9 @@ const ERROR_STATUS: Record<string, number> = {
 
 export function registerEnrollmentRoutes(app: FastifyInstance): void {
   const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('enrollments.read')] }
-  const writeGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('enrollments.write')] }
+  const scoped = (scope: PermissionScope) => ({
+    preHandler: [authenticate, requireActiveSubscription, requirePermission(scope)],
+  })
 
   app.get('/students/:studentId/enrollments', readGuard, async (request, reply) => {
     const { studentId } = request.params as { studentId: string }
@@ -77,7 +80,7 @@ export function registerEnrollmentRoutes(app: FastifyInstance): void {
     return reply.send({ enrollments: rows.map(toResponse) })
   })
 
-  app.post('/students/:studentId/transfer', writeGuard, async (request, reply) => {
+  app.post('/students/:studentId/transfer', scoped('enrollments.transfer'), async (request, reply) => {
     const { studentId } = request.params as { studentId: string }
     const parsed = transferBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
@@ -111,7 +114,7 @@ export function registerEnrollmentRoutes(app: FastifyInstance): void {
     return reply.send({ from: toResponse(result.from), to: toResponse(result.to) })
   })
 
-  app.post('/students/:studentId/withdraw', writeGuard, async (request, reply) => {
+  app.post('/students/:studentId/withdraw', scoped('enrollments.withdraw'), async (request, reply) => {
     const { studentId } = request.params as { studentId: string }
     const parsed = withdrawBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
@@ -137,7 +140,7 @@ export function registerEnrollmentRoutes(app: FastifyInstance): void {
     return reply.send({ enrollment: toResponse(result.enrollment) })
   })
 
-  app.post('/enrollments/bulk-assign', writeGuard, async (request, reply) => {
+  app.post('/enrollments/bulk-assign', scoped('enrollments.assign'), async (request, reply) => {
     const parsed = bulkBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 

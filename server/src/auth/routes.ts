@@ -6,7 +6,7 @@ import { config } from '../config.js'
 import { withoutTenant } from '../db.js'
 import { EmailNotConfiguredError, sendPasswordResetEmail } from '../email.js'
 import { consumeActionToken, createActionToken, PASSWORD_RESET_TTL_MS } from './actionTokens.js'
-import { authenticate } from './guard.js'
+import { authenticate, callerScopes, loadCallerMembership } from './guard.js'
 import { clearLoginFailures, isLockedOut, recordLoginFailure } from './rateLimit.js'
 import { createRefreshToken, hashRefreshToken, signAccessToken } from './tokens.js'
 import type { Role } from './tokens.js'
@@ -221,7 +221,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   app.get('/auth/me', { preHandler: authenticate }, async (request, reply) => {
     const auth = request.auth
     if (!auth) return reply.code(401).send({ error: 'MISSING_TOKEN' })
+    const membership = await loadCallerMembership(request)
     return reply.send({
+      // Resolved from the live membership, so the UI gates on exactly what
+      // the server will enforce (SAMS 1.8).
+      roleKey: membership?.roleKey ?? null,
+      scopes: [...(await callerScopes(request))].sort(),
       userId: auth.sub,
       email: auth.email,
       tenantId: auth.tenantId ?? null,
@@ -329,12 +334,14 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         { $set: { passwordHash, active: true, emailVerified: true } },
       )
       if (result.grant) {
-        const { tenantId, role } = result.grant
+        const { tenantId, role, roleKey = null, branchIds = null } = result.grant
         await db.memberships.updateOne(
           { _id: `${tenantId}:${result.userId}` },
           {
-            $set: { tenantId, userId: result.userId, role },
-            $setOnInsert: { createdAt: new Date(), branchIds: null },
+            // A preset grant carries its branch confinement, which must win
+            // over any existing membership's; a plain rank keeps what's there.
+            $set: { tenantId, userId: result.userId, role, roleKey, ...(roleKey ? { branchIds } : {}) },
+            $setOnInsert: { createdAt: new Date(), ...(roleKey ? {} : { branchIds }) },
           },
           { upsert: true },
         )

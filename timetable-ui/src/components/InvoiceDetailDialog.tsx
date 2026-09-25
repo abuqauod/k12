@@ -31,8 +31,10 @@ export function InvoiceDetailDialog({
   onChanged: () => void
 }) {
   const { t } = useI18n()
-  const { user } = useAuth()
-  const isAdmin = user?.role === 'admin' || user?.role === 'owner'
+  const { can } = useAuth()
+  const canDiscount = can('finance.discount.approve')
+  const canVoidPayment = can('finance.payment.void')
+  const canVoidInvoice = can('finance.invoice.void')
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [payments, setPayments] = useState<Payment[]>([])
@@ -66,7 +68,7 @@ export function InvoiceDetailDialog({
     const amount = parseMinorUnits(lineAmount)
     if (!lineLabel.trim() || amount === null) return
     let discount: NewInvoiceLine['discount'] = null
-    if (discountValue.trim() && isAdmin) {
+    if (discountValue.trim() && canDiscount) {
       if (discountType === 'percent') {
         // The server rejects a non-integer percent outright (z.number().int()) —
         // caught here too so a typo like "12.5" gets an inline message instead
@@ -237,7 +239,7 @@ export function InvoiceDetailDialog({
               <div className="break-card__row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                 <input className="input input--sm" style={{ minWidth: 140 }} placeholder={t('billing.col.label')} value={lineLabel} onChange={(e) => setLineLabel(e.target.value)} />
                 <input className="input input--sm" style={{ maxWidth: 100 }} placeholder={t('billing.col.amount')} value={lineAmount} onChange={(e) => setLineAmount(e.target.value)} />
-                {isAdmin && (
+                {canDiscount && (
                   <>
                     <select className="input input--sm" value={discountType} onChange={(e) => setDiscountType(e.target.value as DiscountType)}>
                       <option value="amount">{t('billing.discount.amount')}</option>
@@ -282,7 +284,7 @@ export function InvoiceDetailDialog({
                                 🧾
                               </button>
                             )}
-                            {isAdmin && !payment.voidedAt && (
+                            {canVoidPayment && !payment.voidedAt && (
                               <button type="button" className="icon-btn" onClick={() => void handleVoidPayment(payment.id)} aria-label={t('billing.payment.void')}>
                                 ×
                               </button>
@@ -318,7 +320,7 @@ export function InvoiceDetailDialog({
 
           {error && <p className="login__error">{error}</p>}
 
-          {isAdmin && !isVoid && (
+          {canVoidInvoice && !isVoid && (
             <div className="page__actions">
               <button type="button" className="btn btn--sm btn--ghost" onClick={() => void handleVoidInvoice()}>
                 {t('billing.voidInvoice')}

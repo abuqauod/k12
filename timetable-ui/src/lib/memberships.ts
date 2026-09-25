@@ -10,9 +10,37 @@ import { authorizedFetch, type TokenGetter } from './http'
 
 export type MemberRole = 'owner' | 'admin' | 'scheduler' | 'viewer'
 
+/** Named administrative presets (server: auth/scopes.ts). */
+export const ROLE_KEYS = [
+  'school_admin',
+  'branch_admin',
+  'registrar',
+  'finance_officer',
+  'hr',
+  'operations',
+  'reception',
+] as const
+export type RoleKey = (typeof ROLE_KEYS)[number]
+
+/** What a role picker selects: a plain rank or a preset. */
+export type RoleChoice = MemberRole | RoleKey
+
+export const isPreset = (choice: RoleChoice): choice is RoleKey => (ROLE_KEYS as readonly string[]).includes(choice)
+
+/** The request body for granting `choice`. */
+function grantBody(choice: RoleChoice, branchIds?: string[] | null) {
+  return isPreset(choice) ? { roleKey: choice, ...(branchIds !== undefined ? { branchIds } : {}) } : { role: choice }
+}
+
+export interface RoleCatalog {
+  ranks: { rank: MemberRole; scopes: string[] }[]
+  presets: { key: RoleKey; rank: MemberRole; requiresBranches: boolean; scopes: string[] }[]
+}
+
 export interface Member {
   userId: string
   role: MemberRole
+  roleKey: RoleKey | null
   email: string | null
   displayName: string | null
   active: boolean
@@ -60,12 +88,13 @@ export async function listMembers(getToken: TokenGetter): Promise<MembershipsRes
 export async function inviteMember(
   getToken: TokenGetter,
   email: string,
-  role: MemberRole,
+  choice: RoleChoice,
+  branchIds?: string[] | null,
 ): Promise<MembershipsResult<{ outcome: InviteOutcome }>> {
   try {
     const response = await call(
       '/memberships/invite',
-      { method: 'POST', body: JSON.stringify({ email, role }) },
+      { method: 'POST', body: JSON.stringify({ email, ...grantBody(choice, branchIds) }) },
       getToken,
     )
     return parse(response)
@@ -77,12 +106,13 @@ export async function inviteMember(
 export async function changeMemberRole(
   getToken: TokenGetter,
   userId: string,
-  role: MemberRole,
+  choice: RoleChoice,
+  branchIds?: string[] | null,
 ): Promise<MembershipsResult<null>> {
   try {
     const response = await call(
       `/memberships/${encodeURIComponent(userId)}`,
-      { method: 'PATCH', body: JSON.stringify({ role }) },
+      { method: 'PATCH', body: JSON.stringify(grantBody(choice, branchIds)) },
       getToken,
     )
     return parse(response)
@@ -113,6 +143,25 @@ export async function removeMember(getToken: TokenGetter, userId: string): Promi
     const response = await call(`/memberships/${encodeURIComponent(userId)}`, { method: 'DELETE' }, getToken)
     if (response.status === 204) return { kind: 'ok', data: null }
     return parse(response)
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function getRoleCatalog(getToken: TokenGetter): Promise<MembershipsResult<RoleCatalog>> {
+  try {
+    return parse(await call('/memberships/roles', { method: 'GET' }, getToken))
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+/** The caller's own resolved access (`GET /auth/me`). */
+export async function fetchMyAccess(
+  getToken: TokenGetter,
+): Promise<MembershipsResult<{ roleKey: RoleKey | null; scopes: string[] }>> {
+  try {
+    return parse(await call('/auth/me', { method: 'GET' }, getToken))
   } catch {
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }

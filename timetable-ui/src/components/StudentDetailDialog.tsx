@@ -39,7 +39,7 @@ export function StudentDetailDialog({
   onChanged: (updated: Student) => void
 }) {
   const { t } = useI18n()
-  const { user } = useAuth()
+  const { can } = useAuth()
   const name = `${student.givenName} ${student.familyName}`.trim()
 
   const [balance, setBalance] = useState<StudentBalance | null>(null)
@@ -387,7 +387,7 @@ export function StudentDetailDialog({
                 </span>
               )}
             </div>
-            {user && user.role !== 'viewer' && (
+            {can('finance.invoice.create') && (
               <div className="break-card__row" style={{ gap: 6, marginBottom: 8 }}>
                 <select
                   className="input input--sm"

@@ -12,6 +12,7 @@ import { buildServer } from '../server.js'
 import { closeClient, withoutTenant } from '../db.js'
 import { ensureIndexes } from '../schema.js'
 import { signAccessToken, type Role } from '../auth/tokens.js'
+import { PRESETS, type RoleKey } from '../auth/scopes.js'
 
 export const ROLES: readonly Role[] = ['viewer', 'scheduler', 'admin', 'owner']
 
@@ -27,11 +28,15 @@ export interface Fixture {
   close: () => Promise<void>
 }
 
-async function member(
+/** Adds a member to the tenant. A `roleKey` preset gets its base rank as
+ * `role`, exactly as the memberships API stores it. */
+export async function member(
   tenantId: string,
   role: Role,
   branchIds: string[] | null,
-): Promise<string> {
+  roleKey: RoleKey | null = null,
+): Promise<{ token: string; userId: string }> {
+  if (roleKey) role = PRESETS[roleKey].rank
   const userId = randomUUID()
   const email = `${role}-${userId.slice(0, 8)}@test.local`
   const now = new Date()
@@ -54,10 +59,11 @@ async function member(
       userId,
       role,
       branchIds,
+      roleKey,
       createdAt: now,
     })
   })
-  return signAccessToken({ sub: userId, email, tenantId, role })
+  return { token: await signAccessToken({ sub: userId, email, tenantId, role }), userId }
 }
 
 export async function createFixture(): Promise<Fixture> {
@@ -101,8 +107,8 @@ export async function createFixture(): Promise<Fixture> {
   })
 
   const tokens = {} as Record<Role, string>
-  for (const role of ROLES) tokens[role] = await member(tenantId, role, null)
-  const scopedToken = await member(tenantId, 'scheduler', [branchA])
+  for (const role of ROLES) tokens[role] = (await member(tenantId, role, null)).token
+  const scopedToken = (await member(tenantId, 'scheduler', [branchA])).token
 
   const app = buildServer()
   await app.ready()

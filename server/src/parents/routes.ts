@@ -204,7 +204,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
   app.post('/parents', writeGuard, async (request, reply) => {
     const parsed = parentBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
-    if (parsed.data.portalAccessEnabled && !callerHasPermission(request.auth?.role, 'parents.manage')) {
+    if (parsed.data.portalAccessEnabled && !(await callerHasPermission(request, 'parents.manage'))) {
       return reply.code(403).send({ error: 'PORTAL_FLAG_REQUIRES_ADMIN' })
     }
 
@@ -256,7 +256,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
     if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
     if (
       parsed.data.portalAccessEnabled !== undefined &&
-      !callerHasPermission(request.auth?.role, 'parents.manage')
+      !(await callerHasPermission(request, 'parents.manage'))
     ) {
       return reply.code(403).send({ error: 'PORTAL_FLAG_REQUIRES_ADMIN' })
     }
@@ -360,7 +360,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
     if (
       (parsed.data.financialResponsibility || parsed.data.portalAccess) &&
-      !callerHasPermission(request.auth?.role, 'parents.manage')
+      !(await callerHasPermission(request, 'parents.manage'))
     ) {
       return reply
         .code(403)
@@ -385,7 +385,7 @@ export function registerParentRoutes(app: FastifyInstance): void {
     if (Object.keys(parsed.data).length === 0) return reply.code(400).send({ error: 'EMPTY_UPDATE' })
     if (
       (parsed.data.financialResponsibility === true || parsed.data.portalAccess === true) &&
-      !callerHasPermission(request.auth?.role, 'parents.manage')
+      !(await callerHasPermission(request, 'parents.manage'))
     ) {
       return reply
         .code(403)
