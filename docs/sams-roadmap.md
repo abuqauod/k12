@@ -3,7 +3,9 @@
 **Product direction**: an administration-first system (registrar, finance, HR,
 front office, operations). **Not an LMS** — no courses, lesson content,
 learning paths, or teaching tools. Academic references (year, grade, class,
-enrollment) exist only where administration needs them.
+enrollment) exist only where administration needs them. Phase 11 adds a
+gradebook and report cards on request: marks and printed results, which
+administration issues, not teaching tools.
 
 This document is the phased build plan. It supersedes the "Recommended build
 order" in [`sms-gap-analysis.md`](sms-gap-analysis.md), which remains the
@@ -11,8 +13,9 @@ per-area status reference.
 
 ## Where we are
 
-**Phases 1–7 are shipped and on `main`. The optional backlog (and real
-email/SMS delivery) is built on `claude/sams-8`.**
+**Phases 1–7 and the backlog extras are shipped and on `main`. Phases 8–12
+(production, security, polish, pilot, new modules) and Phase 13 (the SaaS
+offer) are planned below.**
 
 | Phase | Slices | PRs |
 |---|---|---|
@@ -24,7 +27,7 @@ email/SMS delivery) is built on `claude/sams-8`.**
 | 5 — Operations | 5.1–5.6 | #62 |
 | 6 — Communication & portals | 6.1–6.4 | #64 |
 | 7 — Reporting | 7.1–7.4 | #65–#67 |
-| Backlog — extras | numbering, health/clinic, discipline, bulk import, ID cards; email/SMS delivery | `claude/sams-8` (not yet merged) |
+| Backlog — extras | numbering, health/clinic, discipline, bulk import, ID cards; email/SMS delivery | #68 |
 
 ## Definition of done (every slice)
 
@@ -385,6 +388,69 @@ Excel, PDF and print output · 7.4 Scheduled report exports.
 
 ---
 
+---
+
+## Phase 8 — Production readiness
+8.1 Boot checks: refuse to start in production with missing or default
+secrets, and report which optional channels (email, SMS, payments) are off ·
+8.2 `/health` (alive) and `/ready` (database reachable) for the proxy and
+monitors; graceful shutdown that finishes requests and stops the workers ·
+8.3 Request ids in every log line and error response; optional error
+reporting to a Sentry-compatible DSN · 8.4 Rate limits on sign-in, password
+reset and public endpoints; security headers · 8.5 Backups: a scheduled
+`mongodump` with retention, optional copy to S3-compatible storage, a
+restore script and a documented restore drill · 8.6 Deployment checklist
+and a fixed deploy workflow (the UI docroot is still a placeholder).
+
+## Phase 9 — Security and permissions review
+9.1 A route inventory test: every registered route must appear in the
+permission matrix, so a new route cannot ship without its scope and branch
+rows · 9.2 Cross-tenant and cross-branch sweep over every read, list,
+export, search and file download · 9.3 Parent portal exposure: only the
+parent's own children, only released data · 9.4 Sensitive data (health,
+discipline, salaries): who sees it, what the audit log and exports carry ·
+9.5 Fix everything found; findings and fixes listed here.
+
+## Phase 10 — Polish
+10.1 Arabic/RTL pass over every screen added since Phase 5 · 10.2 Phone
+layouts for the pages staff use on the move (attendance, clinic, behaviour,
+gate, portal) · 10.3 Large schools: a 3,000-student demo tenant, timings for
+the heavy lists and reports, indexes and paging where they are slow.
+
+## Phase 11 — New modules
+11.1 **Online fee payment**: a payment-provider interface with PayTabs and
+HyperPay first (hosted payment page, signed callbacks, reconciliation into
+the Phase 3 receipts, refunds through the provider); parents pay open
+invoices from the portal · 11.2 **Gradebook and report cards**: subjects
+per grade, terms and assessments with weights, marks entry per class,
+grading scales, report cards printed and released to the portal ·
+11.3 **Library**: catalogue with copies, loans and returns by barcode (the
+ID cards'), limits, overdue notices and fines into billing · 11.4
+**Canteen / student wallet**: a prepaid balance per student, top-up at the
+office or online (11.1), sales at the canteen by card scan, daily limits
+and parent-set restrictions, statements in the portal.
+
+## Phase 12 — Pilot run
+A realistic school built through the product itself (bulk import, fee
+structures, timetable, a term of attendance, fees, grades, report cards,
+notices) as an automated end-to-end scenario; every rough edge found is
+fixed and listed here.
+
+## Phase 13 — SaaS offer
+13.1 Plans and feature gating: each tenant's plan enables modules and sets
+limits (students, branches, SMS credits); the UI hides what the plan does
+not include and the API refuses it · 13.2 Self-serve trial sign-up next to
+the sales-led path in the console, with an onboarding checklist · 13.3
+Subscription billing: price list per currency (JOD, USD, SAR, AED), annual
+and monthly terms, invoices to the school, card payment through the 11.1
+providers or bank transfer recorded in the console, dunning into the
+existing grace/suspension · 13.4 Usage metering (active students, SMS sent)
+and the console's revenue view · 13.5 Public pricing page and legal
+documents (terms, privacy, data processing) · 13.6 The business model:
+`docs/saas-business-model.md`.
+
+---
+
 ## Backlog — extras (built on request)
 
 - **Email and SMS delivery.** SMS through Twilio or any HTTP SMS gateway
@@ -426,3 +492,6 @@ Excel, PDF and print output · 7.4 Scheduled report exports.
 | Close Phase 1 before Phase 2? | **Yes** — 1.7–1.12 first. |
 | Phase order | **Spec order**; fee reminders may be pulled forward into Phase 3 using the existing queue. |
 | Extras not in the spec (health/clinic, discipline, configurable numbering, bulk import, ID cards) | **Built on request** (see Backlog — extras). |
+| Payment providers | **PayTabs and HyperPay first**, behind one provider interface so others (eFAWATEERcom, Stripe) plug in later. |
+| First markets | **Jordan, the Gulf and wider MENA together**: prices in JOD, USD, SAR and AED; Arabic and English. |
+| Gradebook | **Built on request** (Phase 11.2): marks and report cards only, no lesson content. |
