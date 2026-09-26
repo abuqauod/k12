@@ -13,6 +13,7 @@ import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 import { useNavigate } from 'react-router-dom'
 import { DocumentsPanel } from './DocumentsPanel'
+import { PortalAccessPanel } from './PortalAccessPanel'
 
 type Tab = 'basic' | 'contact' | 'work' | 'status'
 
@@ -121,7 +122,10 @@ export function ParentDetailDialog({
   const save = async () => {
     setSaving(true)
     setError(null)
+    // The portal is switched on and off from its own panel (SAMS 6.4); a
+    // profile save never touches it.
     const body: NewParent = { ...form, portalAccessEnabled }
+    if (id) delete (body as Partial<NewParent>).portalAccessEnabled
     const result = id
       ? await updateParent(getAccessToken, id, body)
       : await createParent(getAccessToken, body)
@@ -348,15 +352,15 @@ export function ParentDetailDialog({
                       {t(`parents.status.${status}` as TranslationKey)}
                     </span>
                   </div>
-                  <label className="inline-field">
-                    <input
-                      type="checkbox"
-                      checked={portalAccessEnabled}
-                      onChange={(e) => setPortalAccessEnabled(e.target.checked)}
-                    />
-                    {t('parents.portalAccess')}
-                  </label>
-                  <p className="card__hint" style={{ flexBasis: '100%' }}>{t('parents.portalAccessHint')}</p>
+                  {id && can('portal.manage') ? (
+                    <div style={{ flexBasis: '100%' }}>
+                      <PortalAccessPanel parentId={id} />
+                    </div>
+                  ) : (
+                    <p className="card__hint" style={{ flexBasis: '100%' }}>
+                      {t(id ? 'portal.manage.noScope' : 'portal.manage.saveFirst')}
+                    </p>
+                  )}
                 </div>
               )}
 

@@ -12,7 +12,7 @@ per-area status reference.
 ## Where we are
 
 **Phases 1–5 are shipped and on `main`. Phase 6 (Communication & Portals) is
-next.**
+built on `claude/sams-6`; Phase 7 (Reporting) is next.**
 
 | Phase | Slices | PRs |
 |---|---|---|
@@ -22,6 +22,7 @@ next.**
 | 3 — Finance administration | 3.1–3.6 | #60, #61 |
 | 4 — HR & staff | 4.1–4.6 | #62 |
 | 5 — Operations | 5.1–5.6 | #62 |
+| 6 — Communication & portals | 6.1–6.4 | `claude/sams-6` (not yet merged) |
 
 ## Definition of done (every slice)
 
@@ -310,6 +311,38 @@ in-app channel, read state, failure tracking · 6.2 Announcements by
 branch/grade/class/route · 6.3 Fee reminders and payment/admission/document
 notices · 6.4 Parent portal (parent login, strictly linked-students-only
 data, invoices, payments, permitted documents, announcements).
+
+**Built** (server and UI; the Communication page, the notification bell, the
+parent record's portal panel, and the parent portal at `/portal`):
+- 6.1 One template per message kind in English and Arabic (a blank Arabic
+  text falls back to the English), editable and switchable off per school.
+  Every family notice goes through one service: in-app for parents with a
+  portal login whose link grants the portal, email/SMS through the existing
+  queue for parents who opted in. Keys are deterministic, so repeating a
+  notice sends nothing new. The delivery log shows every message with its
+  status and failure reason, and a failed one can be retried. Staff and
+  parents share one inbox; an approval decision reaches the requester there.
+- 6.2 Announcements by school, branch, grades, classes or bus (students at
+  stops pinned to it): draft, publish once, archive. The students it reached
+  are fixed when it is published; the portal shows it to those families.
+  A school-wide announcement needs a tenant-wide caller.
+- 6.3 Fee reminders for money due within N days or overdue (installments
+  counted oldest first), to the parents responsible for fees, at most every
+  `repeatDays` per invoice; preview and send by hand, or daily when switched
+  on. Automatic notices: payment receipts, admission decisions (to the
+  applicant's primary guardian), rejected and expiring student documents.
+- 6.4 A `parent` preset whose only scope is `portal.parent`, given by
+  enabling the portal on a parent record with an email (invite link to set a
+  password; an existing account just gains access). It can't be picked or
+  edited in Team settings. A parent sees only children whose link grants the
+  portal; fees only where they are responsible for them; documents only
+  verified ones in the categories the school shares. Disabling removes the
+  membership and revokes sessions at once.
+- New scopes `announcements.manage` (admins, registrar, operations),
+  `finance.reminders` (admins, finance officer), `portal.manage` (admins,
+  registrar, reception) and `portal.parent`. Also fixed: a session whose
+  membership was removed kept its rank's scopes until the token expired; it
+  now has none.
 
 ## Phase 7 — Reporting
 7.1 Shared reporting service/queries (replace per-page calculations) · 7.2

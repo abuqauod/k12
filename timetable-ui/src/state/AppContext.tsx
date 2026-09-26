@@ -192,7 +192,10 @@ const ACTIVE_BRANCH_KEY = 'timetable.activeBranch'
 
 export function AppProvider({ children }: { children: ReactNode }) {
   // Sync authenticates as the signed-in user — no separate token setting.
-  const { getAccessToken, user } = useAuth()
+  const { getAccessToken, user: signedIn, roleKey, accessReady } = useAuth()
+  // Everything loaded here is the staff app's; a parent portal login
+  // (SAMS 6.4) loads none of it.
+  const user = accessReady && roleKey !== 'parent' ? signedIn : null
 
   // Restore the saved dataset; only fall back to the sample on a fresh install.
   const restored = useRef(loadDataset()).current

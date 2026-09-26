@@ -135,7 +135,7 @@ export function EventsPage() {
           {error && <p className="login__error">{error}</p>}
           <div className="page__actions">
             <button type="button" className="btn btn--ghost" onClick={() => setAdding(false)}>
-              {t('approvals.cancel')}
+              {t('docs.cancel')}
             </button>
             <button type="button" className="btn btn--primary" onClick={() => void add()}>
               {t('ev.create')}
