@@ -20,15 +20,17 @@ interface NavEntry {
   group: 'plan' | 'ops' | 'account'
 }
 
-// Day-to-day work sits under "plan"; the rest under "account".
-const NAV: NavEntry[] = [
-  { to: '/dashboard', key: 'nav.dashboard', icon: '▤', group: 'plan' },
-  { to: '/timetable', key: 'nav.timetable', icon: '▦', group: 'plan' },
-  { to: '/students', key: 'nav.students', icon: '☺', group: 'plan' },
+// Day-to-day work sits under "plan"; the rest under "account". Every
+// entry names the scope its page needs (SAMS 12: a teacher was shown
+// Finance and the audit log, and got error pages).
+export const NAV: NavEntry[] = [
+  { to: '/dashboard', key: 'nav.dashboard', icon: '▤', group: 'plan', scope: 'dashboard.read' },
+  { to: '/timetable', key: 'nav.timetable', icon: '▦', group: 'plan', scope: 'datasets.read' },
+  { to: '/students', key: 'nav.students', icon: '☺', group: 'plan', scope: 'students.read' },
   { to: '/admissions', key: 'nav.admissions', icon: '✎', group: 'plan', scope: 'admissions.read' },
-  { to: '/parents', key: 'nav.parents', icon: '⚭', group: 'plan' },
-  { to: '/classes', key: 'nav.classes', icon: '▣', group: 'plan' },
-  { to: '/attendance', key: 'nav.attendance', icon: '✓', group: 'plan' },
+  { to: '/parents', key: 'nav.parents', icon: '⚭', group: 'plan', scope: 'parents.read' },
+  { to: '/classes', key: 'nav.classes', icon: '▣', group: 'plan', scope: 'classes.read' },
+  { to: '/attendance', key: 'nav.attendance', icon: '✓', group: 'plan', scope: 'attendance.read' },
   { to: '/grades', key: 'nav.grades', icon: '✦', group: 'plan', scope: 'grades.read' },
   { to: '/behaviour', key: 'nav.behaviour', icon: '⚑', group: 'plan', scope: 'discipline.report' },
   { to: '/clinic', key: 'nav.clinic', icon: '✚', group: 'plan', scope: 'health.read' },
@@ -38,8 +40,8 @@ const NAV: NavEntry[] = [
   { to: '/library', key: 'nav.library', icon: '❏', group: 'ops', scope: 'ops.read' },
   { to: '/events', key: 'nav.events', icon: '✷', group: 'ops', scope: 'ops.read' },
   { to: '/fleet', key: 'nav.fleet', icon: '⛟', group: 'ops', scope: 'transport.read' },
-  { to: '/routes', key: 'nav.routes', icon: '⌖', group: 'account' },
-  { to: '/finance', key: 'nav.finance', icon: '⛃', group: 'account' },
+  { to: '/routes', key: 'nav.routes', icon: '⌖', group: 'account', scope: 'transport.read' },
+  { to: '/finance', key: 'nav.finance', icon: '⛃', group: 'account', scope: 'finance.read' },
   { to: '/approvals', key: 'nav.approvals', icon: '⚖', group: 'account' },
   {
     to: '/communication',
@@ -49,7 +51,7 @@ const NAV: NavEntry[] = [
     anyScope: ['announcements.manage', 'finance.reminders', 'notifications.manage'],
   },
   { to: '/reports', key: 'nav.reports', icon: '▥', group: 'account', scope: 'dashboard.read' },
-  { to: '/logs', key: 'nav.logs', icon: '☰', group: 'account' },
+  { to: '/logs', key: 'nav.logs', icon: '☰', group: 'account', scope: 'audit.read' },
   { to: '/settings', key: 'nav.settings', icon: '⚙', group: 'account' },
 ]
 

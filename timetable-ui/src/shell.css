@@ -3230,3 +3230,47 @@ tr.is-muted td {
 .text-ok {
   color: var(--ok);
 }
+
+/* SAMS 12: getting started */
+.getting-started {
+  margin-block-end: 18px;
+}
+.getting-started__steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.getting-started__steps li {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-block-end: 1px solid var(--line);
+}
+.getting-started__steps li.is-done b {
+  color: var(--muted);
+  font-weight: 500;
+}
+.getting-started__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 700;
+}
+.is-done .getting-started__mark {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+.fee-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { NAV } from './app/AppShell'
 import type { ReactNode } from 'react'
 import { AppShell } from './app/AppShell'
 import { useAuth } from './auth/AuthContext'
@@ -55,7 +56,7 @@ function StaffOnly({ children }: { children: ReactNode }) {
 
 function ParentOnly({ children }: { children: ReactNode }) {
   const { roleKey } = useAuth()
-  return roleKey === 'parent' ? <>{children}</> : <Navigate to="/dashboard" replace />
+  return roleKey === 'parent' ? <>{children}</> : <Navigate to="/" replace />
 }
 
 export default function App() {
@@ -115,7 +116,16 @@ export default function App() {
         <Route path="/fleet" element={<FleetPage />} />
         <Route path="/settings/:section?" element={<SettingsPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Landing />} />
     </Routes>
   )
+}
+
+/** SAMS 12: where a signed-in member starts — the first page their role can
+ * open (a till operator has no dashboard). */
+function Landing() {
+  const { can, roleKey } = useAuth()
+  if (roleKey === 'parent') return <Navigate to="/portal" replace />
+  const first = NAV.find((e) => (!e.scope || can(e.scope)) && (!e.anyScope || e.anyScope.some(can)))
+  return <Navigate to={first?.to ?? '/settings'} replace />
 }

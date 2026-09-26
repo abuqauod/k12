@@ -27,6 +27,12 @@ const slugSchema = z
   .max(64)
   .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'lowercase letters, digits and single hyphens only')
 
+const branchCode = z
+  .string()
+  .min(2)
+  .max(32)
+  .regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes only')
+
 const createTenantBody = z.object({
   slug: slugSchema,
   name: z.string().min(1).max(200),
@@ -36,6 +42,11 @@ const createTenantBody = z.object({
   graceDays: z.number().int().nonnegative().default(21),
   ownerEmail: z.string().email(),
   ownerName: z.string().min(1).max(200).optional(),
+  /** SAMS 12: the first campus, so the school can start at once (the
+   * school can't create branches itself). Defaults to "Main campus". */
+  firstBranch: z
+    .object({ name: z.string().min(1).max(120), code: branchCode, timezone: z.string().min(1).max(64).default('Asia/Amman') })
+    .optional(),
 })
 
 const updateTenantBody = z
@@ -61,12 +72,6 @@ const createKeyBody = z.object({
   name: z.string().min(1).max(100),
   role: z.enum(['admin', 'scheduler', 'viewer']),
 })
-
-const branchCode = z
-  .string()
-  .min(2)
-  .max(32)
-  .regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes only')
 
 const createBranchBody = z.object({
   name: z.string().min(1).max(120),
@@ -157,6 +162,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         updatedAt: now,
       }),
     )
+    // SAMS 12: found in the pilot — a new school had no branch and no way to
+    // add one, so nothing (classes, students, fees) could be set up.
+    const first = body.firstBranch ?? { name: 'Main campus', code: 'main', timezone: 'Asia/Amman' }
+    await createBranchForTenant(_id, { name: first.name, code: first.code, address: null, timezone: first.timezone })
 
     try {
       const invite = await inviteUserToTenant({

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { FeeStructure, Invoice, InvoiceStatus } from '../domain/finance'
 import { formatMinorUnits } from '../domain/finance'
-import { listFeeStructures, listInvoices } from '../lib/financeApi'
+import { bulkInvoices, listFeeStructures, listInvoices } from '../lib/financeApi'
 import { listAcademicYears } from '../lib/academicYearsApi'
 import type { AcademicYear } from '../lib/academicYearsApi'
 import { FeeStructureDialog } from '../components/FeeStructureDialog'
@@ -84,6 +84,21 @@ export function FinancePage() {
   useEffect(() => {
     if (!branchId) setBranchId(activeBranchId ?? '')
   }, [activeBranchId, branchId])
+
+  // SAMS 12: bill every enrolled student of a grade from its structure.
+  const [bulkNote, setBulkNote] = useState<string | null>(null)
+  const billGrade = async (fs: FeeStructure) => {
+    const preview = await bulkInvoices(getAccessToken, { feeStructureId: fs.id, preview: true })
+    if (preview.kind !== 'ok') return setBulkNote(t('billing.error.generic'))
+    if (preview.data.toBill === 0 && preview.data.alreadyBilled === 0)
+      return setBulkNote(t('billing.bulk.noStudents', { grade: fs.gradeLevel }))
+    if (preview.data.toBill === 0) return setBulkNote(t('billing.bulk.nothing', { grade: fs.gradeLevel, n: preview.data.alreadyBilled }))
+    if (!window.confirm(t('billing.bulk.confirm', { n: preview.data.toBill, grade: fs.gradeLevel, name: fs.name }))) return
+    const run = await bulkInvoices(getAccessToken, { feeStructureId: fs.id })
+    if (run.kind !== 'ok') return setBulkNote(t('billing.error.generic'))
+    setBulkNote(t('billing.bulk.done', { n: run.data.created, failed: run.data.failed.length }))
+    void refresh()
+  }
 
   const refresh = useCallback(async () => {
     if (!branchId) {
@@ -175,22 +190,29 @@ export function FinancePage() {
                     </button>
                   )}
                 </div>
+                {bulkNote && <p className="notice">{bulkNote}</p>}
                 {structures.length === 0 ? (
                   <p className="card__empty">{t('billing.feeStructures.none')}</p>
                 ) : (
                   structures.map((fs) => (
-                    <button
-                      key={fs.id}
-                      type="button"
-                      className="stat-row"
-                      style={{ width: '100%', textAlign: 'start', cursor: 'pointer', background: 'none', border: 'none' }}
-                      onClick={() => setEditingStructure(fs)}
-                    >
-                      <span>
-                        {fs.gradeLevel} — {fs.name}
-                      </span>
-                      <b>{formatMinorUnits(fs.lineItems.reduce((sum, l) => sum + l.amount, 0))}</b>
-                    </button>
+                    <div key={fs.id} className="fee-row">
+                      <button
+                        type="button"
+                        className="stat-row"
+                        style={{ flex: 1, textAlign: 'start', cursor: 'pointer', background: 'none', border: 'none' }}
+                        onClick={() => setEditingStructure(fs)}
+                      >
+                        <span>
+                          {fs.gradeLevel} — {fs.name}
+                        </span>
+                        <b>{formatMinorUnits(fs.lineItems.reduce((sum, l) => sum + l.amount, 0))}</b>
+                      </button>
+                      {can('finance.invoice.create') && (
+                        <button type="button" className="link-btn" onClick={() => void billGrade(fs)}>
+                          {t('billing.bulk.button')}
+                        </button>
+                      )}
+                    </div>
                   ))
                 )}
               </section>

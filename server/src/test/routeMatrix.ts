@@ -315,6 +315,10 @@ export const ROUTES: [Method, string, Role][] = [
   ['PUT', '/settings/payments', 'admin'],
   ['GET', '/finance/online-payments', 'viewer'],
   ['POST', `/finance/online-payments/${X}/check`, 'viewer'],
+  // SAMS 12: the getting-started checklist.
+  ['GET', '/onboarding', 'viewer'],
+  ['POST', '/finance/invoices/bulk', 'scheduler'],
+  ['POST', '/parents/portal/invite-all', 'admin'],
   // SAMS 11.4 canteen: selling is a scope no default rank below admin holds
   // (the Canteen role has it); managing is admin.
   ['GET', '/canteen/products', 'admin'],

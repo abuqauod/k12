@@ -72,12 +72,12 @@ export function LoginPage() {
   const [tenants, setTenants] = useState<TenantChoice[] | null>(null)
 
   if (user) {
-    const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+    const from = (location.state as { from?: string } | null)?.from ?? '/'
     return <Navigate to={from} replace />
   }
 
   const goIn = () => {
-    const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+    const from = (location.state as { from?: string } | null)?.from ?? '/'
     navigate(from, { replace: true })
   }
 

@@ -127,6 +127,56 @@ export function registerPortalRoutes(app: FastifyInstance): void {
     return reply.send(await portalStatus(fresh!))
   })
 
+  /**
+   * SAMS 12 — found in the pilot: the portal could only be switched on one
+   * parent at a time. Invites every family of the caller's branches (or the
+   * one asked for) at once: each active parent with an email and a child
+   * enrolled there, not already on the portal. Their links to those
+   * children get portal access. `preview` counts without doing it.
+   */
+  app.post('/parents/portal/invite-all', scoped('portal.manage'), async (request, reply) => {
+    const body = (request.body ?? {}) as { branchId?: unknown; preview?: unknown }
+    const allowed = await callerBranchIds(request)
+    const branchId = typeof body.branchId === 'string' && body.branchId ? body.branchId : null
+    if (branchId && allowed !== null && !allowed.includes(branchId)) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    const branches = branchId ? [branchId] : allowed
+    const tenantId = request.auth!.tenantId!
+    const plan = await withTenant(tenantId, async (ctx) => {
+      const students = await ctx.students.find({ status: 'enrolled', ...(branches ? { branchId: { $in: branches } } : {}) }).toArray()
+      const studentIds = new Set(students.map((s) => s._id))
+      const links = (await ctx.parentStudentLinks.find({ active: true, studentId: { $in: [...studentIds] } }).toArray())
+      const parents = await ctx.parents.find({ _id: { $in: [...new Set(links.map((l) => l.parentId))] }, status: 'active' }).toArray()
+      const pending = parents.filter((p) => !p.portalAccess?.enabled)
+      return {
+        links,
+        withEmail: pending.filter((p) => p.email),
+        noEmail: pending.filter((p) => !p.email).length,
+        already: parents.length - pending.length,
+      }
+    })
+    if (body.preview === true) {
+      return reply.send({ toInvite: plan.withEmail.length, noEmail: plan.noEmail, alreadyOn: plan.already, invited: 0, notEmailed: 0, failed: [] })
+    }
+    let invited = 0
+    // Portal turned on but the email didn't go out (no mail server, a bounce):
+    // the parent can't get in until someone resends, so say so.
+    let notEmailed = 0
+    const failed: { parentId: string; error: string }[] = []
+    for (const parent of plan.withEmail) {
+      const mine = plan.links.filter((l) => l.parentId === parent._id && !l.portalAccess)
+      if (mine.length > 0) {
+        await withTenant(tenantId, (ctx) =>
+          ctx.parentStudentLinks.updateMany({ _id: { $in: mine.map((l) => l._id) } }, { $set: { portalAccess: true, updatedAt: new Date() } }),
+        )
+      }
+      const result = await enablePortal({ tenantId, parent, actorId: request.auth!.sub, inviterName: request.auth!.email })
+      if (!result.ok) failed.push({ parentId: parent._id, error: result.error })
+      else if (result.emailSent) invited++
+      else notEmailed++
+    }
+    return reply.send({ toInvite: plan.withEmail.length, noEmail: plan.noEmail, alreadyOn: plan.already, invited, notEmailed, failed })
+  })
+
   // ----------------------------------------------------- parent side --
 
   const parentOnly = scoped('portal.parent')

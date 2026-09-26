@@ -333,7 +333,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     if (!result.ok) return reply.code(400).send({ error: `TOKEN_${result.error}` })
 
     const passwordHash = await hashPassword(parsed.data.password)
-    await withoutTenant(async (db) => {
+    const signIn = await withoutTenant(async (db) => {
       await db.users.updateOne(
         { _id: result.userId },
         // Accepting the invite is the proof: they received mail at this
@@ -353,8 +353,13 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           { upsert: true },
         )
       }
+      // Enough for the page to sign them straight in with the password they
+      // just chose, instead of asking for their email again (pilot feedback).
+      const user = await db.users.findOne({ _id: result.userId })
+      const tenant = result.grant ? await db.tenants.findOne({ _id: result.grant.tenantId }) : null
+      return { email: user?.email ?? null, tenantSlug: tenant?.slug ?? null }
     })
-    return reply.send({ ok: true })
+    return reply.send({ ok: true, ...signIn })
   })
 
   app.post('/auth/change-password', { preHandler: authenticate }, async (request, reply) => {

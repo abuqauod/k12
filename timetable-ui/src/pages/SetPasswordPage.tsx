@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { acceptInvite, resetPassword } from '../lib/authApi'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
@@ -15,6 +16,8 @@ type Mode = 'invite' | 'reset'
  */
 export function SetPasswordPage({ mode }: { mode: Mode }) {
   const { t } = useI18n()
+  const { signIn } = useAuth()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') ?? ''
 
@@ -48,13 +51,20 @@ export function SetPasswordPage({ mode }: { mode: Mode }) {
     }
     setBusy(true)
     setError(null)
-    const action = mode === 'invite' ? acceptInvite : resetPassword
-    const result = await action(token, password)
-    setBusy(false)
+    const accepted = mode === 'invite' ? await acceptInvite(token, password) : null
+    const result = accepted ?? (await resetPassword(token, password))
     if (result.kind === 'ok') {
+      // A new account goes straight in with the password just chosen;
+      // should that fail for any reason, "Go to sign in" still works.
+      if (accepted?.kind === 'ok' && accepted.email && accepted.tenantSlug) {
+        const signedIn = await signIn(accepted.email, password, accepted.tenantSlug)
+        if (signedIn.ok) return navigate('/', { replace: true })
+      }
+      setBusy(false)
       setDone(true)
       return
     }
+    setBusy(false)
     if (result.error.startsWith('TOKEN_')) {
       setError(t(tokenErrorKey(result.error)))
       return

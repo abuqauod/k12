@@ -63,11 +63,7 @@ function describeNetworkError(error: unknown): string {
   return 'NETWORK_ERROR'
 }
 
-export async function login(
-  email: string,
-  password: string,
-  tenantSlug?: string,
-): Promise<LoginResult> {
+export async function login(email: string, password: string, tenantSlug?: string): Promise<LoginResult> {
   if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
   try {
     const response = await post('/auth/login', { email, password, tenantSlug, context: 'app' })
@@ -115,12 +111,18 @@ export async function logout(refreshToken: string): Promise<void> {
 
 export type ActionResult = { kind: 'ok' } | { kind: 'error'; error: string }
 
+export type AcceptResult = ActionResult & { email?: string | null; tenantSlug?: string | null }
+
 /** The invite/reset link a school's owner or a forgotten-password email points at. */
-export async function acceptInvite(token: string, password: string): Promise<ActionResult> {
+
+export async function acceptInvite(token: string, password: string): Promise<AcceptResult> {
   if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
   try {
     const response = await post('/auth/accept-invite', { token, password })
-    if (response.ok) return { kind: 'ok' }
+    if (response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { email?: string | null; tenantSlug?: string | null }
+      return { kind: 'ok', email: body.email ?? null, tenantSlug: body.tenantSlug ?? null }
+    }
     const body = (await response.json().catch(() => ({}))) as { error?: string }
     return { kind: 'error', error: body.error ?? `HTTP_${response.status}` }
   } catch (error) {

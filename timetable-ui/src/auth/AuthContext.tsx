@@ -1,3 +1,4 @@
+import { clearLocalWork } from '../lib/storage'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import * as authApi from '../lib/authApi'
@@ -122,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(() => {
     const token = refreshTokenRef.current
+    clearLocalWork()
     clear()
     if (token) void authApi.logout(token)
   }, [clear])

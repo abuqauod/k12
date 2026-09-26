@@ -593,6 +593,57 @@ structures, timetable, a term of attendance, fees, grades, report cards,
 notices) as an automated end-to-end scenario; every rough edge found is
 fixed and listed here.
 
+**Built.** A new school, "Al-Nour Academy", was opened in the vendor
+console and taken through a term by its owner, a teacher and a parent in
+the browser: school profile, a year with two terms, six classes, three fee
+structures, 18 students with their families from a spreadsheet, a whole
+grade billed, attendance, an assessment plan, marks, results released to
+families, every family invited to the portal, a parent reading the report
+card and paying part of an invoice through the test gateway, the payment
+showing in Finance → Online payments, and the emails that went out.
+
+Found and fixed on the way:
+
+- *A new school had no campus*, so nothing could be created until the vendor
+  added one by hand. A school opened in the console now starts with "Main
+  campus" (or the name given).
+- *The demo timetable leaked between schools* on one device: work saved in
+  the browser was restored for whoever signed in next. Local work now
+  belongs to its school and is cleared on sign-out; a school without a
+  timetable starts from an empty one.
+- *No way to know where to start.* A getting-started checklist on the
+  dashboard (profile, year, classes, fees, students, invoices, team,
+  payments), driven by the school's own data (`GET /onboarding`).
+- *Billing a grade meant one invoice per student.* Finance → Bill grade
+  invoices every student of a grade or class from its fee structure, with a
+  preview; students already billed are skipped.
+- *Classes made before a year existed belonged to no year* and vanished from
+  year-scoped pages; the bulk path ignored the year given. Classes without a
+  year now join the current one.
+- *Two years with the same name or overlapping dates* could be created and
+  confused every year picker; now refused (`YEAR_NAME_TAKEN`,
+  `YEARS_OVERLAP`, `DATES_OUT_OF_ORDER`).
+- *A fee structure for a grade that no class uses* matched no students.
+  The grade field suggests the grades the school has and warns otherwise.
+- *Menu items a role cannot open* were shown and led to "not allowed";
+  every item now carries its scope, and sign-in lands on the first page the
+  user may see (a parent lands on the portal).
+- *Families were invited to the portal one by one.* Parents → Invite all to
+  the portal (preview, then one email each; the caller's campuses only).
+  An invite that could not be emailed is reported as such, not counted as
+  sent.
+- *A new parent set a password, then had to type their email again.*
+  Accepting an invite now signs them straight in.
+- *Imported families could not see or pay their bills*: the importer linked
+  each guardian without financial responsibility, so the portal showed no
+  Fees tab, the wallet could not be topped up and fee reminders fell back
+  to the primary contact. The guardian a row names is now the fee contact
+  when an admin imports; the same holds for the primary guardian of an
+  admitted application.
+
+Noted, not changed: family emails (receipts, report cards) leave with the
+delivery sweep, every five minutes by default (`ABSENCE_SWEEP_INTERVAL_MS`).
+
 ## Phase 13 — SaaS offer
 13.1 Plans and feature gating: each tenant's plan enables modules and sets
 limits (students, branches, SMS credits); the UI hides what the plan does
