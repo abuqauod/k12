@@ -19,6 +19,8 @@ import { AttendancePage } from './pages/AttendancePage'
 import { ClassesPage } from './pages/ClassesPage'
 import { LogsPage } from './pages/LogsPage'
 import { FinancePage } from './pages/FinancePage'
+import { HrPage } from './pages/HrPage'
+import { EmployeePage } from './pages/EmployeePage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -58,6 +60,8 @@ export default function App() {
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/finance" element={<FinancePage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
+        <Route path="/hr" element={<HrPage />} />
+        <Route path="/hr/employees/:id" element={<EmployeePage />} />
         <Route path="/settings/:section?" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

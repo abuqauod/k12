@@ -2517,3 +2517,68 @@ tr.is-muted td {
 .record-list__item .card__hint {
   margin: 4px 0 0;
 }
+
+/* ================================================= HR (SAMS Phase 4) ==== */
+.hr-page .tabs,
+.student-page .tabs {
+  min-height: max-content;
+}
+
+.card--warn {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: var(--text-sm);
+}
+
+/* Attendance marks: one chip per status, the chosen one filled. */
+.mark-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mark-group .chip {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.mark-group .chip[aria-pressed='false'] {
+  color: var(--muted);
+}
+
+.mark-group .chip[aria-pressed='true'] {
+  border-color: currentColor;
+  font-weight: 650;
+}
+
+.timeline__date {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* Record links inside HR / operations lists read as links, not raw anchors. */
+.hr-page .table a,
+.hr-page .stat-row a,
+.ops-page .table a,
+.ops-page .stat-row a,
+.finance-page .stat-row a {
+  color: var(--accent-text);
+  text-decoration: none;
+  font-weight: 550;
+}
+
+.hr-page .table a:hover,
+.ops-page .table a:hover {
+  text-decoration: underline;
+}

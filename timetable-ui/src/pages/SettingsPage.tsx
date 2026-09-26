@@ -32,6 +32,7 @@ import { BreaksEditor } from '../components/BreaksEditor'
 import { JsonDialog } from '../components/JsonDialog'
 import { getTenant } from '../lib/tenantApi'
 import { LookupSection } from '../components/LookupSection'
+import { MyLeaveCard } from '../components/hr/MyLeaveCard'
 import {
   AcademicYearsSection,
   GradesClassesSection,
@@ -54,6 +55,9 @@ type SettingsSection =
   | 'admission-sources'
   | 'withdrawal-reasons'
   | 'expense-categories'
+  | 'departments'
+  | 'positions'
+  | 'contract-types'
   | 'notification-templates'
   | 'roles'
   | 'team'
@@ -83,6 +87,9 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
       { id: 'withdrawal-reasons', key: 'settings.section.withdrawalReasons', scope: 'settings.read' },
       { id: 'expense-categories', key: 'settings.section.expenseCategories', scope: 'settings.read' },
+      { id: 'departments', key: 'settings.section.departments', scope: 'settings.read' },
+      { id: 'positions', key: 'settings.section.positions', scope: 'settings.read' },
+      { id: 'contract-types', key: 'settings.section.contractTypes', scope: 'settings.read' },
       { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
     ],
   },
@@ -204,6 +211,15 @@ export function SettingsPage() {
               hint={t('settings.expenseCategories.hint')}
             />
           )}
+          {active?.id === 'departments' && (
+            <LookupSection kind="department" title={t('settings.section.departments')} hint={t('settings.departments.hint')} />
+          )}
+          {active?.id === 'positions' && (
+            <LookupSection kind="position" title={t('settings.section.positions')} hint={t('settings.positions.hint')} />
+          )}
+          {active?.id === 'contract-types' && (
+            <LookupSection kind="contractType" title={t('settings.section.contractTypes')} hint={t('settings.contractTypes.hint')} />
+          )}
           {active?.id === 'notification-templates' && <NotificationTemplatesSection />}
           {active?.id === 'team' && <TeamSettingsTab />}
           {active?.id === 'roles' && <RolesSection />}
@@ -241,6 +257,7 @@ function AccountTab() {
 
   return (
     <>
+      <MyLeaveCard />
       <div className="card-row">
         <section className="card">
           <h2 className="card__title">{t('settings.language')}</h2>
