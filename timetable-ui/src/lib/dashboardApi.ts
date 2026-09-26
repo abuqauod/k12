@@ -17,7 +17,7 @@ export interface DashboardSummary {
    * counts the caller may see. */
   attention?: Partial<
     Record<
-      'paymentsToConfirm' | 'refundsToPay' | 'expensesToPay' | 'contractsEnding' | 'maintenanceOpen' | 'lowStock' | 'overdueLoans' | 'transportExpiring',
+      'paymentsToConfirm' | 'refundsToPay' | 'expensesToPay' | 'contractsEnding' | 'maintenanceOpen' | 'lowStock' | 'overdueLoans' | 'transportExpiring' | 'messagesFailed',
       number
     >
   >

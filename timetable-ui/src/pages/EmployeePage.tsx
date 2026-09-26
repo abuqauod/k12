@@ -353,7 +353,7 @@ function DetailsSection({ employee, canEdit, onSaved }: { employee: Employee; ca
           {dirty && (
             <>
               <button type="button" className="btn btn--ghost" onClick={() => setDraft({})}>
-                {t('approvals.cancel')}
+                {t('docs.cancel')}
               </button>
               <button type="button" className="btn btn--primary" onClick={() => void save()}>
                 {t('hr.save')}
@@ -545,7 +545,7 @@ function EmploymentSection({ employee, canEdit }: { employee: Employee; canEdit:
               {t('hr.save')}
             </button>
             <button type="button" className="btn btn--sm btn--ghost" onClick={() => setForm(null)}>
-              {t('approvals.cancel')}
+              {t('docs.cancel')}
             </button>
           </div>
         )}

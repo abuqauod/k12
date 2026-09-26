@@ -4,7 +4,7 @@ import { withTenant, withoutTenant } from '../db.js'
 import { recordAudit } from '../audit.js'
 import type { MembershipDoc } from '../db.js'
 import { authenticate, callerScopes, loadCallerMembership, requirePermission } from '../auth/guard.js'
-import { PRESETS, ROLE_KEYS, ROLE_SCOPES, scopesFor, type RoleKey } from '../auth/scopes.js'
+import { PARENT_ROLE_KEY, PRESETS, ROLE_KEYS, ROLE_SCOPES, scopesFor, type RoleKey } from '../auth/scopes.js'
 import { EmailNotConfiguredError } from '../email.js'
 import { inviteUserToTenant } from './invite.js'
 import { changeMemberRole, listMembers, removeMember, setMemberBranches } from './service.js'
@@ -161,6 +161,7 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
     const tenantId = request.auth!.tenantId!
     const target = await withoutTenant((db) => db.memberships.findOne({ _id: `${tenantId}:${userId}` }))
     if (!target) return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (target.roleKey === PARENT_ROLE_KEY) return reply.code(409).send({ error: 'PORTAL_ACCOUNT' })
 
     const check = await checkGrant(request, parsed.data, target.branchIds ?? null)
     if (!check.ok) return reply.code(check.status).send({ error: check.error, required: check.required })
@@ -186,6 +187,7 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
       if (known.length !== branchIds.length) return reply.code(400).send({ error: 'UNKNOWN_BRANCH' })
     } else {
       const target = await withoutTenant((db) => db.memberships.findOne({ _id: `${tenantId}:${userId}` }))
+      if (target?.roleKey === PARENT_ROLE_KEY) return reply.code(409).send({ error: 'PORTAL_ACCOUNT' })
       if (target?.roleKey && PRESETS[target.roleKey]?.requiresBranches) {
         return reply.code(400).send({ error: 'BRANCHES_REQUIRED' })
       }
@@ -200,6 +202,7 @@ export function registerMembershipRoutes(app: FastifyInstance): void {
     const { userId } = request.params as { userId: string }
     const tenantId = request.auth!.tenantId!
     const before = await withoutTenant((db) => db.memberships.findOne({ _id: `${tenantId}:${userId}` }))
+    if (before?.roleKey === PARENT_ROLE_KEY) return reply.code(409).send({ error: 'PORTAL_ACCOUNT' })
     const result = await removeMember(tenantId, userId)
     if (result === 'not_found') return reply.code(404).send({ error: 'NOT_FOUND' })
     if (result === 'last_owner') return reply.code(409).send({ error: 'CANNOT_REMOVE_LAST_OWNER' })

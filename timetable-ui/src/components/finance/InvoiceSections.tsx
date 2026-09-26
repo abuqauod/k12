@@ -130,7 +130,7 @@ export function InstallmentsSection({ invoice, onChanged }: { invoice: Invoice; 
             </button>
           )}
           <button type="button" className="btn btn--sm btn--ghost" onClick={() => setEditing(false)}>
-            {t('approvals.cancel')}
+            {t('docs.cancel')}
           </button>
         </div>
       )}
@@ -405,7 +405,7 @@ export function RefundsSection({
             {t('billing.requestSend')}
           </button>
           <button type="button" className="btn btn--sm btn--ghost" onClick={() => setAsking(false)}>
-            {t('approvals.cancel')}
+            {t('docs.cancel')}
           </button>
           <span className="card__hint">{t('fin.refund.max', { amount: formatMinorUnits(refundable) })}</span>
         </div>
@@ -443,7 +443,7 @@ export function RefundsSection({
             {t('fin.payOut')}
           </button>
           <button type="button" className="btn btn--sm btn--ghost" onClick={() => setPaying(null)}>
-            {t('approvals.cancel')}
+            {t('docs.cancel')}
           </button>
         </div>
       )}

@@ -103,6 +103,7 @@ const ATTENTION: { key: keyof NonNullable<DashboardSummary['attention']>; to: st
   { key: 'lowStock', to: '/operations?tab=inventory' },
   { key: 'overdueLoans', to: '/library?tab=loans' },
   { key: 'transportExpiring', to: '/fleet' },
+  { key: 'messagesFailed', to: '/communication?tab=log' },
 ]
 
 export function DashboardPage() {

@@ -268,7 +268,7 @@ export function RefundsTab({ branchId, onOpenInvoice }: { branchId: string; onOp
             {t('fin.payOut')}
           </button>
           <button type="button" className="btn btn--sm btn--ghost" onClick={() => setPaying(null)}>
-            {t('approvals.cancel')}
+            {t('docs.cancel')}
           </button>
         </div>
       )}
@@ -380,7 +380,7 @@ export function DiscountTypesCard() {
             {t('fin.add')}
           </button>
           <button type="button" className="btn btn--sm btn--ghost" onClick={() => setAdding(false)}>
-            {t('approvals.cancel')}
+            {t('docs.cancel')}
           </button>
         </div>
       )}

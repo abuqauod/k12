@@ -347,7 +347,7 @@ function NewEmployeeCard({ branchId, onCancel, onCreated }: { branchId: string; 
       {error && <p className="login__error">{error}</p>}
       <div className="page__actions">
         <button type="button" className="btn btn--ghost" onClick={onCancel}>
-          {t('approvals.cancel')}
+          {t('docs.cancel')}
         </button>
         <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>
           {t('hr.create')}
@@ -541,7 +541,7 @@ function LeaveTypesCard({ types, canEdit, onChanged }: { types: LeaveType[]; can
           </label>
           <div className="page__actions">
             <button type="button" className="btn btn--sm btn--ghost" onClick={() => setAdding(false)}>
-              {t('approvals.cancel')}
+              {t('docs.cancel')}
             </button>
             <button type="button" className="btn btn--sm btn--primary" onClick={() => void add()}>
               {t('fin.add')}

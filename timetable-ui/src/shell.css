@@ -2587,6 +2587,12 @@ tr.is-muted td {
 .ops-page .tabs {
   min-height: max-content;
 }
+/* A panel taller than the page must scroll, not squeeze the rows above it:
+   without this Chrome sizes the tab row down to its 1px border. */
+.ops-page,
+.hr-page {
+  grid-auto-rows: max-content;
+}
 
 .person-picker {
   position: relative;
@@ -2656,4 +2662,313 @@ tr.is-muted td {
 
 .attention-list a:hover {
   border-color: var(--warn);
+}
+
+/* ======================================================= communication ==== */
+/* SAMS Phase 6: the inbox, the Communication page and the parent portal. */
+.page-loading {
+  min-height: 60vh;
+}
+.shell__bar .inbox:first-child {
+  margin-inline-start: auto;
+}
+.inbox {
+  position: relative;
+}
+.inbox__bell {
+  position: relative;
+}
+.inbox__count {
+  position: absolute;
+  inset-block-start: -6px;
+  inset-inline-end: -6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.inbox__panel {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-start: calc(100% + 6px);
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft), 0 12px 32px rgb(0 0 0 / 0.14);
+}
+.inbox__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-block-end: 6px;
+}
+.inbox__list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inbox__item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.inbox__item:hover,
+.inbox__item:focus-visible {
+  background: var(--line);
+}
+.inbox__item.is-unread {
+  border-inline-start: 3px solid var(--accent);
+}
+.inbox__body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  font-size: 13px;
+  white-space: pre-line;
+}
+
+.notice {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 13px;
+}
+.table .num,
+.num {
+  text-align: end;
+}
+.check-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 4px 0;
+}
+.comm-form {
+  display: grid;
+  gap: 10px;
+}
+.comm-form textarea {
+  resize: vertical;
+}
+.comm-audience {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.comm-audience legend {
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.comm-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.comm-body {
+  margin: 4px 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.portal-access {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* ------------------------------------------------------------- portal -- */
+.portal {
+  min-height: 100vh;
+  background: var(--paper);
+}
+.portal__bar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border-block-end: 1px solid var(--line);
+  background: var(--surface);
+}
+.portal__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.portal__brand span {
+  display: grid;
+  min-width: 0;
+}
+.portal__brand b {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.2;
+}
+.portal__brand small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.portal__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.portal__main {
+  display: grid;
+  gap: 12px;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.portal__main .tabs {
+  min-height: max-content;
+}
+.portal__greeting {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.portal-cards,
+.portal-feed,
+.portal-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.portal-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: var(--shadow-soft);
+}
+.portal-card:hover,
+.portal-card:focus-visible {
+  border-color: var(--accent);
+}
+.portal-card__text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.portal-card__text small {
+  color: var(--muted);
+}
+.portal-card__go {
+  font-size: 22px;
+  color: var(--muted);
+}
+[dir='rtl'] .portal-card__go {
+  transform: scaleX(-1);
+}
+.portal-feed .card.is-unread {
+  border-inline-start: 3px solid var(--accent);
+}
+.portal-child__head .page__title {
+  margin: 0;
+}
+.portal-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+.portal-stat {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+.portal-stat b {
+  font-size: 20px;
+}
+.portal-stat small {
+  color: var(--muted);
+}
+.portal-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.portal-balance b {
+  font-size: 22px;
+}
+.portal-invoice {
+  padding-block-end: 10px;
+  border-block-end: 1px solid var(--line);
+}
+.portal-invoice__head,
+.portal-lines li,
+.portal-lines__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.portal-lines {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.notice--warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+/* Messages may be in either language whatever the page's: each paragraph
+   takes the direction of its own text. */
+.comm-body,
+.inbox__item b,
+.inbox__body,
+.portal-feed .card__title {
+  unicode-bidi: plaintext;
+  text-align: start;
 }

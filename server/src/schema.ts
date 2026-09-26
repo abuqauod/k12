@@ -252,4 +252,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
   // Lets deactivating a bus unpin every stop pointing at it in one indexed
   // updateMany, instead of scanning the branch's whole stop list.
   await db.collection('stops').createIndex({ tenantId: 1, pinnedBusId: 1 }, { sparse: true })
+
+  // SAMS Phase 6.
+  await db.collection('notificationJobs').createIndex({ tenantId: 1, kind: 1, sourceId: 1 })
+  await db.collection('notificationJobs').createIndex({ tenantId: 1, status: 1, createdAt: -1 })
+  await db.collection('inboxItems').createIndex({ tenantId: 1, userId: 1, createdAt: -1 })
+  await db.collection('announcements').createIndex({ tenantId: 1, status: 1, publishedAt: -1 })
+  await db.collection('announcements').createIndex({ tenantId: 1, studentIds: 1 })
+  await db.collection('parents').createIndex({ tenantId: 1, 'portalAccess.userId': 1 }, { sparse: true })
 }

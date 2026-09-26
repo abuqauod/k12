@@ -14,6 +14,8 @@ import type {
 import { activeEnrollment } from '../enrollments/service.js'
 import { recordAudit } from '../audit.js'
 import { oldestUnpaidDueDate } from './installments.js'
+import { money } from '../records.js'
+import { notifyFamilies, schoolName } from '../notifications/messages.js'
 
 /**
  * Fee structures, invoices, payments and receipts — the Finance & Accounting
@@ -497,6 +499,24 @@ async function issueReceipt(
     createdBy: actorId,
   }
   await ctx.receipts.insertOne(receipt)
+  // SAMS 6.3: the paying family hears it arrived.
+  const school = await schoolName(tenantId)
+  await notifyFamilies(ctx, tenantId, {
+    kind: 'payment_received',
+    sourceId: receipt._id,
+    studentIds: [receipt.studentId],
+    recipients: 'financial',
+    tokens: (student, parent) => ({
+      parentName: parent.fullName,
+      studentName: `${student.givenName} ${student.familyName}`.trim(),
+      amount: money(receipt.amount),
+      receiptNumber: receipt.receiptNumber,
+      schoolName: school,
+    }),
+    link: (studentId) => `/portal/children/${studentId}?tab=finance`,
+    trigger: 'manual',
+    actorId,
+  })
   await recordAudit(ctx.auditLog, {
     actorId,
     action: 'receipt.issue',

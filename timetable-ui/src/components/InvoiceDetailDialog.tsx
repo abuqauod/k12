@@ -391,7 +391,7 @@ export function InvoiceDetailDialog({
                   {t('billing.requestSend')}
                 </button>
                 <button type="button" className="btn btn--sm btn--ghost" onClick={() => setRequestLine(null)}>
-                  {t('approvals.cancel')}
+                  {t('docs.cancel')}
                 </button>
               </div>
             )}

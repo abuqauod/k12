@@ -1,6 +1,7 @@
 import { withoutTenant, withTenant } from '../db.js'
 import type { MembershipDoc } from '../db.js'
 import { recordAudit } from '../audit.js'
+import { PARENT_ROLE_KEY } from '../auth/scopes.js'
 
 /**
  * Shared by the self-service API (`/memberships`, tenantId from the
@@ -23,7 +24,8 @@ export interface MemberSummary {
 }
 
 export async function listMembers(tenantId: string): Promise<MemberSummary[]> {
-  const memberships = await withTenant(tenantId, (ctx) => ctx.memberships.find().toArray())
+  // Parent portal logins (SAMS 6.4) are managed from the parent record, not here.
+  const memberships = await withTenant(tenantId, (ctx) => ctx.memberships.find({ roleKey: { $ne: PARENT_ROLE_KEY } }).toArray())
   const users = await withoutTenant((db) =>
     db.users.find({ _id: { $in: memberships.map((m) => m.userId) } }).toArray(),
   )

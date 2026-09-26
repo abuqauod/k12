@@ -17,6 +17,7 @@ import type { Role } from './tokens.js'
 export type PermissionScope =
   | 'academicYears.read'
   | 'admissions.decide'
+  | 'announcements.manage'
   | 'admissions.manage'
   | 'admissions.read'
   | 'academicYears.write'
@@ -52,6 +53,7 @@ export type PermissionScope =
   | 'finance.payout'
   | 'finance.read'
   | 'finance.refund.approve'
+  | 'finance.reminders'
   | 'finance.refund.request'
   | 'finance.scholarship.approve'
   | 'finance.scholarship.request'
@@ -73,6 +75,8 @@ export type PermissionScope =
   | 'parents.manage'
   | 'parents.read'
   | 'parents.write'
+  | 'portal.manage'
+  | 'portal.parent'
   | 'reports.finance'
   | 'reports.hr'
   | 'search.read'
@@ -137,6 +141,8 @@ const SCHEDULER_SCOPES: readonly PermissionScope[] = [
 const ADMIN_SCOPES: readonly PermissionScope[] = [
   ...SCHEDULER_SCOPES,
   'admissions.decide',
+  // Communication (SAMS Phase 6).
+  'announcements.manage',
   'approvals.decide',
   'audit.export',
   'audit.read',
@@ -156,6 +162,7 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'finance.payment.void',
   'finance.payout',
   'finance.refund.approve',
+  'finance.reminders',
   'finance.scholarship.approve',
   'hr.attendance.write',
   'hr.employee.update',
@@ -168,6 +175,7 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'ops.facilities.manage',
   'ops.inventory.manage',
   'parents.manage',
+  'portal.manage',
   'reports.finance',
   'reports.hr',
   'settings.manage',
@@ -198,7 +206,10 @@ export const ROLE_KEYS = [
   'operations',
   'reception',
 ] as const
-export type RoleKey = (typeof ROLE_KEYS)[number]
+/** The parent portal's login (SAMS 6.4). Not in `ROLE_KEYS`: it can't be
+ * picked in Team settings, only given by enabling a parent's portal. */
+export const PARENT_ROLE_KEY = 'parent'
+export type RoleKey = (typeof ROLE_KEYS)[number] | typeof PARENT_ROLE_KEY
 
 export interface RolePreset {
   /** Base rank: stored as `MembershipDoc.role`, carried in the JWT, and
@@ -230,6 +241,8 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ),
   registrar: preset('scheduler', [
     ...OFFICE_READ,
+    'announcements.manage',
+    'portal.manage',
     'ops.maintenance.report',
     'ops.read',
     'academicYears.write',
@@ -262,6 +275,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'finance.payout',
     'finance.refund.approve',
     'finance.refund.request',
+    'finance.reminders',
     'finance.scholarship.approve',
     'finance.scholarship.request',
     'reports.finance',
@@ -278,6 +292,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ]),
   operations: preset('scheduler', [
     ...OFFICE_READ,
+    'announcements.manage',
     'attendance.write',
     'datasets.write',
     'notifications.run',
@@ -293,6 +308,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ]),
   reception: preset('viewer', [
     ...OFFICE_READ,
+    'portal.manage',
     'ops.maintenance.report',
     'ops.read',
     'admissions.manage',
@@ -301,6 +317,8 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'parents.write',
     'students.create',
   ]),
+  // A parent sees only the portal, and there only their own children.
+  parent: preset('viewer', ['portal.parent']),
 }
 
 /** The scope set a member resolves to. */
