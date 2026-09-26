@@ -18,3 +18,23 @@ jobs:
         if: always()
         working-directory: server
         run: docker compose -f docker-compose.test.yml down -v
+
+  # SAMS 8.6: the school app must typecheck, lint and build before a deploy.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: timetable-ui/package-lock.json
+      - name: Install
+        working-directory: timetable-ui
+        run: npm ci
+      - name: Lint
+        working-directory: timetable-ui
+        run: npm run lint
+      - name: Typecheck + build
+        working-directory: timetable-ui
+        run: npm run build

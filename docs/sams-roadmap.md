@@ -402,6 +402,34 @@ reset and public endpoints; security headers · 8.5 Backups: a scheduled
 restore script and a documented restore drill · 8.6 Deployment checklist
 and a fixed deploy workflow (the UI docroot is still a placeholder).
 
+**Built**:
+- 8.1 `server/src/runtime/preflight.ts`: a production start exits on a
+  missing, default or short `JWT_SECRET` or the default MongoDB password,
+  warns on local `APP_URL`/`CORS_ORIGINS` and missing backups, and logs
+  which channels (email, SMS, error reporting) are on.
+- 8.2 `/live` (process), `/health` and `/ready` (database; 503 while
+  shutting down, with uptime and release). SIGTERM stops the sweeper,
+  drains requests and exits within `SHUTDOWN_GRACE_MS`. The compose API
+  restarts on failure and has a health check.
+- 8.3 A request id on every request (the proxy's `X-Request-Id` kept when
+  sane) in logs and the `x-request-id` header. Unexpected errors answer
+  `{ error: "INTERNAL", requestId }` — never the message — and go to a
+  Sentry-compatible DSN when set (no SDK; no bodies or headers sent).
+  Malformed JSON is now a 400, not a 500.
+- 8.4 Per-IP limits on sign-in, reset, invites and refresh (429
+  `RATE_LIMITED`) on top of the per-account lockout; `nosniff`,
+  `SAMEORIGIN`, referrer policy, HSTS in production. The app no longer
+  signs a user out when a token refresh fails for a network or server
+  reason — only when the server rejects the session.
+- 8.5 `scripts/backup.sh` / `restore.sh` and a daily `backup` service:
+  gzipped `mongodump`, retention, optional S3-compatible copy; restore
+  needs `RESTORE_CONFIRM=yes`, or rehearses into another database.
+  Rehearsed on the dev database (52k documents, 63 collections).
+- 8.6 [`docs/deployment-checklist.md`](deployment-checklist.md); CI now also
+  lints and builds the school app; the deploy's docroot comes from the
+  `UI_DOCROOT` secret and a deploy fails unless the new API answers
+  `/ready`.
+
 ## Phase 9 — Security and permissions review
 9.1 A route inventory test: every registered route must appear in the
 permission matrix, so a new route cannot ship without its scope and branch

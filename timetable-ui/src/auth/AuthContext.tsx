@@ -143,7 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           // The refresh token is dead (expired, revoked, or reused) — the
           // session is over; RequireAuth will send the user back to /login.
-          clear()
+          // A network drop, a busy server (429) or a 5xx is not that: keep
+          // the session and let the next request try again.
+          if (result.kind === 'error' && (result.error === 'HTTP_401' || result.error === 'HTTP_400')) clear()
           return null
         })
         .finally(() => {

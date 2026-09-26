@@ -8,6 +8,7 @@ import { EmailNotConfiguredError, sendPasswordResetEmail } from '../email.js'
 import { consumeActionToken, createActionToken, PASSWORD_RESET_TTL_MS } from './actionTokens.js'
 import { authenticate, callerScopes, loadCallerMembership } from './guard.js'
 import { clearLoginFailures, isLockedOut, recordLoginFailure } from './rateLimit.js'
+import { authLimiter, emailLimiter, refreshLimiter } from '../runtime/rateLimit.js'
 import { createRefreshToken, hashRefreshToken, signAccessToken } from './tokens.js'
 import type { Role } from './tokens.js'
 
@@ -69,7 +70,7 @@ async function membershipsForUser(userId: string): Promise<UsableMembership[]> {
 }
 
 export function registerAuthRoutes(app: FastifyInstance): void {
-  app.post('/auth/login', async (request, reply) => {
+  app.post('/auth/login', { preHandler: authLimiter.guard }, async (request, reply) => {
     const parsed = loginBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
     const { password, tenantSlug, context } = parsed.data
@@ -160,7 +161,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     })
   })
 
-  app.post('/auth/refresh', async (request, reply) => {
+  app.post('/auth/refresh', { preHandler: refreshLimiter.guard }, async (request, reply) => {
     const parsed = refreshBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
@@ -276,7 +277,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
    * that isn't true is when SMTP itself isn't configured, which isn't a
    * secret worth protecting.
    */
-  app.post('/auth/forgot-password', async (request, reply) => {
+  app.post('/auth/forgot-password', { preHandler: emailLimiter.guard }, async (request, reply) => {
     const parsed = forgotPasswordBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
     const email = parsed.data.email.toLowerCase()
@@ -301,7 +302,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true })
   })
 
-  app.post('/auth/reset-password', async (request, reply) => {
+  app.post('/auth/reset-password', { preHandler: authLimiter.guard }, async (request, reply) => {
     const parsed = resetPasswordBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
@@ -324,7 +325,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   })
 
   /** Sets a first password for a user created by an invite (see admin/memberships routes). */
-  app.post('/auth/accept-invite', async (request, reply) => {
+  app.post('/auth/accept-invite', { preHandler: authLimiter.guard }, async (request, reply) => {
     const parsed = acceptInviteBody.safeParse(request.body)
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 

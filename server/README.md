@@ -126,6 +126,10 @@ returns `{"ok":true}`.
 
 ## Deploying with Docker (a VPS with root access — Hostinger VPS included)
 
+> Going live with a real school: follow
+> [`docs/deployment-checklist.md`](../docs/deployment-checklist.md) —
+> secrets, email, backups and the restore drill, monitoring (`/ready`).
+
 Different path from the section above: this one's for when you have real
 SSH + Docker access, not the Node.js Selector. Everything — MongoDB, the
 API, and HTTPS — runs as containers on the one machine, via
