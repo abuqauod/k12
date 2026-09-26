@@ -13,6 +13,14 @@ export interface DashboardSummary {
   /** `pending`: planned places not yet started (SAMS 2.4). */
   enrollments?: { academicYear: string | null; active: number; withdrawals: number; transfers: number; pending?: number }
   approvals?: { pendingToDecide: number }
+  /** Work waiting across finance, HR and operations (Phases 3–5); only the
+   * counts the caller may see. */
+  attention?: Partial<
+    Record<
+      'paymentsToConfirm' | 'refundsToPay' | 'expensesToPay' | 'contractsEnding' | 'maintenanceOpen' | 'lowStock' | 'overdueLoans' | 'transportExpiring',
+      number
+    >
+  >
 }
 
 export function getDashboardSummary(

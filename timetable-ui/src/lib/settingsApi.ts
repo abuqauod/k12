@@ -12,6 +12,11 @@ export type LookupKind =
   | 'department'
   | 'position'
   | 'contractType'
+  | 'assetCategory'
+  | 'inventoryCategory'
+  | 'roomType'
+  | 'bookCategory'
+  | 'eventType'
 
 export interface LookupItem {
   code: string

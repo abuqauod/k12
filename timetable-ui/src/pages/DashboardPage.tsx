@@ -11,6 +11,7 @@ import { listInvoices } from '../lib/financeApi'
 import { listAuditLog } from '../lib/auditLog'
 import { getDashboardSummary } from '../lib/dashboardApi'
 import type { DashboardSummary } from '../lib/dashboardApi'
+import type { TranslationKey } from '../i18n/translations'
 import type { AuditEntry } from '../lib/auditLog'
 import { formatMinorUnits } from '../domain/finance'
 
@@ -91,6 +92,18 @@ function relativeTime(iso: string, lang: string): string {
   }
   return format.format(Math.round(seconds), 'second')
 }
+
+/** "Needs attention" rows (Phases 3–5) and where each is worked. */
+const ATTENTION: { key: keyof NonNullable<DashboardSummary['attention']>; to: string }[] = [
+  { key: 'paymentsToConfirm', to: '/finance?tab=confirmations' },
+  { key: 'refundsToPay', to: '/finance?tab=refunds' },
+  { key: 'expensesToPay', to: '/finance?tab=expenses' },
+  { key: 'contractsEnding', to: '/hr' },
+  { key: 'maintenanceOpen', to: '/operations?tab=maintenance' },
+  { key: 'lowStock', to: '/operations?tab=inventory' },
+  { key: 'overdueLoans', to: '/library?tab=loans' },
+  { key: 'transportExpiring', to: '/fleet' },
+]
 
 export function DashboardPage() {
   const { t, n, day, lang } = useI18n()
@@ -377,6 +390,23 @@ export function DashboardPage() {
           </div>
         )}
       </section>
+
+      {summary?.attention && Object.values(summary.attention).some((v) => (v ?? 0) > 0) && (
+        <section className="card" aria-labelledby="dash-attention">
+          <h2 id="dash-attention" className="card__title">
+            {t('dash.attention.title')}
+          </h2>
+          <ul className="attention-list">
+            {ATTENTION.filter((a) => (summary.attention?.[a.key] ?? 0) > 0).map((a) => (
+              <li key={a.key}>
+                <Link to={a.to}>
+                  <b className="mono">{n(summary.attention![a.key]!)}</b> {t(`dash.attention.${a.key}` as TranslationKey)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {canAudit && (
         <section className="card" aria-labelledby="dash-activity">

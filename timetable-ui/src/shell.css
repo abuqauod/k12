@@ -2582,3 +2582,78 @@ tr.is-muted td {
 .ops-page .table a:hover {
   text-decoration: underline;
 }
+
+/* ======================================== operations (SAMS Phase 5) ===== */
+.ops-page .tabs {
+  min-height: max-content;
+}
+
+.person-picker {
+  position: relative;
+  display: grid;
+  gap: 4px;
+}
+
+.person-picker__results {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.person-picker__results button {
+  width: 100%;
+  text-align: start;
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: inherit;
+  cursor: pointer;
+}
+
+.person-picker__results button:hover,
+.person-picker__results button:focus-visible {
+  background: var(--accent-soft);
+}
+
+.record-detail {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+
+/* Dashboard: work waiting across modules. */
+.attention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attention-list a {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  background: var(--warn-soft);
+}
+
+.attention-list a:hover {
+  border-color: var(--warn);
+}
