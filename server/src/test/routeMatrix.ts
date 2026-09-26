@@ -315,6 +315,11 @@ export const ROUTES: [Method, string, Role][] = [
   ['PUT', '/settings/payments', 'admin'],
   ['GET', '/finance/online-payments', 'viewer'],
   ['POST', `/finance/online-payments/${X}/check`, 'viewer'],
+  // SAMS 11.3 library desk.
+  ['GET', `/ops/library/borrower?card=${X}`, 'scheduler'],
+  ['POST', '/ops/library/return-by-barcode', 'scheduler'],
+  ['POST', `/ops/library/loans/${X}/bill`, 'scheduler'],
+  ['POST', '/ops/library/overdue/notify', 'scheduler'],
   // SAMS 11.2 gradebook: teachers (schedulers) read and enter; admins manage.
   ['GET', '/grades/settings', 'scheduler'],
   ['PUT', '/grades/settings', 'admin'],

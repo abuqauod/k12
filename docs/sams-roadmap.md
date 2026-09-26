@@ -557,6 +557,18 @@ Grades page):
   `grades.manage` (admins, registrar); a new **Teacher** role (registers,
   marks, behaviour notes).
 
+**Built — 11.3 library** (on top of 5.5, which already had books, copies,
+loans, renewals, limits and fines):
+- The desk takes the **ID card**: scanning a student or staff number (the
+  card's barcode) finds the borrower with their loans and fines; scanning a
+  copy **returns** it without looking the borrower up first.
+- A student's fine can be **added to their invoice** for the year (a
+  `Library fine — <title>` line, once per loan); the loan then counts as
+  settled at the library (`billed`) and no longer blocks borrowing.
+- **Overdue notices** to families (new `library_overdue` template): from
+  the Loans → Overdue list, or daily when switched on in Communication →
+  Automatic notices; each loan at most once per `repeatDays`.
+
 ## Phase 12 — Pilot run
 A realistic school built through the product itself (bulk import, fee
 structures, timetable, a term of attendance, fees, grades, report cards,

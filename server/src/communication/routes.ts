@@ -67,6 +67,7 @@ const settingsBody = z.object({
     })
     .optional(),
   documentExpiry: z.object({ auto: z.boolean(), daysBefore: z.number().int().min(1).max(180) }).optional(),
+  libraryOverdue: z.object({ auto: z.boolean(), repeatDays: z.number().int().min(1).max(60) }).optional(),
   portalDocumentCategories: z.array(z.string().min(1).max(64)).max(50).optional(),
 })
 

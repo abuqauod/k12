@@ -1615,7 +1615,8 @@ export interface BookCopyDoc extends Document {
   updatedAt: Date
 }
 
-export type FineStatus = 'none' | 'due' | 'paid' | 'waived'
+/** `billed`: added to the student's invoice (SAMS 11.3). */
+export type FineStatus = 'none' | 'due' | 'paid' | 'waived' | 'billed'
 
 export interface LoanDoc extends Document {
   _id: string
@@ -1818,6 +1819,8 @@ export const MESSAGE_KINDS = [
   'incident',
   /** SAMS 11.2: a child's report card is out. */
   'report_card',
+  /** SAMS 11.3: a library book is overdue. */
+  'library_overdue',
 ] as const
 export type MessageKind = (typeof MESSAGE_KINDS)[number]
 
@@ -2003,6 +2006,8 @@ export interface CommunicationSettingsDoc extends Document {
     repeatDays: number
   }
   documentExpiry: { auto: boolean; daysBefore: number }
+  /** SAMS 11.3: overdue library books, told to families every `repeatDays`. */
+  libraryOverdue?: { auto: boolean; repeatDays: number }
   /** `documentCategory` codes parents may see in the portal (verified only). */
   portalDocumentCategories: string[]
   /** UTC date the daily run last happened. */
