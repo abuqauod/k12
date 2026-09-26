@@ -46,6 +46,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
       hr: await callerHasPermission(request, 'hr.read'),
       ops: await callerHasPermission(request, 'ops.read'),
       transport: await callerHasPermission(request, 'transport.read'),
+      messages: await callerHasPermission(request, 'notifications.manage'),
     }
     const toDecide = await toDecideFilter(request)
 
@@ -118,7 +119,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
           : { academicYear: null, active: 0, withdrawals: 0, transfers: 0, pending: 0 }
       }
 
-      // Work waiting across Phases 3–5, each only with its read scope. Every
+      // Work waiting across Phases 3–6, each only with its read scope. Every
       // count is a plain query on the module's own records.
       const attention: Record<string, number> = {}
       const today = new Date().toISOString().slice(0, 10)
@@ -155,6 +156,10 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
           ...drivers.map((d) => d.licenseExpiry),
         ]
         attention.transportExpiring = dates.filter((d) => d !== null && d <= soon).length
+      }
+      if (can.messages) {
+        // SAMS 6.1: emails and texts the queue gave up on.
+        attention.messagesFailed = await ctx.notificationJobs.countDocuments({ ...branchFilter, status: 'dead' })
       }
       if (Object.keys(attention).length > 0) result.attention = attention
 

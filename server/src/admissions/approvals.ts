@@ -3,6 +3,7 @@ import type { ApplicationDoc, TenantContext } from '../db.js'
 import { registerApprovalType } from '../approvals/registry.js'
 import { recordAudit } from '../audit.js'
 import { checklist, checklistComplete } from './service.js'
+import { notifyContact, schoolName } from '../notifications/messages.js'
 
 /**
  * An admissions decision (SAMS 2.5) goes through the shared approval
@@ -35,6 +36,11 @@ async function check(
   }
   return { ok: true, app }
 }
+
+const DECISION_WORDS = {
+  en: { accepted: 'accepted', rejected: 'declined', waitlisted: 'placed on the waiting list' },
+  ar: { accepted: 'قبول', rejected: 'رفض', waitlisted: 'إدراج (قائمة الانتظار)' },
+} as const
 
 registerApprovalType<Payload>({
   type: 'admissions.decision',
@@ -86,6 +92,30 @@ registerApprovalType<Payload>({
       after: { status: payload.outcome, approvalRequestId: request._id },
       meta: { note: payload.note ?? null },
     })
+    // SAMS 6.3: the family hears the outcome.
+    const app = checked.app
+    const school = await schoolName(app.tenantId)
+    const contacts = app.guardians.filter((g) => g.primaryContact)
+    for (const g of contacts.length ? contacts : app.guardians.slice(0, 1)) {
+      await notifyContact(ctx, app.tenantId, {
+        kind: 'admission_decision',
+        sourceId: request._id,
+        branchId: app.branchId,
+        recipientId: `application:${app._id}:${g.id}`,
+        name: g.fullName,
+        email: g.email,
+        phone: g.phone || null,
+        language: g.preferredLanguage,
+        tokens: {
+          guardianName: g.fullName,
+          applicantName: `${app.applicant.givenName} ${app.applicant.familyName}`.trim(),
+          applicationNumber: app.applicationNumber,
+          decision: DECISION_WORDS[g.preferredLanguage][payload.outcome],
+          schoolName: school,
+        },
+        actorId,
+      })
+    }
     return { ok: true }
   },
 })

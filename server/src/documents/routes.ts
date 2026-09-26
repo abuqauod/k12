@@ -20,6 +20,7 @@ import { parentHiddenFromBranches } from '../parents/service.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
 import { gridFsStore, sniffMime, type DocumentStore } from './store.js'
 import { signFileLink, verifyFileLink } from './fileTokens.js'
+import { documentRejected } from '../communication/notices.js'
 
 /**
  * Documents (SAMS 2.1): files attached to a student, a parent, an
@@ -462,6 +463,9 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
         before: { documentId: id, status: access.doc.verification.status },
         after: { documentId: id, status: verification.status, note },
       })
+      if (verification.status === 'rejected' && access.doc.verification.status !== 'rejected') {
+        await documentRejected(ctx, tenantId, after, request.auth!.sub)
+      }
       return after
     })
     if (!updated) return reply.code(409).send({ error: 'NOT_CURRENT_VERSION' })

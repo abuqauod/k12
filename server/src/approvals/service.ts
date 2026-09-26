@@ -4,6 +4,8 @@ import { withTenant } from '../db.js'
 import type { ApprovalComment, ApprovalRequestDoc, ApprovalStatus, TenantContext } from '../db.js'
 import { recordAudit } from '../audit.js'
 import { approvalType } from './registry.js'
+import { notifyUser } from '../notifications/messages.js'
+import { fill, loadTemplate } from '../notifications/templates.js'
 
 /**
  * Lifecycle of an approval request (SAMS 1.10). Authorization (scopes,
@@ -187,6 +189,21 @@ export async function transition(
         if (!applied.ok) throw new ApprovalAbort(applied.error)
       } else {
         await def?.onClosed?.(ctx, after, params.to, params.actorId)
+      }
+      // SAMS 6.1: the requester hears about a decision in their inbox.
+      if (deciding && !before.requestedBy.startsWith('apikey:')) {
+        const text = await loadTemplate(ctx, tenantId, 'approval_decided')
+        if (text.enabled) {
+          const tokens = { summary: before.summary, outcome: params.to }
+          await notifyUser(ctx, tenantId, {
+            userId: before.requestedBy,
+            kind: 'approval_decided',
+            sourceId: id,
+            title: fill(text.subject, tokens),
+            body: fill(text.body, tokens),
+            link: '/approvals',
+          })
+        }
       }
       await recordAudit(ctx.auditLog, {
         actorId: params.actorId,

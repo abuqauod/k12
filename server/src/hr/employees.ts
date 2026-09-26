@@ -346,7 +346,7 @@ export function registerEmployeeRoutes(app: FastifyInstance): void {
     const { userId } = parsed.data
     if (userId) {
       const member = await withoutTenant((db) => db.memberships.findOne({ _id: `${tenantId}:${userId}` }))
-      if (!member) return reply.code(404).send({ error: 'UNKNOWN_MEMBER' })
+      if (!member || member.roleKey === 'parent') return reply.code(404).send({ error: 'UNKNOWN_MEMBER' })
     }
     const result = await transact(
       tenantId,

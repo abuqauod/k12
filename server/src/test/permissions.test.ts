@@ -229,6 +229,39 @@ const ROUTES: [Method, string, Role][] = [
   ['POST', `/documents/${X}/versions`, 'scheduler'],
   ['POST', `/documents/${X}/verify`, 'admin'],
   ['POST', `/documents/${X}/archive`, 'admin'],
+  // Phase 6 communication. The inbox is everyone's own.
+  ['GET', '/inbox', 'viewer'],
+  ['POST', '/inbox/read-all', 'viewer'],
+  ['GET', '/announcements', 'admin'],
+  ['GET', `/announcements/${X}`, 'admin'],
+  ['POST', '/announcements', 'admin'],
+  ['PATCH', `/announcements/${X}`, 'admin'],
+  ['POST', `/announcements/${X}/publish`, 'admin'],
+  ['POST', `/announcements/${X}/archive`, 'admin'],
+  ['GET', '/communication/templates', 'admin'],
+  ['PUT', '/communication/templates/fee_reminder', 'admin'],
+  ['DELETE', '/communication/templates/fee_reminder', 'admin'],
+  ['GET', '/communication/settings', 'admin'],
+  ['PUT', '/communication/settings', 'admin'],
+  ['GET', '/communication/log', 'admin'],
+  ['POST', `/communication/log/${X}/retry`, 'admin'],
+  ['POST', '/communication/documents-expiring/send', 'admin'],
+  ['GET', '/finance/reminders', 'admin'],
+  ['POST', '/finance/reminders/send', 'admin'],
+  ['GET', `/parents/${X}/portal`, 'admin'],
+  ['POST', `/parents/${X}/portal/enable`, 'admin'],
+  ['POST', `/parents/${X}/portal/resend`, 'admin'],
+  ['POST', `/parents/${X}/portal/disable`, 'admin'],
+]
+
+/** Only a parent portal login holds `portal.parent`; no staff rank does. */
+const PORTAL_ROUTES: [Method, string][] = [
+  ['GET', '/portal/me'],
+  ['GET', `/portal/children/${X}`],
+  ['GET', `/portal/children/${X}/finance`],
+  ['GET', `/portal/children/${X}/documents`],
+  ['POST', `/portal/documents/${X}/link`],
+  ['GET', '/portal/announcements'],
 ]
 
 const RANK: Record<Role, number> = { viewer: 0, scheduler: 1, admin: 2, owner: 3 }
@@ -252,6 +285,18 @@ describe('role × route matrix', () => {
         const allowed = RANK[role] >= RANK[minimum]
         if (allowed) assert.notEqual(res.error, 'FORBIDDEN', `${role} should pass (got ${res.status})`)
         else assert.equal(res.error, 'FORBIDDEN', `${role} should be denied (got ${res.status} ${res.error})`)
+      }
+    })
+  }
+})
+
+describe('parent portal routes', () => {
+  for (const [method, path] of PORTAL_ROUTES) {
+    test(`${method} ${path} refuses every staff rank`, async () => {
+      for (const role of ROLES) {
+        const res = await call(fx.app, fx.tokens[role], method, path, method === 'GET' ? undefined : {})
+        assert.notEqual(res.error, 'Not Found', `no such route: ${method} ${path}`)
+        assert.equal(res.error, 'FORBIDDEN', `${role} should be denied`)
       }
     })
   }

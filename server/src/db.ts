@@ -1016,6 +1016,8 @@ export interface InvoiceDoc extends Document {
   installments?: InvoiceInstallment[]
   /** SAMS 3.2; absent = none. `total` is the lines' net sum less these. */
   adjustments?: InvoiceAdjustment[]
+  /** SAMS 6.3: the last day families were reminded about it; absent = never. */
+  remindedAt?: string | null
   status: InvoiceStatus
   notes: string | null
   createdAt: Date
@@ -1796,6 +1798,21 @@ export interface TransportSettingsDoc extends Document {
 
 export type NotifyChannel = 'email' | 'sms'
 
+/** SAMS 6.1: every kind of message the school sends. `absence` keeps its
+ * per-branch templates (`NotificationSettingsDoc`); the others use
+ * `MessageTemplateDoc`. */
+export const MESSAGE_KINDS = [
+  'absence',
+  'announcement',
+  'fee_reminder',
+  'payment_received',
+  'admission_decision',
+  'document_rejected',
+  'document_expiring',
+  'approval_decided',
+] as const
+export type MessageKind = (typeof MESSAGE_KINDS)[number]
+
 export interface NotificationSettingsDoc extends Document {
   /** `${tenantId}:${branchId}` — one per branch. */
   _id: string
@@ -1871,6 +1888,13 @@ export interface NotificationJobDoc extends Document {
   /** 'auto' = the scheduled sweep; 'manual' = someone pressed the button. */
   trigger: 'auto' | 'manual'
   actorId: string | null
+  /** SAMS 6.1: what the message is about. Absent = an absence notice (every
+   * job before 6.1). For other kinds `studentId` may be '' (an applicant)
+   * and `date` is the day it was queued. */
+  kind?: MessageKind
+  /** The record the message is about: an invoice, payment, application,
+   * document or announcement id. */
+  sourceId?: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -1886,6 +1910,96 @@ export interface NotificationAttemptDoc extends Document {
   error: string | null
   startedAt: Date
   finishedAt: Date
+}
+
+// --------------------------------------------------------- communication --
+// SAMS Phase 6. Templates for each message kind, the in-app inbox (staff and
+// portal parents alike), announcements, and the tenant's automatic notice
+// settings. Email and SMS still go through the queue above.
+
+/** One per tenant and kind (`${tenantId}:${kind}`). A kind with no row uses
+ * the defaults in notifications/templates.ts. */
+export interface MessageTemplateDoc extends Document {
+  _id: string
+  tenantId: string
+  kind: MessageKind
+  /** Off = nothing of this kind is sent, in any channel. */
+  enabled: boolean
+  subject: string
+  body: string
+  smsBody: string
+  subjectAr: string
+  bodyAr: string
+  smsBodyAr: string
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+export interface InboxItemDoc extends Document {
+  /** Deterministic (`${tenantId}:${userId}:${kind}:${sourceId}`), so the same
+   * notice never lands twice. */
+  _id: string
+  tenantId: string
+  userId: string
+  kind: MessageKind
+  sourceId: string
+  title: string
+  body: string
+  /** A path in the app to open, e.g. `/approvals` or `/portal/children/…`. */
+  link: string | null
+  createdAt: Date
+  readAt: Date | null
+}
+
+export type AnnouncementAudience = 'school' | 'branch' | 'grade' | 'class' | 'bus'
+export type AnnouncementStatus = 'draft' | 'published' | 'archived'
+
+export interface AnnouncementDoc extends Document {
+  _id: string
+  tenantId: string
+  title: string
+  body: string
+  titleAr: string | null
+  bodyAr: string | null
+  audience: {
+    type: AnnouncementAudience
+    /** Required for every type but `school`. */
+    branchId: string | null
+    gradeLevels: string[]
+    classIds: string[]
+    busIds: string[]
+  }
+  /** In-app always; these are sent on top to families who opted in. */
+  channels: NotifyChannel[]
+  status: AnnouncementStatus
+  /** Who it went to, fixed at publishing: the portal shows it to parents
+   * of these students. */
+  studentIds: string[]
+  sent: { families: number; inApp: number; email: number; sms: number } | null
+  publishedAt: Date | null
+  publishedBy: string | null
+  createdBy: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** One per tenant (`_id` = tenantId): the automatic notices. */
+export interface CommunicationSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  feeReminders: {
+    auto: boolean
+    /** Remind this many days before an installment or invoice falls due. */
+    daysBefore: number
+    /** Never remind about the same invoice more often than this. */
+    repeatDays: number
+  }
+  documentExpiry: { auto: boolean; daysBefore: number }
+  /** `documentCategory` codes parents may see in the portal (verified only). */
+  portalDocumentCategories: string[]
+  /** UTC date the daily run last happened. */
+  lastRunDate: string | null
+  updatedAt: Date
 }
 
 /**
@@ -2042,6 +2156,10 @@ export interface TenantContext {
   buses: TenantScope<BusDoc>
   stops: TenantScope<StopDoc>
   transportSettings: TenantScope<TransportSettingsDoc>
+  messageTemplates: TenantScope<MessageTemplateDoc>
+  inboxItems: TenantScope<InboxItemDoc>
+  announcements: TenantScope<AnnouncementDoc>
+  communicationSettings: TenantScope<CommunicationSettingsDoc>
 }
 
 /**
@@ -2162,6 +2280,14 @@ export async function withTenant<T>(
           tenantId,
           session,
         ),
+        messageTemplates: new TenantScope(db.collection<MessageTemplateDoc>('messageTemplates'), tenantId, session),
+        inboxItems: new TenantScope(db.collection<InboxItemDoc>('inboxItems'), tenantId, session),
+        announcements: new TenantScope(db.collection<AnnouncementDoc>('announcements'), tenantId, session),
+        communicationSettings: new TenantScope(
+          db.collection<CommunicationSettingsDoc>('communicationSettings'),
+          tenantId,
+          session,
+        ),
       })
     })
     return result as T
@@ -2194,6 +2320,7 @@ export interface UnscopedDb {
   schoolCalendars: Collection<SchoolCalendarDoc>
   notificationJobs: Collection<NotificationJobDoc>
   notificationAttempts: Collection<NotificationAttemptDoc>
+  communicationSettings: Collection<CommunicationSettingsDoc>
   locks: Collection<LockDoc>
 }
 
@@ -2221,6 +2348,7 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     schoolCalendars: database.collection<SchoolCalendarDoc>('schoolCalendars'),
     notificationJobs: database.collection<NotificationJobDoc>('notificationJobs'),
     notificationAttempts: database.collection<NotificationAttemptDoc>('notificationAttempts'),
+    communicationSettings: database.collection<CommunicationSettingsDoc>('communicationSettings'),
     locks: database.collection<LockDoc>('locks'),
   })
 }
