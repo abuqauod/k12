@@ -336,6 +336,16 @@ export function DashboardPage() {
                 })}
               />
             )}
+            {summary?.admissions && (
+              <StatTile
+                to="/admissions"
+                icon={ICON.record}
+                label={t('nav.admissions')}
+                value={n(summary.admissions.open)}
+                tone={summary.admissions.open > 0 ? 'warn' : 'neutral'}
+                hint={t('dash.admissions.hint', { accepted: n(summary.admissions.accepted) })}
+              />
+            )}
             {summary?.enrollments && (
               <StatTile
                 to="/students"
@@ -343,10 +353,15 @@ export function DashboardPage() {
                 label={t('dash.enrollments.title', { year: summary.enrollments.academicYear ?? '—' })}
                 value={n(summary.enrollments.active)}
                 tone={summary.enrollments.withdrawals > 0 ? 'warn' : 'neutral'}
-                hint={t('dash.enrollments.hint', {
-                  withdrawals: n(summary.enrollments.withdrawals),
-                  transfers: n(summary.enrollments.transfers),
-                })}
+                hint={[
+                  t('dash.enrollments.hint', {
+                    withdrawals: n(summary.enrollments.withdrawals),
+                    transfers: n(summary.enrollments.transfers),
+                  }),
+                  summary.enrollments.pending ? t('dash.enrollments.pending', { n: n(summary.enrollments.pending) }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               />
             )}
             {summary?.approvals && (

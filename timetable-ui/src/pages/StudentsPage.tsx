@@ -238,6 +238,11 @@ export function StudentsPage() {
         </div>
         <div className="page__actions">
           {pendingSaves > 0 && <span className="card__hint">{t('students.saving')}</span>}
+          {can('enrollments.assign') && (
+            <button type="button" className="btn" onClick={() => navigate('/students/year-end')}>
+              {t('yearEnd.title')}
+            </button>
+          )}
           <button type="button" className="btn btn--primary" onClick={add}>
             {t('students.add')}
           </button>

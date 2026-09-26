@@ -116,6 +116,7 @@ export function registerClassRoutes(app: FastifyInstance): void {
       if (!branch) return { error: 'UNKNOWN_BRANCH' as const }
       const clash = await ctx.classes.findOne({
         branchId: parsed.data.branchId,
+        academicYearId: parsed.data.academicYearId ?? null,
         gradeLevel: parsed.data.gradeLevel,
         name: parsed.data.name,
       })
@@ -159,7 +160,11 @@ export function registerClassRoutes(app: FastifyInstance): void {
       const branch = await ctx.branches.findOne({ _id: parsed.data.branchId })
       if (!branch) return null
       const existing = await ctx.classes
-        .find({ branchId: parsed.data.branchId, gradeLevel: parsed.data.gradeLevel })
+        .find({
+          branchId: parsed.data.branchId,
+          academicYearId: parsed.data.academicYearId ?? null,
+          gradeLevel: parsed.data.gradeLevel,
+        })
         .toArray()
       const have = new Set(existing.map((c) => c.name))
       const made: SchoolClassDoc[] = []
@@ -207,9 +212,11 @@ export function registerClassRoutes(app: FastifyInstance): void {
       if (!current) return { error: 'NOT_FOUND' as const }
       const nextGrade = parsed.data.gradeLevel ?? current.gradeLevel
       const nextName = parsed.data.name ?? current.name
-      if (nextGrade !== current.gradeLevel || nextName !== current.name) {
+      const nextYear = 'academicYearId' in parsed.data ? (parsed.data.academicYearId ?? null) : current.academicYearId
+      if (nextGrade !== current.gradeLevel || nextName !== current.name || nextYear !== current.academicYearId) {
         const clash = await ctx.classes.findOne({
           branchId: current.branchId,
+          academicYearId: nextYear,
           gradeLevel: nextGrade,
           name: nextName,
         })

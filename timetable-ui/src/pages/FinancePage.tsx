@@ -7,12 +7,26 @@ import { listAcademicYears } from '../lib/academicYearsApi'
 import type { AcademicYear } from '../lib/academicYearsApi'
 import { FeeStructureDialog } from '../components/FeeStructureDialog'
 import { InvoiceDetailDialog } from '../components/InvoiceDetailDialog'
+import { DiscountTypesCard, ConfirmationsTab, RefundsTab } from '../components/finance/QueueTabs'
+import { ExpensesTab } from '../components/finance/ExpensesTab'
+import { ReportsTab } from '../components/finance/ReportsTab'
+import { ScholarshipsPanel } from '../components/finance/ScholarshipsPanel'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
 
 type StatusFilter = InvoiceStatus | 'ALL'
+
+type Tab = 'invoices' | 'confirmations' | 'scholarships' | 'refunds' | 'expenses' | 'reports'
+const TABS: { id: Tab; label: TranslationKey; scope?: string }[] = [
+  { id: 'invoices', label: 'billing.invoices' },
+  { id: 'confirmations', label: 'fin.tab.confirmations' },
+  { id: 'scholarships', label: 'fin.scholarships' },
+  { id: 'refunds', label: 'fin.refunds' },
+  { id: 'expenses', label: 'fin.expenses' },
+  { id: 'reports', label: 'fin.tab.reports', scope: 'reports.finance' },
+]
 
 export function FinancePage() {
   const { t } = useI18n()
@@ -32,6 +46,18 @@ export function FinancePage() {
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null)
   // ?invoice=<id> (from global search) opens that invoice once, then clears.
   const [searchParams, setSearchParams] = useSearchParams()
+  // The tab is in the URL (?tab=), like the student profile.
+  const tabs = TABS.filter((x) => !x.scope || can(x.scope))
+  const requested = searchParams.get('tab') as Tab | null
+  const tab: Tab = tabs.some((x) => x.id === requested) ? requested! : 'invoices'
+  const selectTab = (next: Tab) =>
+    setSearchParams(
+      (prev) => {
+        prev.set('tab', next)
+        return prev
+      },
+      { replace: true },
+    )
   useEffect(() => {
     const linked = searchParams.get('invoice')
     if (!linked) return
@@ -81,7 +107,7 @@ export function FinancePage() {
   }, [refresh])
 
   return (
-    <div className="page">
+    <div className="page finance-page">
       <header className="page__head">
         <div>
           <h1 className="page__title">{t('billing.title')}</h1>
@@ -109,78 +135,125 @@ export function FinancePage() {
         </div>
       </div>
 
-      <div className="card-row">
-        <section className="card">
-          <div className="page__actions" style={{ marginBottom: 8 }}>
-            <h2 className="card__title" style={{ margin: 0, flex: 1 }}>{t('billing.feeStructures')}</h2>
-            {canManageFees && branchId && (
-              <button type="button" className="btn btn--sm" onClick={() => setEditingStructure('new')}>
-                {t('billing.feeStructure.new')}
-              </button>
-            )}
-          </div>
-          {structures.length === 0 ? (
-            <p className="card__empty">{t('billing.feeStructures.none')}</p>
-          ) : (
-            structures.map((fs) => (
-              <button
-                key={fs.id}
-                type="button"
-                className="stat-row"
-                style={{ width: '100%', textAlign: 'start', cursor: 'pointer', background: 'none', border: 'none' }}
-                onClick={() => setEditingStructure(fs)}
-              >
-                <span>
-                  {fs.gradeLevel} — {fs.name}
-                </span>
-                <b>{formatMinorUnits(fs.lineItems.reduce((sum, l) => sum + l.amount, 0))}</b>
-              </button>
-            ))
-          )}
-        </section>
+      <div className="tabs" role="tablist" aria-label={t('billing.title')}>
+        {tabs.map((x) => (
+          <button
+            key={x.id}
+            type="button"
+            role="tab"
+            id={`tab-${x.id}`}
+            aria-selected={tab === x.id}
+            aria-controls={`panel-${x.id}`}
+            className="tabs__tab"
+            onClick={() => selectTab(x.id)}
+          >
+            {t(x.label)}
+          </button>
+        ))}
+      </div>
 
-        <section className="card">
-          <div className="page__actions" style={{ marginBottom: 8 }}>
-            <h2 className="card__title" style={{ margin: 0, flex: 1 }}>{t('billing.invoices')}</h2>
-            <select className="input input--sm" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
-              <option value="ALL">{t('parents.filter.allStatuses')}</option>
-              <option value="open">{t('billing.status.open')}</option>
-              <option value="partially_paid">{t('billing.status.partially_paid')}</option>
-              <option value="paid">{t('billing.status.paid')}</option>
-              <option value="void">{t('billing.status.void')}</option>
-            </select>
-          </div>
-          {loading && <p className="card__hint">{t('parents.loading')}</p>}
-          {!loading && invoices.length === 0 && <p className="card__empty">{t('billing.none')}</p>}
-          {!loading && invoices.length > 0 && (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t('billing.col.number')}</th>
-                  <th>{t('billing.col.total')}</th>
-                  <th>{t('billing.col.status')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td>
-                      <button type="button" className="btn btn--ghost btn--sm" style={{ padding: 0 }} onClick={() => setOpenInvoiceId(invoice.id)}>
-                        {invoice.invoiceNumber}
-                      </button>
-                    </td>
-                    <td className="mono">{formatMinorUnits(invoice.total)}</td>
-                    <td>
-                      <span className={`chip${invoice.status === 'paid' ? ' chip--on' : ''}`}>
-                        {t(`billing.status.${invoice.status}` as TranslationKey)}
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="finance-panel">
+        {tab === 'confirmations' && <ConfirmationsTab branchId={branchId} onOpenInvoice={setOpenInvoiceId} />}
+        {tab === 'scholarships' && <ScholarshipsPanel branchId={branchId || undefined} />}
+        {tab === 'refunds' && <RefundsTab branchId={branchId} onOpenInvoice={setOpenInvoiceId} />}
+        {tab === 'expenses' && <ExpensesTab branchId={branchId} />}
+        {tab === 'reports' && <ReportsTab branchId={branchId} year={years.find((y) => y.id === academicYearId)} />}
+        {tab === 'invoices' && (
+          <div className="card-row">
+            <div className="finance-side">
+              <section className="card">
+                <div className="page__actions" style={{ marginBottom: 8 }}>
+                  <h2 className="card__title" style={{ margin: 0, flex: 1 }}>
+                    {t('billing.feeStructures')}
+                  </h2>
+                  {canManageFees && branchId && (
+                    <button type="button" className="btn btn--sm" onClick={() => setEditingStructure('new')}>
+                      {t('billing.feeStructure.new')}
+                    </button>
+                  )}
+                </div>
+                {structures.length === 0 ? (
+                  <p className="card__empty">{t('billing.feeStructures.none')}</p>
+                ) : (
+                  structures.map((fs) => (
+                    <button
+                      key={fs.id}
+                      type="button"
+                      className="stat-row"
+                      style={{ width: '100%', textAlign: 'start', cursor: 'pointer', background: 'none', border: 'none' }}
+                      onClick={() => setEditingStructure(fs)}
+                    >
+                      <span>
+                        {fs.gradeLevel} — {fs.name}
                       </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+                      <b>{formatMinorUnits(fs.lineItems.reduce((sum, l) => sum + l.amount, 0))}</b>
+                    </button>
+                  ))
+                )}
+              </section>
+              <DiscountTypesCard />
+            </div>
+
+            <section className="card">
+              <div className="page__actions" style={{ marginBottom: 8 }}>
+                <h2 className="card__title" style={{ margin: 0, flex: 1 }}>
+                  {t('billing.invoices')}
+                </h2>
+                <select className="input input--sm" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
+                  <option value="ALL">{t('parents.filter.allStatuses')}</option>
+                  <option value="open">{t('billing.status.open')}</option>
+                  <option value="partially_paid">{t('billing.status.partially_paid')}</option>
+                  <option value="paid">{t('billing.status.paid')}</option>
+                  <option value="void">{t('billing.status.void')}</option>
+                </select>
+              </div>
+              {loading && <p className="card__hint">{t('parents.loading')}</p>}
+              {!loading && invoices.length === 0 && <p className="card__empty">{t('billing.none')}</p>}
+              {!loading && invoices.length > 0 && (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>{t('billing.col.number')}</th>
+                      <th>{t('billing.col.total')}</th>
+                      <th>{t('fin.outstanding')}</th>
+                      <th>{t('billing.col.status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map((invoice) => (
+                      <tr key={invoice.id}>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            style={{ padding: 0 }}
+                            onClick={() => setOpenInvoiceId(invoice.id)}
+                          >
+                            {invoice.invoiceNumber}
+                          </button>
+                        </td>
+                        <td className="mono">{formatMinorUnits(invoice.total)}</td>
+                        <td className="mono">
+                          {invoice.status === 'void' ? '—' : formatMinorUnits(invoice.outstanding ?? 0)}
+                          {(invoice.overdue ?? 0) > 0 && (
+                            <span className="chip chip--bad" style={{ marginInlineStart: 6 }}>
+                              {t('fin.overdue')}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`chip${invoice.status === 'paid' ? ' chip--on' : ''}`}>
+                            {t(`billing.status.${invoice.status}` as TranslationKey)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </div>
+        )}
       </div>
 
       {editingStructure && branchId && (

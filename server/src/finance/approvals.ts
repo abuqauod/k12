@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { InvoiceDoc, TenantContext } from '../db.js'
 import { registerApprovalType } from '../approvals/registry.js'
-import { computeLineNet, invoicePaidTotal, updateLineItem } from './service.js'
+import { computeLineNet, invoicePaidTotal, price, updateLineItem } from './service.js'
 
 /**
  * First consumer of the shared approval engine (SAMS 1.10): a discount on an
@@ -69,8 +69,10 @@ registerApprovalType<Payload>({
     const checked = await check(ctx, request.entityId, payload, 'approve')
     if (!checked.ok) return checked
     // The discounted total must not fall below what has already been paid.
-    const line = checked.invoice.lineItems.find((l) => l.id === payload.lineItemId)!
-    const newTotal = checked.invoice.total - line.netAmount + computeLineNet(line.amount, payload.discount)
+    const lines = checked.invoice.lineItems.map((l) =>
+      l.id === payload.lineItemId ? { ...l, netAmount: computeLineNet(l.amount, payload.discount) } : l,
+    )
+    const newTotal = price(lines, checked.invoice.adjustments).total
     if (newTotal < (await invoicePaidTotal(ctx, request.entityId))) return { ok: false, error: 'DISCOUNT_BELOW_PAID' }
     const updated = await updateLineItem(ctx, request.entityId, payload.lineItemId, {
       discount: payload.discount,

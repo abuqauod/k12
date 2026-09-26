@@ -8,7 +8,10 @@ export interface DashboardSummary {
   parents?: { total: number; multiChild: number; incomplete: number }
   /** SAMS 2.2: enrolled students whose record is missing something. */
   students?: { enrolled: number; incomplete: number }
-  enrollments?: { academicYear: string | null; active: number; withdrawals: number; transfers: number }
+  /** SAMS 2.5: waiting on the school, and accepted but not yet converted. */
+  admissions?: { open: number; accepted: number }
+  /** `pending`: planned places not yet started (SAMS 2.4). */
+  enrollments?: { academicYear: string | null; active: number; withdrawals: number; transfers: number; pending?: number }
   approvals?: { pendingToDecide: number }
 }
 

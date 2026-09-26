@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { MongoServerError } from 'mongodb'
 import { z } from 'zod'
 import { config } from '../config.js'
@@ -22,7 +22,8 @@ import { gridFsStore, sniffMime, type DocumentStore } from './store.js'
 import { signFileLink, verifyFileLink } from './fileTokens.js'
 
 /**
- * Documents (SAMS 2.1): files attached to a student or a parent.
+ * Documents (SAMS 2.1): files attached to a student, a parent, an
+ * application (2.5), a scholarship or an expense (3.2, 3.5).
  *
  * Access follows the owner. Seeing an owner's documents needs the owner's
  * own read scope (`students.read` / `parents.read`) and its branch, checked
@@ -43,10 +44,39 @@ const store: DocumentStore = gridFsStore
 const OWNER_READ_SCOPE: Record<DocumentOwnerType, PermissionScope> = {
   student: 'students.read',
   parent: 'parents.read',
+  // SAMS 2.5: an applicant's documents; moved to the student on conversion.
+  application: 'admissions.read',
+  // SAMS 3.2 / 3.5: scholarship evidence, vendor invoices.
+  scholarship: 'finance.read',
+  expense: 'finance.read',
+}
+
+/** Who may add files to an owner besides `documents.upload` holders: the
+ * staff who raise that kind of record collect its papers. */
+const OWNER_UPLOAD_SCOPE: Partial<Record<DocumentOwnerType, PermissionScope>> = {
+  application: 'admissions.manage',
+  scholarship: 'finance.scholarship.request',
+  expense: 'finance.expense.create',
+}
+
+/** Owners that are a single branch-scoped record. */
+async function recordBranch(ctx: TenantContext, ownerType: DocumentOwnerType, ownerId: string) {
+  const find = { _id: ownerId }
+  const doc =
+    ownerType === 'application'
+      ? await ctx.applications.findOne(find)
+      : ownerType === 'scholarship'
+        ? await ctx.scholarships.findOne(find)
+        : ownerType === 'expense'
+          ? await ctx.expenses.findOne(find)
+          : ownerType === 'student'
+            ? await ctx.students.findOne(find)
+            : null
+  return doc ? { branchId: doc.branchId } : null
 }
 
 const ownerQuery = z.object({
-  ownerType: z.enum(['student', 'parent']),
+  ownerType: z.enum(['student', 'parent', 'application', 'scholarship', 'expense']),
   ownerId: z.string().min(1).max(64),
 })
 
@@ -102,13 +132,13 @@ async function ownerAccess(
   if (!(await callerHasPermission(request, OWNER_READ_SCOPE[ownerType]))) {
     return { ok: false, status: 403, error: 'FORBIDDEN' }
   }
-  if (ownerType === 'student') {
-    const student = await withTenant(tenantId, (ctx) => ctx.students.findOne({ _id: ownerId }))
-    if (!student) return { ok: false, status: 404, error: 'OWNER_NOT_FOUND' }
-    if (!(await callerCanUseBranch(request, student.branchId))) {
+  if (ownerType !== 'parent') {
+    const owner = await withTenant(tenantId, (ctx) => recordBranch(ctx, ownerType, ownerId))
+    if (!owner) return { ok: false, status: 404, error: 'OWNER_NOT_FOUND' }
+    if (!(await callerCanUseBranch(request, owner.branchId))) {
       return { ok: false, status: 403, error: 'BRANCH_FORBIDDEN' }
     }
-    return { ok: true, branchId: student.branchId }
+    return { ok: true, branchId: owner.branchId }
   }
   const allowed = await callerBranchIds(request)
   const found = await withTenant(tenantId, async (ctx) => {
@@ -120,6 +150,14 @@ async function ownerAccess(
   if (found === 'missing') return { ok: false, status: 404, error: 'OWNER_NOT_FOUND' }
   if (found === 'hidden') return { ok: false, status: 403, error: 'BRANCH_FORBIDDEN' }
   return { ok: true, branchId: null }
+}
+
+/** Passes with any one of the scopes; the handler narrows it further. */
+function requireAnyPermission(scopes: PermissionScope[]) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    for (const scope of scopes) if (await callerHasPermission(request, scope)) return
+    await reply.code(403).send({ error: 'FORBIDDEN', required: scopes[0] })
+  }
 }
 
 /** Loads a document and checks the caller may see its owner. */
@@ -217,7 +255,21 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       { parseAs: 'buffer', bodyLimit: config.maxDocumentBytes },
       (_request, body, done) => done(null, body),
     )
-    const uploadOptions = { ...scoped('documents.upload'), bodyLimit: config.maxDocumentBytes }
+    // The scope is checked per owner below: documents.upload in general, or
+    // the owner kind's own scope (OWNER_UPLOAD_SCOPE — e.g. intake staff
+    // collect an applicant's papers, SAMS 2.5).
+    const uploadOptions = {
+      preHandler: [
+        ...signedIn,
+        requireAnyPermission(['documents.upload', ...new Set(Object.values(OWNER_UPLOAD_SCOPE))]),
+      ],
+      bodyLimit: config.maxDocumentBytes,
+    }
+    const mayUpload = async (request: FastifyRequest, ownerType: DocumentOwnerType) => {
+      if (await callerHasPermission(request, 'documents.upload')) return true
+      const own = OWNER_UPLOAD_SCOPE[ownerType]
+      return own !== undefined && (await callerHasPermission(request, own))
+    }
 
     /** Checks the bytes; returns the detected type or an error reply body. */
     type FileCheck = { data: Buffer; mime: string } | { error: string; status: number }
@@ -234,6 +286,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const file = readFile(request.body)
       if ('error' in file) return reply.code(file.status).send({ error: file.error })
       const { ownerType, ownerId, category, expiresAt } = parsed.data
+      if (!(await mayUpload(request, ownerType))) return reply.code(403).send({ error: 'FORBIDDEN' })
       const tenantId = request.auth!.tenantId!
       const access = await ownerAccess(request, tenantId, ownerType, ownerId)
       if (!access.ok) return reply.code(access.status).send({ error: access.error })
@@ -302,6 +355,7 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
       const tenantId = request.auth!.tenantId!
       const access = await documentAccess(request, tenantId, id)
       if (!access.ok) return reply.code(access.status).send({ error: access.error })
+      if (!(await mayUpload(request, access.doc.ownerType))) return reply.code(403).send({ error: 'FORBIDDEN' })
       if (access.doc.archivedAt) return reply.code(409).send({ error: 'ARCHIVED' })
       if (!access.doc.isCurrent) return reply.code(409).send({ error: 'NOT_CURRENT_VERSION' })
 
@@ -485,6 +539,6 @@ export function registerDocumentRoutes(app: FastifyInstance): void {
 
 /** The owner's current branch, for a new version's `branchId`. */
 async function ownerBranch(ctx: TenantContext, doc: DocumentDoc): Promise<string | null> {
-  if (doc.ownerType !== 'student') return null
-  return (await ctx.students.findOne({ _id: doc.ownerId }))?.branchId ?? doc.branchId
+  if (doc.ownerType === 'parent') return null
+  return (await recordBranch(ctx, doc.ownerType, doc.ownerId))?.branchId ?? doc.branchId
 }

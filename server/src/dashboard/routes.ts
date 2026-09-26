@@ -40,6 +40,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
       parents: await callerHasPermission(request, 'parents.read'),
       enrollments: await callerHasPermission(request, 'enrollments.read'),
       students: await callerHasPermission(request, 'students.read'),
+      admissions: await callerHasPermission(request, 'admissions.read'),
     }
     const toDecide = await toDecideFilter(request)
 
@@ -85,6 +86,18 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
         }
       }
 
+      if (can.admissions) {
+        // SAMS 2.5: applications waiting on the school, and accepted ones
+        // not yet converted into students.
+        result.admissions = {
+          open: await ctx.applications.countDocuments({
+            ...branchFilter,
+            status: { $in: ['submitted', 'under_review', 'waitlisted'] },
+          }),
+          accepted: await ctx.applications.countDocuments({ ...branchFilter, status: 'accepted' }),
+        }
+      }
+
       if (can.enrollments) {
         const year = await ctx.academicYears.findOne({ current: true })
         const inYear = year ? { academicYearId: year._id, ...branchFilter } : null
@@ -94,8 +107,10 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
               active: await ctx.enrollments.countDocuments({ ...inYear, status: 'active' }),
               withdrawals: await ctx.enrollments.countDocuments({ ...inYear, status: 'withdrawn' }),
               transfers: await ctx.enrollments.countDocuments({ ...inYear, status: 'transferred' }),
+              // SAMS 2.4: planned places not yet started, in any year.
+              pending: await ctx.enrollments.countDocuments({ ...branchFilter, status: 'pending' }),
             }
-          : { academicYear: null, active: 0, withdrawals: 0, transfers: 0 }
+          : { academicYear: null, active: 0, withdrawals: 0, transfers: 0, pending: 0 }
       }
 
       // Only when the caller can decide at least one approval type.

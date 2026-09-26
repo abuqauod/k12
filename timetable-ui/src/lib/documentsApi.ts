@@ -4,7 +4,7 @@ import { settingsRequest, type SettingsResult } from './settingsApi'
 
 /** Client for documents (SAMS 2.1, server/src/documents). */
 
-export type DocumentOwnerType = 'student' | 'parent'
+export type DocumentOwnerType = 'student' | 'parent' | 'application' | 'scholarship' | 'expense'
 export type VerificationStatus = 'unverified' | 'verified' | 'rejected'
 
 export interface SchoolDocument {

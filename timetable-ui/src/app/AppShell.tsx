@@ -12,24 +12,26 @@ interface NavEntry {
   to: string
   key: TranslationKey
   icon: string
+  /** Shown only with this scope (the page itself enforces it too). */
+  scope?: string
+  group: 'plan' | 'account'
 }
 
-// The first six are the day-to-day "plan" group; the rest sit under
-// "account". Keep the split index (6) in step with this list.
+// Day-to-day work sits under "plan"; the rest under "account".
 const NAV: NavEntry[] = [
-  { to: '/dashboard', key: 'nav.dashboard', icon: '▤' },
-  { to: '/timetable', key: 'nav.timetable', icon: '▦' },
-  { to: '/students', key: 'nav.students', icon: '☺' },
-  { to: '/parents', key: 'nav.parents', icon: '⚭' },
-  { to: '/classes', key: 'nav.classes', icon: '▣' },
-  { to: '/attendance', key: 'nav.attendance', icon: '✓' },
-  { to: '/routes', key: 'nav.routes', icon: '⌖' },
-  { to: '/finance', key: 'nav.finance', icon: '⛃' },
-  { to: '/approvals', key: 'nav.approvals', icon: '⚖' },
-  { to: '/logs', key: 'nav.logs', icon: '☰' },
-  { to: '/settings', key: 'nav.settings', icon: '⚙' },
+  { to: '/dashboard', key: 'nav.dashboard', icon: '▤', group: 'plan' },
+  { to: '/timetable', key: 'nav.timetable', icon: '▦', group: 'plan' },
+  { to: '/students', key: 'nav.students', icon: '☺', group: 'plan' },
+  { to: '/admissions', key: 'nav.admissions', icon: '✎', group: 'plan', scope: 'admissions.read' },
+  { to: '/parents', key: 'nav.parents', icon: '⚭', group: 'plan' },
+  { to: '/classes', key: 'nav.classes', icon: '▣', group: 'plan' },
+  { to: '/attendance', key: 'nav.attendance', icon: '✓', group: 'plan' },
+  { to: '/routes', key: 'nav.routes', icon: '⌖', group: 'account' },
+  { to: '/finance', key: 'nav.finance', icon: '⛃', group: 'account' },
+  { to: '/approvals', key: 'nav.approvals', icon: '⚖', group: 'account' },
+  { to: '/logs', key: 'nav.logs', icon: '☰', group: 'account' },
+  { to: '/settings', key: 'nav.settings', icon: '⚙', group: 'account' },
 ]
-const NAV_SPLIT = 6
 
 const COLLAPSE_KEY = 'timetable.sidebar'
 
@@ -43,7 +45,7 @@ function readCollapsed(): boolean {
 
 export function AppShell() {
   const { t, lang } = useI18n()
-  const { user, signOut, roleKey } = useAuth()
+  const { user, signOut, roleKey, can } = useAuth()
   const { branches, activeBranchId, setActiveBranchId } = useApp()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -156,9 +158,9 @@ export function AppShell() {
 
         <nav className="sidebar__nav" aria-label={t('nav.menu')}>
           <p className="sidebar__section">{t('nav.section.plan')}</p>
-          {NAV.slice(0, NAV_SPLIT).map(renderLink)}
+          {NAV.filter((e) => e.group === 'plan' && (!e.scope || can(e.scope))).map(renderLink)}
           <p className="sidebar__section">{t('nav.section.account')}</p>
-          {NAV.slice(NAV_SPLIT).map(renderLink)}
+          {NAV.filter((e) => e.group === 'account' && (!e.scope || can(e.scope))).map(renderLink)}
         </nav>
 
         <div className="sidebar__foot">

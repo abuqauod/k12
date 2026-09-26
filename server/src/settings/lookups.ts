@@ -37,6 +37,17 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
     ],
   },
+  withdrawalReason: {
+    defaults: [
+      { code: 'relocation', label: 'Moved away', labelAr: 'انتقال السكن' },
+      { code: 'other_school', label: 'Moved to another school', labelAr: 'الانتقال إلى مدرسة أخرى' },
+      { code: 'financial', label: 'Financial', labelAr: 'أسباب مالية' },
+      { code: 'academic', label: 'Academic', labelAr: 'أسباب أكاديمية' },
+      { code: 'health', label: 'Health', labelAr: 'أسباب صحية' },
+      { code: 'family', label: 'Family circumstances', labelAr: 'ظروف عائلية' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
   documentCategory: {
     defaults: [
       { code: 'birth_certificate', label: 'Birth certificate', labelAr: 'شهادة الميلاد' },
@@ -44,6 +55,20 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'previous_report', label: 'Previous school report', labelAr: 'تقرير المدرسة السابقة' },
       { code: 'medical', label: 'Medical record', labelAr: 'سجل طبي' },
       { code: 'photo', label: 'Photo', labelAr: 'صورة شخصية' },
+      // Scholarship evidence, vendor invoices (SAMS 3.2, 3.5).
+      { code: 'financial', label: 'Financial document', labelAr: 'مستند مالي' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  expenseCategory: {
+    defaults: [
+      { code: 'utilities', label: 'Utilities', labelAr: 'خدمات (كهرباء وماء)' },
+      { code: 'maintenance', label: 'Maintenance', labelAr: 'صيانة' },
+      { code: 'supplies', label: 'Supplies', labelAr: 'لوازم' },
+      { code: 'transport', label: 'Transport', labelAr: 'نقل' },
+      { code: 'rent', label: 'Rent', labelAr: 'إيجار' },
+      { code: 'services', label: 'Services', labelAr: 'خدمات خارجية' },
+      { code: 'events', label: 'Events and activities', labelAr: 'فعاليات وأنشطة' },
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
     ],
   },

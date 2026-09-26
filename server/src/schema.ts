@@ -69,9 +69,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('branches').createIndex({ tenantId: 1, code: 1 }, { unique: true })
   await db.collection('branches').createIndex({ tenantId: 1 })
 
+  // A class name is unique per branch, grade and academic year (SAMS 2.6):
+  // next year's "Grade 2 A" must be creatable while this year's exists.
+  // Replaces the older index that ignored the year.
   await db
     .collection('classes')
-    .createIndex({ tenantId: 1, branchId: 1, gradeLevel: 1, name: 1 }, { unique: true })
+    .dropIndex('tenantId_1_branchId_1_gradeLevel_1_name_1')
+    .catch(() => undefined)
+  await db
+    .collection('classes')
+    .createIndex(
+      { tenantId: 1, branchId: 1, academicYearId: 1, gradeLevel: 1, name: 1 },
+      { unique: true, name: 'class_name_per_year' },
+    )
   await db.collection('classes').createIndex({ tenantId: 1, branchId: 1 })
 
   await db.collection('students').createIndex({ tenantId: 1, branchId: 1, classId: 1 })
@@ -84,6 +94,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .createIndex(
       { tenantId: 1, studentId: 1 },
       { unique: true, partialFilterExpression: { status: 'active' } },
+    )
+  // SAMS 2.4: at most one open (active or pending) enrollment per student
+  // per academic year — next year's place can be planned while this year
+  // is active, but never two places in the same year.
+  await db
+    .collection('enrollments')
+    .createIndex(
+      { tenantId: 1, studentId: 1, academicYearId: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { status: { $in: ['active', 'pending'] } },
+        name: 'enrollment_one_open_per_year',
+      },
     )
   await db.collection('enrollments').createIndex({ tenantId: 1, studentId: 1, startDate: -1 })
   await db.collection('enrollments').createIndex({ tenantId: 1, classId: 1, status: 1 })
@@ -140,6 +163,9 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { tenantId: 1, seriesId: 1 },
       { unique: true, partialFilterExpression: { isCurrent: true }, name: 'document_one_current_version' },
     )
+  // Admissions (SAMS 2.5): number unique per tenant; queue by status.
+  await db.collection('applications').createIndex({ tenantId: 1, applicationNumber: 1 }, { unique: true })
+  await db.collection('applications').createIndex({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
   // Approvals (SAMS 1.10): queue by status/branch, 'mine', per-entity
   // lookup, and at most one pending request per dedupe key.
   await db.collection('approvalRequests').createIndex({ tenantId: 1, status: 1, branchId: 1, createdAt: -1 })
@@ -163,6 +189,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('receipts').createIndex({ tenantId: 1, receiptNumber: 1 }, { unique: true })
   await db.collection('receipts').createIndex({ tenantId: 1, paymentId: 1 }, { unique: true })
   await db.collection('receipts').createIndex({ tenantId: 1, studentId: 1 })
+  await db.collection('payments').createIndex({ tenantId: 1, batchId: 1 })
+
+  // SAMS 3.2–3.5.
+  await db.collection('discountTypes').createIndex({ tenantId: 1, active: 1, name: 1 })
+  await db.collection('scholarships').createIndex({ tenantId: 1, studentId: 1, academicYearId: 1, status: 1 })
+  await db.collection('scholarships').createIndex({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
+  await db.collection('refunds').createIndex({ tenantId: 1, refundNumber: 1 }, { unique: true })
+  await db.collection('refunds').createIndex({ tenantId: 1, invoiceId: 1, status: 1 })
+  await db.collection('refunds').createIndex({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
+  await db.collection('vendors').createIndex({ tenantId: 1, active: 1, name: 1 })
+  await db.collection('expenses').createIndex({ tenantId: 1, expenseNumber: 1 }, { unique: true })
+  await db.collection('expenses').createIndex({ tenantId: 1, branchId: 1, status: 1, expenseDate: -1 })
 
   await db.collection('buses').createIndex({ tenantId: 1, branchId: 1, active: 1 })
   await db.collection('stops').createIndex({ tenantId: 1, branchId: 1, active: 1 })

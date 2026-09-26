@@ -171,6 +171,13 @@ first because every later phase depends on them.
 - Add `pending` status, withdrawal reason codes (lookup), re-enrollment as a
   new row (history never overwritten), and a DB-enforced rule of one active
   enrollment per student per academic year.
+- **Built**: statuses `pending` (a planned place; leaves the student's
+  class alone) and `cancelled`. `POST /students/:id/enrollments` plans a
+  place or re-enrolls as a new row; `/enrollments/:id/activate` and
+  `/cancel`. The existing one-active-per-student index stays, plus one
+  open (active or pending) row per student per academic year. Withdrawal
+  reasons are a settings list (`withdrawalReason`); a note alone counts as
+  "other". Also fixed: enrollment history wasn't branch-checked.
 
 ### 2.5 Admissions
 - `ApplicationDoc` (applicant, guardians, requested branch/grade/year, source,
@@ -180,11 +187,25 @@ first because every later phase depends on them.
 - Conversion creates the Student, parent links and a `pending` Enrollment in
   one audited operation — no retyping.
 - UI: applications table, detail with checklist and decision panel.
+- **Built**: statuses as above plus `withdrawn`; the checklist is a per-
+  application list of documentCategory codes (default: birth certificate,
+  photo, previous report); accepting needs each present and not rejected.
+  Scopes: admissions.read / admissions.manage (schedulers, registrars,
+  reception) and admissions.decide (admins). Conversion reuses a parent on
+  file by phone, creates the student as `inquiry` ("Admitted") with a
+  pending enrollment, and moves the documents. Intake staff may upload an
+  applicant's documents with admissions.manage.
 
 ### 2.6 Year-end re-enrollment
 - Bulk move eligible students to the next academic year (promote / hold back
   / graduate / withdraw), with a preview before commit; creates new
   enrollment rows only.
+- **Built**: plan (proposal with suggestions → preview → all-or-nothing
+  commit: planned places for promote/hold, graduate/withdraw close the old
+  year on its last day), then "start the new year" activates every planned
+  place and closes old rows as `completed`. Class names are now unique per
+  academic year (the old index ignored the year, so next year's "Grade 2 A"
+  couldn't be created).
 
 ---
 
@@ -195,6 +216,34 @@ the refundable amount) · 3.4 Payment allocation across invoices + payment
 confirmations · 3.5 Expenses, categories, vendors (with approval) · 3.6
 Finance reports (revenue, collections, aging, overdue, discounts,
 scholarships, refunds, expenses, net position).
+
+**Built** (server and UI; Finance page tabs, the invoice dialog, and the
+student's Finance tab):
+- 3.1 An invoice can carry dated installments (even split or explicit) that
+  add up to its total. Paid / part paid / due / overdue is worked out on
+  read, oldest installment first. A later line change flags the plan.
+- 3.2 Discount types are a price list applied to an invoice as adjustments,
+  directly (`finance.discount.approve`) or through an approval. Scholarships
+  are one student and year, raised with a reason and documents, approved by
+  someone else (`finance.scholarship.approve`). They apply to every invoice of
+  that year, including later ones; where more was already paid, the difference
+  is a refundable credit. Revoking one takes it off invoices with nothing paid.
+- 3.3 Refunds: request → approve → pay out (`finance.payout`), capped at what
+  the invoice received less refunds paid or in progress, re-checked at each
+  step. Only a paid refund reduces the paid total. A void invoice can be
+  refunded.
+- 3.4 One payment spread over a student's invoices (oldest due first, or an
+  explicit split), one receipt. Cheques and transfers can be recorded as
+  awaiting confirmation (`finance.payment.confirm`). Until confirmed they
+  count for nothing and have no receipt.
+- 3.5 Expenses with categories (settings list `expenseCategory`), vendors,
+  approval (`finance.expense.approve`), payment, and attached receipts.
+- 3.6 `GET /finance/reports/summary`: revenue (gross, discounts,
+  scholarships, billed), collections by method, refunds, expenses by
+  category, net position (cash basis), aging and overdue as of today.
+- The approval engine gained `insertRequest` (raise a request in the
+  caller's transaction) and `onClosed`, so records with their own status
+  follow a rejection or cancellation.
 
 ## Phase 4 — HR & Staff
 4.1 Employee record separate from `MembershipDoc` (optional link to a login)
