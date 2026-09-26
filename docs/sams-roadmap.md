@@ -11,8 +11,8 @@ per-area status reference.
 
 ## Where we are
 
-**Phases 1–5 are shipped and on `main`. Phase 6 (Communication & Portals) is
-built on `claude/sams-6`; Phase 7 (Reporting) is next.**
+**Phases 1–6 are shipped and on `main`. Phase 7 (Reporting) is built on
+`claude/sams-7-reporting`.**
 
 | Phase | Slices | PRs |
 |---|---|---|
@@ -22,7 +22,8 @@ built on `claude/sams-6`; Phase 7 (Reporting) is next.**
 | 3 — Finance administration | 3.1–3.6 | #60, #61 |
 | 4 — HR & staff | 4.1–4.6 | #62 |
 | 5 — Operations | 5.1–5.6 | #62 |
-| 6 — Communication & portals | 6.1–6.4 | `claude/sams-6` (not yet merged) |
+| 6 — Communication & portals | 6.1–6.4 | #64 |
+| 7 — Reporting | 7.1–7.4 | `claude/sams-7-reporting` (not yet merged) |
 
 ## Definition of done (every slice)
 
@@ -348,6 +349,38 @@ parent record's portal panel, and the parent portal at `/portal`):
 7.1 Shared reporting service/queries (replace per-page calculations) · 7.2
 Report catalog with branch/year/date/grade/class/status filters · 7.3 CSV,
 Excel, PDF and print output · 7.4 Scheduled report exports.
+
+**Built** (server and UI; the Reports page at `/reports`):
+- 7.1 `server/src/reports/`: the finance summary (3.6) and HR summary (4.6)
+  moved into shared queries, and one `receivables` function (balance after
+  payments and refunds, overdue per installment, aging) now feeds the
+  finance summary, the catalog and the dashboard. The dashboard's finance
+  tiles came from a browser-side sum of open invoices' totals (ignoring part
+  payments and installments); they now come from the server.
+- 7.2 A catalog of 14 table reports: student roster, enrollment by class,
+  withdrawals and transfers, attendance by student and by class, admissions
+  by grade, outstanding balances, payments received, billing by grade,
+  expenses, staff list, leave, maintenance and library loans. Each declares
+  its scopes (the module's read scope, or `reports.finance` / `reports.hr`)
+  and which filters it takes (branch, year, dates, grade, class, status); a
+  member sees only the reports they may run, over their own branches.
+  Labels and values come in English or Arabic.
+- 7.3 CSV (UTF-8 with BOM, formula-safe), Excel (.xlsx written by a small
+  zip writer — no new dependency; right-to-left in Arabic, frozen header,
+  money and percentage formats, totals row) and a print page that the
+  browser saves as PDF. PDF is deliberately the browser's: it shapes Arabic
+  correctly, which a hand-built PDF would not. Every export and download is
+  in the audit log.
+- 7.4 Scheduled exports (new scope `reports.schedule`: admins, registrar,
+  finance officer, HR): a report, its filters, a relative period (yesterday,
+  last 7/30 days, this or last month, year to date, the academic year),
+  daily/weekly/monthly, CSV or Excel, English or Arabic. The sweep runs what
+  is due as the owner, re-reading their access each time (a removed owner
+  or one who lost the scope stops the export). Recipients must be able to
+  run the same report over the same branches, checked when saved and again
+  on every run. The file goes to the document store (last 12 kept per
+  schedule); each recipient gets an inbox item and an email through the
+  Phase 6 queue (`report_ready` template) linking to "My files".
 
 ---
 

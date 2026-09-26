@@ -665,6 +665,7 @@ const KINDS = [
   'admission_decision',
   'document_rejected',
   'document_expiring',
+  'report_ready',
 ] as const
 
 function LogTab() {
