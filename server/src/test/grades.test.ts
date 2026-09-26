@@ -94,6 +94,10 @@ describe('terms', () => {
     assert.equal(ok.status, 200, ok.error)
     assert.deepEqual((ok.body as { terms: { name: string }[] }).terms.map((t) => t.name), ['T1', 'T2'])
     // The fixture year's terms are in the plan below; removing one is refused then.
+    const same = await call(fx.app, fx.tokens.admin, 'POST', '/academic-years', { name: 'Spare', startDate: '2032-08-01', endDate: '2033-06-30' })
+    assert.equal(same.error, 'YEAR_NAME_TAKEN')
+    const overlap = await call(fx.app, fx.tokens.admin, 'POST', '/academic-years', { name: 'Other', startDate: '2031-01-01', endDate: '2031-12-31' })
+    assert.equal(overlap.error, 'YEARS_OVERLAP')
   })
 })
 

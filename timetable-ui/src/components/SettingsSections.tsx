@@ -148,7 +148,10 @@ export function AcademicYearsSection() {
     if (!name.trim() || !start || !end) return
     if (end <= start) return setError(t('settings.years.rangeError'))
     const result = await createAcademicYear(getAccessToken, { name: name.trim(), startDate: start, endDate: end })
-    if (result.kind !== 'ok') return setError(t('settings.years.saveError'))
+    if (result.kind !== 'ok') {
+      const key = `settings.years.error.${result.error}` as TranslationKey
+      return setError(t(key) === key ? t('settings.years.saveError') : t(key))
+    }
     setName('')
     setStart('')
     setEnd('')

@@ -9,6 +9,7 @@ import { ParentDetailDialog } from '../components/ParentDetailDialog'
 import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
+import { api } from '../lib/apiClient'
 import type { TranslationKey } from '../i18n/translations'
 
 type StatusFilter = ParentStatus | 'ALL'
@@ -16,7 +17,7 @@ type StatusFilter = ParentStatus | 'ALL'
 export function ParentsPage() {
   const { t, n } = useI18n()
   const { branches } = useApp()
-  const { getAccessToken } = useAuth()
+  const { getAccessToken, can } = useAuth()
 
   const [parents, setParents] = useState<Parent[]>([])
   const [loading, setLoading] = useState(true)
@@ -63,10 +64,7 @@ export function ParentsPage() {
     }
   }, [branchId, getAccessToken])
 
-  const gradeLevels = useMemo(
-    () => [...new Set(classes.map((c) => c.gradeLevel))].sort(),
-    [classes],
-  )
+  const gradeLevels = useMemo(() => [...new Set(classes.map((c) => c.gradeLevel))].sort(), [classes])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -103,6 +101,43 @@ export function ParentsPage() {
     return null
   }
 
+  // Pilot feedback: turning the portal on one family at a time doesn't scale
+  // to a new school's first day — invite every family with an email at once.
+  const [inviting, setInviting] = useState(false)
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null)
+  const inviteAll = async () => {
+    type InviteResult = { toInvite: number; noEmail: number; alreadyOn: number; invited: number; notEmailed: number; failed: unknown[] }
+    const path = '/parents/portal/invite-all'
+    const scope = branchId ? { branchId } : {}
+    setInviteNotice(null)
+    setInviting(true)
+    const preview = await api<InviteResult>(getAccessToken, 'POST', path, { ...scope, preview: true })
+    if (preview.kind !== 'ok') {
+      setInviting(false)
+      return setInviteNotice(t('parents.inviteAll.error'))
+    }
+    const p = preview.data
+    if (p.toInvite === 0) {
+      setInviting(false)
+      return setInviteNotice(t('parents.inviteAll.none', { already: n(p.alreadyOn), noEmail: n(p.noEmail) }))
+    }
+    if (!window.confirm(t('parents.inviteAll.confirm', { count: n(p.toInvite), noEmail: n(p.noEmail) }))) {
+      setInviting(false)
+      return
+    }
+    const result = await api<InviteResult>(getAccessToken, 'POST', path, scope)
+    setInviting(false)
+    if (result.kind !== 'ok') return setInviteNotice(t('parents.inviteAll.error'))
+    setInviteNotice(
+      t('parents.inviteAll.done', {
+        invited: n(result.data.invited),
+        failed: n(result.data.failed.length + result.data.notEmailed),
+        noEmail: n(result.data.noEmail),
+      }),
+    )
+    void refresh()
+  }
+
   return (
     <div className="page">
       <header className="page__head">
@@ -111,11 +146,18 @@ export function ParentsPage() {
           <p className="page__subtitle">{t('parents.subtitle')}</p>
         </div>
         <div className="page__actions">
+          {can('portal.manage') && (
+            <button type="button" className="btn" disabled={inviting} onClick={() => void inviteAll()}>
+              {t('parents.inviteAll')}
+            </button>
+          )}
           <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
             {t('parents.add')}
           </button>
         </div>
       </header>
+
+      {inviteNotice && <p className="notice">{inviteNotice}</p>}
 
       <div className="panel">
         <div className="break-card__row" style={{ flexWrap: 'wrap', gap: 8 }}>
@@ -133,7 +175,14 @@ export function ParentsPage() {
             value={studentName}
             onChange={(e) => setStudentName(e.target.value)}
           />
-          <select className="input" value={branchId} onChange={(e) => { setBranchId(e.target.value); setGradeLevel('') }}>
+          <select
+            className="input"
+            value={branchId}
+            onChange={(e) => {
+              setBranchId(e.target.value)
+              setGradeLevel('')
+            }}
+          >
             <option value="">{t('parents.filter.allBranches')}</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
@@ -179,7 +228,12 @@ export function ParentsPage() {
             {parents.map((parent) => (
               <tr key={parent.id}>
                 <td>
-                  <button type="button" className="btn btn--ghost btn--sm" style={{ padding: 0, fontWeight: 600 }} onClick={() => setOpenId(parent.id)}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    style={{ padding: 0, fontWeight: 600 }}
+                    onClick={() => setOpenId(parent.id)}
+                  >
                     {parent.fullName}
                   </button>
                 </td>
@@ -193,7 +247,13 @@ export function ParentsPage() {
                 </td>
                 <td>
                   <div className="row-actions">
-                    <button type="button" className="icon-btn" onClick={() => void toggleArchive(parent)} aria-label={t(parent.status === 'archived' ? 'parents.reactivate' : 'parents.archive')} title={t(parent.status === 'archived' ? 'parents.reactivate' : 'parents.archive')}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => void toggleArchive(parent)}
+                      aria-label={t(parent.status === 'archived' ? 'parents.reactivate' : 'parents.archive')}
+                      title={t(parent.status === 'archived' ? 'parents.reactivate' : 'parents.archive')}
+                    >
                       {parent.status === 'archived' ? '↺' : '🗄'}
                     </button>
                   </div>

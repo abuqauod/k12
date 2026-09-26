@@ -114,9 +114,12 @@ export function registerClassRoutes(app: FastifyInstance): void {
     const created = await withTenant(tenantId, async (ctx) => {
       const branch = await ctx.branches.findOne({ _id: parsed.data.branchId })
       if (!branch) return { error: 'UNKNOWN_BRANCH' as const }
+      // SAMS 12 (pilot): a class made without a year belongs to the current
+      // one — otherwise grades and fees, which are per year, can't use it.
+      const yearId = parsed.data.academicYearId ?? (await ctx.academicYears.findOne({ current: true }))?._id ?? null
       const clash = await ctx.classes.findOne({
         branchId: parsed.data.branchId,
-        academicYearId: parsed.data.academicYearId ?? null,
+        academicYearId: yearId,
         gradeLevel: parsed.data.gradeLevel,
         name: parsed.data.name,
       })
@@ -126,6 +129,7 @@ export function registerClassRoutes(app: FastifyInstance): void {
         _id,
         tenantId,
         ...parsed.data,
+        academicYearId: yearId,
         active: true,
         createdAt: now,
         updatedAt: now,
@@ -159,10 +163,11 @@ export function registerClassRoutes(app: FastifyInstance): void {
     const result = await withTenant(tenantId, async (ctx) => {
       const branch = await ctx.branches.findOne({ _id: parsed.data.branchId })
       if (!branch) return null
+      const yearId = parsed.data.academicYearId ?? (await ctx.academicYears.findOne({ current: true }))?._id ?? null
       const existing = await ctx.classes
         .find({
           branchId: parsed.data.branchId,
-          academicYearId: parsed.data.academicYearId ?? null,
+          academicYearId: yearId,
           gradeLevel: parsed.data.gradeLevel,
         })
         .toArray()
@@ -178,7 +183,7 @@ export function registerClassRoutes(app: FastifyInstance): void {
           name: section,
           capacity: parsed.data.capacity,
           homeroomTeacherId: null,
-          academicYearId: parsed.data.academicYearId,
+          academicYearId: yearId,
           active: true,
           createdAt: now,
           updatedAt: now,

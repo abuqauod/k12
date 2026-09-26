@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
+import { studentLimitRefusal } from '../billing/usage.js'
 import { withTenant } from '../db.js'
 import type { ApplicationDoc } from '../db.js'
 import {
@@ -372,6 +373,8 @@ export function registerAdmissionRoutes(app: FastifyInstance): void {
         return reply.code(403).send({ error: 'FORBIDDEN', required: scope })
       }
     }
+    const overLimit = await studentLimitRefusal(request.auth!.tenantId!)
+    if (overLimit) return reply.code(402).send(overLimit)
     try {
       const result = await withTenant(request.auth!.tenantId!, (ctx) =>
         convertApplication(ctx, request.auth!.tenantId!, {

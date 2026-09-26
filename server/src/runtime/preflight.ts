@@ -37,6 +37,11 @@ export function preflight(env: NodeJS.ProcessEnv): Preflight {
 
   if (!env.BACKUP_DIR && !env.BACKUP_S3_BUCKET) warnings.push('No backups configured (BACKUP_DIR or BACKUP_S3_BUCKET; see scripts/backup.sh)')
 
+  // SAMS 13.3: without the vendor's gateway schools can only pay by transfer.
+  if (!env.VENDOR_PAYMENT_PROVIDER || env.VENDOR_PAYMENT_PROVIDER === 'test')
+    warnings.push('VENDOR_PAYMENT_PROVIDER is not set: schools can pay their subscription by bank transfer only')
+  if (!env.VENDOR_BANK_DETAILS) warnings.push('VENDOR_BANK_DETAILS is not set: invoices show no bank details for transfers')
+
   const channels = [
     env.SMTP_HOST ? `email: on (${env.SMTP_HOST})` : 'email: off — invites, resets and family emails will not be sent',
     env.SMS_PROVIDER ? `sms: on (${env.SMS_PROVIDER})` : 'sms: off',

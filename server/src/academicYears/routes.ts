@@ -59,7 +59,16 @@ export function registerAcademicYearRoutes(app: FastifyInstance): void {
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
     const tenantId = request.auth!.tenantId!
+    if (parsed.data.endDate <= parsed.data.startDate) return reply.code(400).send({ error: 'DATES_OUT_OF_ORDER' })
     const _id = randomUUID()
+    const clash = await withTenant(tenantId, async (ctx) => {
+      // SAMS 12 (pilot): two years of one name, or overlapping, made every
+      // year picker ambiguous and split attendance and fees between them.
+      if (await ctx.academicYears.findOne({ name: parsed.data.name.trim() })) return 'YEAR_NAME_TAKEN'
+      if (await ctx.academicYears.findOne({ startDate: { $lte: parsed.data.endDate }, endDate: { $gte: parsed.data.startDate } })) return 'YEARS_OVERLAP'
+      return null
+    })
+    if (clash) return reply.code(409).send({ error: clash })
     await withTenant(tenantId, async (ctx) => {
       const terms = parsed.data.terms.map((t) => ({ id: randomUUID(), ...t }))
       // The first year a tenant ever creates becomes current by default —

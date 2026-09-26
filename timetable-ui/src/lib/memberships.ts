@@ -164,7 +164,21 @@ export async function getRoleCatalog(getToken: TokenGetter): Promise<Memberships
 /** The caller's own resolved access (`GET /auth/me`). */
 export async function fetchMyAccess(
   getToken: TokenGetter,
-): Promise<MembershipsResult<{ roleKey: AccessRoleKey | null; scopes: string[] }>> {
+): Promise<
+  MembershipsResult<{
+    roleKey: AccessRoleKey | null
+    scopes: string[]
+    plan: string | null
+    modules: string[]
+    trialEndsOn: string | null
+    subscription: {
+      state: 'active' | 'grace' | 'readOnly' | 'locked' | 'inactive'
+      validUntil: string | null
+      graceEnds: string | null
+      readOnlyUntil: string | null
+    } | null
+  }>
+> {
   try {
     return parse(await call('/auth/me', { method: 'GET' }, getToken))
   } catch {

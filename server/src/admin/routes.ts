@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { branchLimitRefusal, usageOf } from '../billing/usage.js'
+import { CURRENCIES, MODULES, PLAN_KEYS, limitsOf, modulesOf } from '../billing/plans.js'
+import type { TenantDoc } from '../db.js'
 import { withoutTenant } from '../db.js'
 import { authenticate, requirePlatformAdmin } from '../auth/guard.js'
 import { EmailNotConfiguredError } from '../email.js'
@@ -27,22 +30,55 @@ const slugSchema = z
   .max(64)
   .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'lowercase letters, digits and single hyphens only')
 
+const branchCode = z
+  .string()
+  .min(2)
+  .max(32)
+  .regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes only')
+
+/** SAMS 13.1: a plan from the catalog, or 'custom' — everything, for a deal
+ * agreed outside the price list. Other values stored before plans existed
+ * keep working (as everything) until changed. */
+const planSchema = z.enum([...PLAN_KEYS, 'custom'])
+const limitsSchema = z
+  .object({
+    students: z.number().int().nonnegative().nullable(),
+    branches: z.number().int().positive().nullable(),
+    smsPerStudent: z.number().int().nonnegative().nullable(),
+  })
+  .partial()
+const billingSchema = z.object({
+  currency: z.enum(CURRENCIES),
+  term: z.enum(['year', 'month']),
+  students: z.number().int().nonnegative(),
+  email: z.string().email().nullable(),
+  country: z.string().length(2).nullable(),
+})
+
 const createTenantBody = z.object({
   slug: slugSchema,
   name: z.string().min(1).max(200),
-  plan: z.string().min(1).max(50).default('standard'),
+  plan: planSchema.default('professional'),
   seats: z.number().int().positive().default(25),
   validUntil: z.string().date().nullable().default(null),
   graceDays: z.number().int().nonnegative().default(21),
   ownerEmail: z.string().email(),
   ownerName: z.string().min(1).max(200).optional(),
+  /** SAMS 12: the first campus, so the school can start at once (the
+   * school can't create branches itself). Defaults to "Main campus". */
+  firstBranch: z
+    .object({ name: z.string().min(1).max(120), code: branchCode, timezone: z.string().min(1).max(64).default('Asia/Amman') })
+    .optional(),
 })
 
 const updateTenantBody = z
   .object({
     name: z.string().min(1).max(200),
-    plan: z.string().min(1).max(50),
+    plan: planSchema,
     status: z.enum(['active', 'suspended', 'cancelled']),
+    addons: z.array(z.enum(MODULES)).max(MODULES.length),
+    limits: limitsSchema,
+    billing: billingSchema,
     seats: z.number().int().positive(),
     validUntil: z.string().date().nullable(),
     graceDays: z.number().int().nonnegative(),
@@ -62,12 +98,6 @@ const createKeyBody = z.object({
   role: z.enum(['admin', 'scheduler', 'viewer']),
 })
 
-const branchCode = z
-  .string()
-  .min(2)
-  .max(32)
-  .regex(/^[a-z0-9-]+$/, 'lowercase letters, digits and dashes only')
-
 const createBranchBody = z.object({
   name: z.string().min(1).max(120),
   code: branchCode,
@@ -83,6 +113,18 @@ const updateBranchBody = z
     active: z.boolean(),
   })
   .partial()
+
+/** The plan side of a school, as the console shows it. */
+function subscriptionView(tenant: TenantDoc) {
+  return {
+    addons: tenant.addons ?? [],
+    limits: limitsOf(tenant),
+    limitOverrides: tenant.limits ?? {},
+    modules: [...modulesOf(tenant)],
+    billing: tenant.billing ?? null,
+    source: tenant.source ?? 'console',
+  }
+}
 
 export function registerAdminRoutes(app: FastifyInstance): void {
   const guarded = { preHandler: [authenticate, requirePlatformAdmin] }
@@ -107,6 +149,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         memberCount: countByTenant.get(t._id) ?? 0,
         validUntil: t.validUntil,
         graceDays: t.graceDays,
+        source: t.source ?? 'console',
         createdAt: t.createdAt.toISOString(),
       })),
     })
@@ -129,6 +172,8 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       validUntil: tenant.validUntil,
       graceDays: tenant.graceDays,
       createdAt: tenant.createdAt.toISOString(),
+      ...subscriptionView(tenant),
+      usage: await usageOf(id),
       members,
     })
   })
@@ -153,10 +198,15 @@ export function registerAdminRoutes(app: FastifyInstance): void {
         seats: body.seats,
         validUntil: body.validUntil,
         graceDays: body.graceDays,
+        source: 'console',
         createdAt: now,
         updatedAt: now,
       }),
     )
+    // SAMS 12: found in the pilot — a new school had no branch and no way to
+    // add one, so nothing (classes, students, fees) could be set up.
+    const first = body.firstBranch ?? { name: 'Main campus', code: 'main', timezone: 'Asia/Amman' }
+    await createBranchForTenant(_id, { name: first.name, code: first.code, address: null, timezone: first.timezone })
 
     try {
       const invite = await inviteUserToTenant({
@@ -202,6 +252,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       seats: result.seats,
       validUntil: result.validUntil,
       graceDays: result.graceDays,
+      ...subscriptionView(result),
     })
   })
 
@@ -304,6 +355,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
 
     const tenant = await withoutTenant((db) => db.tenants.findOne({ _id: id }))
     if (!tenant) return reply.code(404).send({ error: 'NOT_FOUND' })
+    // SAMS 13.1: a campus over the plan's count is sold, not just added —
+    // raise the school's own limit first.
+    const overLimit = await branchLimitRefusal(id)
+    if (overLimit) return reply.code(409).send(overLimit)
 
     const result = await createBranchForTenant(id, parsed.data)
     if (!result.ok) return reply.code(409).send({ error: result.error })

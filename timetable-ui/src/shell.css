@@ -3230,3 +3230,221 @@ tr.is-muted td {
 .text-ok {
   color: var(--ok);
 }
+
+/* SAMS 12: getting started */
+.getting-started {
+  margin-block-end: 18px;
+}
+.getting-started__steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.getting-started__steps li {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-block-end: 1px solid var(--line);
+}
+.getting-started__steps li.is-done b {
+  color: var(--muted);
+  font-weight: 500;
+}
+.getting-started__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 700;
+}
+.is-done .getting-started__mark {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+.fee-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------------------------------------------------------- pricing (13.5) */
+.pricing {
+  min-height: 100vh;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.pricing__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.pricing__nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pricing__main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 16px 56px;
+}
+.pricing__title {
+  font-size: clamp(26px, 4vw, 36px);
+  margin: 0 0 8px;
+  text-align: center;
+}
+.pricing__lead {
+  text-align: center;
+  color: var(--muted);
+  margin: 0 auto 24px;
+  max-width: 640px;
+}
+.pricing__controls {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.pricing__students {
+  width: 180px;
+}
+.pricing__plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.pricing__plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.pricing__plan h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.pricing__plan--featured {
+  border-color: var(--accent);
+  box-shadow: 0 10px 30px -18px var(--accent);
+}
+.pricing__badge {
+  position: absolute;
+  top: -11px;
+  inset-inline-start: 22px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pricing__price {
+  margin: 8px 0 0;
+}
+.pricing__price strong {
+  font-size: 28px;
+}
+.pricing__price span {
+  color: var(--muted);
+}
+.pricing__quote {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.pricing__features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  flex: 1;
+}
+.pricing__features li {
+  padding: 5px 0;
+  padding-inline-start: 22px;
+  position: relative;
+}
+.pricing__features li::before {
+  content: '✓';
+  position: absolute;
+  inset-inline-start: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+.pricing__notes {
+  margin-top: 32px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.pricing__notes h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+/* SAMS 13.3: the Subscription settings section. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.subscription-banner {
+  margin: 0 0 12px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 14px;
+}
+.subscription-banner--warn {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+.subscription-banner__link {
+  font-weight: 600;
+  margin-inline-start: 6px;
+}
+/* The brand lockup is drawn for the dark login panel; on the light pricing
+   bar it is smaller and in ink. */
+.pricing__bar .lockup {
+  gap: 12px;
+}
+.pricing__bar .lockup__badge {
+  width: 48px;
+  height: 48px;
+  box-shadow: none;
+}
+.pricing__bar .lockup__badge .brand__mark {
+  width: 40px;
+  height: 40px;
+}
+.pricing__bar .lockup__word {
+  font-size: 20px;
+  color: var(--ink);
+}
+.pricing__bar .lockup__tagline {
+  color: var(--muted);
+  font-size: 12px;
+}

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { hash, verify } from '@node-rs/argon2'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { modulesOf, subscriptionState } from '../billing/plans.js'
 import { config } from '../config.js'
 import { withoutTenant } from '../db.js'
 import { EmailNotConfiguredError, sendPasswordResetEmail } from '../email.js'
@@ -229,7 +230,14 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     const auth = request.auth
     if (!auth) return reply.code(401).send({ error: 'MISSING_TOKEN' })
     const membership = await loadCallerMembership(request)
+    const tenant = auth.tenantId ? await withoutTenant((db) => db.tenants.findOne({ _id: auth.tenantId })) : null
     return reply.send({
+      // SAMS 13.1: what the school's plan includes, so the UI hides the rest.
+      plan: tenant?.plan ?? null,
+      modules: tenant ? [...modulesOf(tenant)].sort() : [],
+      trialEndsOn: tenant?.plan === 'trial' ? tenant.validUntil : null,
+      // SAMS 13.3: so the app can warn before, and explain after, a lapse.
+      subscription: tenant ? { validUntil: tenant.validUntil, ...subscriptionState(tenant) } : null,
       // Resolved from the live membership, so the UI gates on exactly what
       // the server will enforce (SAMS 1.8).
       roleKey: membership?.roleKey ?? null,
@@ -333,7 +341,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     if (!result.ok) return reply.code(400).send({ error: `TOKEN_${result.error}` })
 
     const passwordHash = await hashPassword(parsed.data.password)
-    await withoutTenant(async (db) => {
+    const signIn = await withoutTenant(async (db) => {
       await db.users.updateOne(
         { _id: result.userId },
         // Accepting the invite is the proof: they received mail at this
@@ -353,8 +361,13 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           { upsert: true },
         )
       }
+      // Enough for the page to sign them straight in with the password they
+      // just chose, instead of asking for their email again (pilot feedback).
+      const user = await db.users.findOne({ _id: result.userId })
+      const tenant = result.grant ? await db.tenants.findOne({ _id: result.grant.tenantId }) : null
+      return { email: user?.email ?? null, tenantSlug: tenant?.slug ?? null }
     })
-    return reply.send({ ok: true })
+    return reply.send({ ok: true, ...signIn })
   })
 
   app.post('/auth/change-password', { preHandler: authenticate }, async (request, reply) => {

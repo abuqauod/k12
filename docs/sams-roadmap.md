@@ -593,6 +593,57 @@ structures, timetable, a term of attendance, fees, grades, report cards,
 notices) as an automated end-to-end scenario; every rough edge found is
 fixed and listed here.
 
+**Built.** A new school, "Al-Nour Academy", was opened in the vendor
+console and taken through a term by its owner, a teacher and a parent in
+the browser: school profile, a year with two terms, six classes, three fee
+structures, 18 students with their families from a spreadsheet, a whole
+grade billed, attendance, an assessment plan, marks, results released to
+families, every family invited to the portal, a parent reading the report
+card and paying part of an invoice through the test gateway, the payment
+showing in Finance → Online payments, and the emails that went out.
+
+Found and fixed on the way:
+
+- *A new school had no campus*, so nothing could be created until the vendor
+  added one by hand. A school opened in the console now starts with "Main
+  campus" (or the name given).
+- *The demo timetable leaked between schools* on one device: work saved in
+  the browser was restored for whoever signed in next. Local work now
+  belongs to its school and is cleared on sign-out; a school without a
+  timetable starts from an empty one.
+- *No way to know where to start.* A getting-started checklist on the
+  dashboard (profile, year, classes, fees, students, invoices, team,
+  payments), driven by the school's own data (`GET /onboarding`).
+- *Billing a grade meant one invoice per student.* Finance → Bill grade
+  invoices every student of a grade or class from its fee structure, with a
+  preview; students already billed are skipped.
+- *Classes made before a year existed belonged to no year* and vanished from
+  year-scoped pages; the bulk path ignored the year given. Classes without a
+  year now join the current one.
+- *Two years with the same name or overlapping dates* could be created and
+  confused every year picker; now refused (`YEAR_NAME_TAKEN`,
+  `YEARS_OVERLAP`, `DATES_OUT_OF_ORDER`).
+- *A fee structure for a grade that no class uses* matched no students.
+  The grade field suggests the grades the school has and warns otherwise.
+- *Menu items a role cannot open* were shown and led to "not allowed";
+  every item now carries its scope, and sign-in lands on the first page the
+  user may see (a parent lands on the portal).
+- *Families were invited to the portal one by one.* Parents → Invite all to
+  the portal (preview, then one email each; the caller's campuses only).
+  An invite that could not be emailed is reported as such, not counted as
+  sent.
+- *A new parent set a password, then had to type their email again.*
+  Accepting an invite now signs them straight in.
+- *Imported families could not see or pay their bills*: the importer linked
+  each guardian without financial responsibility, so the portal showed no
+  Fees tab, the wallet could not be topped up and fee reminders fell back
+  to the primary contact. The guardian a row names is now the fee contact
+  when an admin imports; the same holds for the primary guardian of an
+  admitted application.
+
+Noted, not changed: family emails (receipts, report cards) leave with the
+delivery sweep, every five minutes by default (`ABSENCE_SWEEP_INTERVAL_MS`).
+
 ## Phase 13 — SaaS offer
 13.1 Plans and feature gating: each tenant's plan enables modules and sets
 limits (students, branches, SMS credits); the UI hides what the plan does
@@ -605,6 +656,62 @@ existing grace/suspension · 13.4 Usage metering (active students, SMS sent)
 and the console's revenue view · 13.5 Public pricing page and legal
 documents (terms, privacy, data processing) · 13.6 The business model:
 `docs/saas-business-model.md`.
+
+**Built.**
+
+- *13.1 Plans.* Essentials, Professional, Enterprise and a 30-day trial,
+  each a set of modules over the core with limits on students, campuses
+  and SMS (`billing/plans.ts`, the one place prices and modules are set).
+  - Every tenant route passes the plan check, which answers 402
+    `PLAN_EXCLUDES_MODULE`.
+  - Menus, tabs, settings sections, portal tabs and ID-card buttons hide
+    what the plan lacks. A page reached by its address says it is not in
+    the plan.
+  - Sweeps skip excluded modules: scheduled reports, library notices, and
+    transport loading.
+  - Student limits are checked on create, import and admission. Campus
+    limits are checked in the console.
+  - The console sets plan, add-on modules, limit overrides and billing
+    details. `custom` means everything, for agreed deals. Schools opened
+    before plans existed keep everything.
+- *13.2 Trial sign-up.* The public `/signup` page (`POST /public/signup`)
+  gives:
+  - a trial school with a first campus in its country's time zone and its
+    currency;
+  - the owner invited by email, and accepting signs them straight in.
+  - It is rate-limited, has a hidden field for bots, allows one trial per
+    email, notifies sales, and `SIGNUP=off` closes it.
+- *13.3 Subscription billing.* Settings → Subscription shows:
+  - the plan, its standing and usage against limits;
+  - a live quote, where choosing a plan issues an invoice;
+  - card payment through the vendor's own PayTabs or HyperPay account
+    (`VENDOR_*`; a test gateway in development), or bank transfer;
+  - invoices, printable with the vendor's details and bank information.
+  - Paying applies the plan and paid-through date exactly once.
+  - The console issues invoices (with onboarding fees or discounts as
+    extra lines), records transfers and voids invoices.
+  - The daily sweep issues renewal invoices 30 days ahead, reminds about
+    unpaid invoices (7 days before, on the day, 7 days after), and emails
+    trials 7 days and 1 day before they end.
+  - A lapsed school keeps its grace days, then reads and exports its data
+    for 60 days before it is locked. It can always reach the page to pay.
+    A banner in the app says where the school stands.
+- *13.4 Metering and revenue.* Usage per school: enrolled students,
+  campuses, staff, and SMS this month. The console's Revenue card shows:
+  - MRR and ARR per currency;
+  - collections for the month and year;
+  - open and overdue invoices;
+  - schools by plan;
+  - trials, sign-ups and conversion.
+- *13.5* The public `/pricing` page reads `GET /public/plans`. It shows four
+  currencies, yearly or monthly terms and a calculator. Templates for the
+  terms, privacy policy and DPA are in `timetable-ui/public/legal/`, marked
+  for legal review.
+- *13.6* `docs/saas-business-model.md`: the price list, the reasoning, unit
+  economics, go-to-market, tax and legal notes, KPIs and open decisions.
+
+Also fixed: staff landed on Approvals after signing in. The first-page
+redirect ran before the user's permissions had loaded; it now waits.
 
 ---
 

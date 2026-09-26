@@ -41,6 +41,7 @@ import {
   RolesSection,
 } from '../components/SettingsSections'
 import type { TenantProfile } from '../lib/tenantApi'
+import { SubscriptionSection } from '../components/settings/SubscriptionSection'
 import { PaymentsSection } from '../components/settings/PaymentsSection'
 import { NumberingSection } from '../components/settings/NumberingSection'
 import { ImportSection } from '../components/settings/ImportSection'
@@ -70,6 +71,7 @@ type SettingsSection =
   | 'numbering'
   | 'import'
   | 'payments'
+  | 'subscription'
   | 'incident-types'
   | 'subjects'
   | 'canteen-categories'
@@ -85,6 +87,8 @@ interface SectionDef {
   key: TranslationKey
   /** Scope that shows the section; the API enforces the same. */
   scope?: string
+  /** SAMS 13.1: shown only when the plan includes it. */
+  module?: string
   /** Shown with any one of these. */
   anyScope?: string[]
 }
@@ -96,12 +100,13 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
     key: 'settings.group.school',
     sections: [
       { id: 'organization', key: 'settings.tab.organization', scope: 'settings.read' },
+      { id: 'subscription', key: 'settings.section.subscription', scope: 'settings.read' },
       { id: 'branches', key: 'branches.title', scope: 'notifications.manage' },
       { id: 'academic-years', key: 'settings.section.academicYears', scope: 'academicYears.read' },
       { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
       { id: 'numbering', key: 'settings.section.numbering', scope: 'settings.read' },
       { id: 'import', key: 'settings.section.import', anyScope: ['students.create', 'hr.employee.update'] },
-      { id: 'payments', key: 'settings.section.payments', scope: 'settings.read' },
+      { id: 'payments', key: 'settings.section.payments', scope: 'settings.read', module: 'onlinePayments' },
       { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
@@ -141,13 +146,15 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
 
 export function SettingsPage() {
   const { t } = useI18n()
-  const { can } = useAuth()
+  const { can, hasModule } = useAuth()
   const navigate = useNavigate()
   const { section } = useParams<{ section?: string }>()
 
   const groups = SECTION_GROUPS.map((group) => ({
     ...group,
-    sections: group.sections.filter((s) => (!s.scope || can(s.scope)) && (!s.anyScope || s.anyScope.some(can))),
+    sections: group.sections.filter(
+      (s) => (!s.scope || can(s.scope)) && (!s.anyScope || s.anyScope.some(can)) && (!s.module || hasModule(s.module)),
+    ),
   })).filter((group) => group.sections.length > 0)
   const allowed = groups.flatMap((group) => group.sections)
   // Unknown or not-permitted sections fall back to the first allowed one.
@@ -208,6 +215,7 @@ export function SettingsPage() {
           {active?.id === 'numbering' && <NumberingSection />}
           {active?.id === 'import' && <ImportSection />}
           {active?.id === 'payments' && <PaymentsSection />}
+          {active?.id === 'subscription' && <SubscriptionSection />}
           {active?.id === 'payment-methods' && (
             <LookupSection
               kind="paymentMethod"

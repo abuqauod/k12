@@ -1,3 +1,4 @@
+import { api as apiCall } from './apiClient'
 import { loadSyncSettings } from './sync'
 import { authorizedFetch, type TokenGetter } from './http'
 import type {
@@ -429,3 +430,15 @@ export const cancelExpense = (getToken: TokenGetter, id: string) =>
 // 3.6 reports
 export const getFinanceSummary = (getToken: TokenGetter, params: { branchId?: string; from: string; to: string; academicYearId?: string }) =>
   send<FinanceSummary>(getToken, 'GET', `/finance/reports/summary${qs(params)}`)
+
+/** SAMS 12: bill a whole grade (or one class of it) from a fee structure. */
+export const bulkInvoices = (
+  getToken: TokenGetter,
+  body: { feeStructureId: string; classId?: string; dueDate?: string | null; preview?: boolean },
+) =>
+  apiCall<{ toBill: number; alreadyBilled: number; created: number; failed: { studentId: string; error: string }[] }>(
+    getToken,
+    'POST',
+    '/finance/invoices/bulk',
+    body,
+  )

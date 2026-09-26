@@ -1,5 +1,6 @@
 import type { DocumentDoc, TenantContext } from '../db.js'
 import { withTenant, withoutTenant } from '../db.js'
+import { tenantHasModule } from '../billing/usage.js'
 import { withLock } from '../lock.js'
 import { recordAudit } from '../audit.js'
 import { notifyFamilies, schoolName, type Delivered } from '../notifications/messages.js'
@@ -181,7 +182,7 @@ export async function runDailyNotices(tenantId: string, asOf: string): Promise<b
         actorId: null,
       })
     }
-    if (settings.libraryOverdue.auto) {
+    if (settings.libraryOverdue.auto && (await tenantHasModule(tenantId, 'library'))) {
       meta.libraryOverdue = await libraryOverdueNotices(ctx, tenantId, {
         asOf,
         repeatDays: settings.libraryOverdue.repeatDays,

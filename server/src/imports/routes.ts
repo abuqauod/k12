@@ -332,6 +332,7 @@ export function registerImportRoutes(app: FastifyInstance): void {
     const warnings: { line: number; warning: string }[] = []
     let parentsCreated = 0
     let parentsLinked = 0
+    const mayCharge = await callerHasPermission(request, 'parents.manage')
     for (const r of out.rows) {
       if (r.errors.length || !r.payload) continue
       const url = kind === 'students' ? '/students' : '/hr/employees'
@@ -368,6 +369,10 @@ export function registerImportRoutes(app: FastifyInstance): void {
         studentId: id,
         relationshipType: r.parent.relationshipType,
         primaryContact: true,
+        // The one guardian a row names is the family's contact for fees too:
+        // without it nobody sees or pays the bills in the portal (pilot).
+        // Only when the importer may set that flag; otherwise it stays off.
+        financialResponsibility: mayCharge,
         communicationPermissions: { email: !!r.parent.email, sms: true },
       })
       if (link.status !== 201) warnings.push({ line: r.line, warning: `LINK_${String(link.body.error ?? link.status)}` })

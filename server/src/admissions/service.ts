@@ -197,7 +197,8 @@ export async function convertApplication(
       secondaryContact: false,
       emergencyContact: g.primaryContact,
       authorizedPickup: false,
-      financialResponsibility: false,
+      // The primary guardian pays the fees unless the school changes it.
+      financialResponsibility: g.primaryContact,
       communicationPermissions: { email: Boolean(g.email ?? parent.email), sms: false },
       portalAccess: false,
       active: true,

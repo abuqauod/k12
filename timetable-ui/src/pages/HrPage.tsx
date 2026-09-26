@@ -45,7 +45,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export function HrPage() {
   const { t, lang } = useI18n()
-  const { can, getAccessToken } = useAuth()
+  const { can, getAccessToken, hasModule } = useAuth()
   const { activeBranchId } = useApp()
   const [params, setParams] = useSearchParams()
   const tabs = TABS.filter((x) => !x.scope || can(x.scope))
@@ -60,13 +60,15 @@ export function HrPage() {
           <p className="page__subtitle">{t('hr.subtitle')}</p>
         </div>
         <div className="page__actions">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void printIdCards(getAccessToken, 'employees', { branchId: activeBranchId, layout: 'sheet', lang })}
-          >
-            {t('idcards.printStaff')}
-          </button>
+          {hasModule('idCards') && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void printIdCards(getAccessToken, 'employees', { branchId: activeBranchId, layout: 'sheet', lang })}
+            >
+              {t('idcards.printStaff')}
+            </button>
+          )}
         </div>
       </header>
       <div className="tabs" role="tablist" aria-label={t('nav.hr')}>

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { tenantHasModule } from '../billing/usage.js'
 import { z } from 'zod'
 import { withoutTenant, withTenant } from '../db.js'
 import type { ReportFilters, ReportScheduleDoc } from '../db.js'
@@ -184,7 +185,8 @@ export function registerReportRoutes(app: FastifyInstance): void {
   app.get('/reports/catalog', scoped('dashboard.read'), async (request, reply) => {
     const lang = z.enum(['en', 'ar']).catch('en').parse((request.query as { lang?: string }).lang)
     const viewer = await viewerFromRequest(request)
-    return reply.send({ reports: catalogFor(viewer, lang), canSchedule: viewer.scopes.has('reports.schedule') })
+    return reply.send({ reports: catalogFor(viewer, lang), canSchedule: viewer.scopes.has('reports.schedule') && (await tenantHasModule(request.auth!.tenantId!, 'scheduledReports')),
+    })
   })
 
   // ---------------------------------------------------------- schedules --

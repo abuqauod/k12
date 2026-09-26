@@ -1,4 +1,5 @@
 import { actionLabel } from '../lib/auditLabels'
+import { GettingStarted } from '../components/GettingStarted'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -217,6 +218,8 @@ export function DashboardPage() {
           </nav>
         )}
       </header>
+
+      <GettingStarted />
 
       {/* ------------------------------------------------ school overview */}
       <section aria-labelledby="dash-overview">

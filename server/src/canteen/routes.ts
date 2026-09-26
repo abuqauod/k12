@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { tenantHasModule } from '../billing/usage.js'
 import { z } from 'zod'
 import { withTenant } from '../db.js'
 import type { StudentDoc, TenantContext } from '../db.js'
@@ -275,7 +276,11 @@ export function registerCanteenRoutes(app: FastifyInstance): void {
         dailyLimit: wallet.dailyLimit,
         blockedCategories: wallet.blockedCategories,
         spentToday: await spentToday(ctx, id),
-        canTopUp: fam.link.financialResponsibility && payments.enabled && payments.provider !== null,
+        canTopUp:
+          fam.link.financialResponsibility &&
+          payments.enabled &&
+          payments.provider !== null &&
+          (await tenantHasModule(tenantId, 'onlinePayments')),
         canControl: fam.link.financialResponsibility,
         topupMin: WALLET_TOPUP_MIN,
         topupMax: WALLET_TOPUP_MAX,

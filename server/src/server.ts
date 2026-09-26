@@ -41,6 +41,9 @@ import { registerIdCardRoutes } from './idcards/routes.js'
 import { registerPaymentRoutes } from './payments/routes.js'
 import { registerGradeRoutes } from './grades/routes.js'
 import { registerCanteenRoutes } from './canteen/routes.js'
+import { registerOnboardingRoutes } from './onboarding/routes.js'
+import { registerBillingPublicRoutes } from './billing/public.js'
+import { registerBillingRoutes } from './billing/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 import { reportError } from './runtime/errorReporting.js'
 import { preflight } from './runtime/preflight.js'
@@ -226,6 +229,9 @@ export function buildServer() {
       registerPaymentRoutes(instance)
       registerGradeRoutes(instance)
       registerCanteenRoutes(instance)
+      registerOnboardingRoutes(instance)
+      registerBillingPublicRoutes(instance)
+      registerBillingRoutes(instance)
     },
     { prefix: config.routePrefix },
   )

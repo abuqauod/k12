@@ -80,7 +80,7 @@ function useFilterData(branchId: string | null) {
 export function ReportsPage() {
   const { t, lang } = useI18n()
   const [params, setParams] = useSearchParams()
-  const { getAccessToken } = useAuth()
+  const { getAccessToken, hasModule } = useAuth()
   const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null)
   const [canSchedule, setCanSchedule] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -94,7 +94,9 @@ export function ReportsPage() {
     })
   }, [getAccessToken, lang, t])
 
-  const tabs: Tab[] = canSchedule ? ['reports', 'schedules', 'exports'] : ['reports', 'exports']
+  // Schedules and their exports are the scheduled-reports module (SAMS 13.1).
+  const scheduled = hasModule('scheduledReports')
+  const tabs: Tab[] = !scheduled ? ['reports'] : canSchedule ? ['reports', 'schedules', 'exports'] : ['reports', 'exports']
   const asked = params.get('tab') as Tab
   const tab = tabs.includes(asked) ? asked : 'reports'
   const go = (x: Tab) => setParams(new URLSearchParams({ tab: x }), { replace: true })
