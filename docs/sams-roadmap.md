@@ -11,17 +11,17 @@ per-area status reference.
 
 ## Where we are
 
-**Phase 1 — Administration Foundation: shipped slices 1.1–1.6, closeout
-(1.7–1.12) in progress.**
+**Phases 1–5 are shipped and on `main`. Phase 6 (Communication & Portals) is
+next.**
 
-| Slice | What shipped | PR |
+| Phase | Slices | PRs |
 |---|---|---|
-| 1.1 | Permission-scope layer (`requirePermission`) on top of the 4 ranked roles; students/attendance branch-scoping gap closed | #25 |
-| 1.2 | School's own subscription status in Settings (read-only; replaced the original branch self-service scope) | #26 |
-| 1.3/1.4 | Audit log: branch attribution, before/after, filters, CSV export | #27 |
-| — | Transport moved from a JSON blob to a real backend (off-plan) | #30, #34 |
-| 1.5 | Dashboard cross-module Overview | #36 |
-| 1.6 | Tenant-scoped global search (students, parents, classes, buses, stops) | #37 |
+| 1 — Administration foundation | 1.1–1.6: permission scopes, subscription status, audit log, dashboard overview, global search. Transport moved to a real backend (off-plan, #30, #34) | #25–#27, #36, #37 |
+| 1 — Closeout | 1.7 test harness · 1.8 admin roles · 1.9 parent branch isolation · 1.10 approvals · 1.11 settings · 1.12 audit/search/dashboard | #40, #42–#44, #46, #49, #50, #52 |
+| 2 — Student administration | 2.1 documents · 2.2 student profile · 2.3 guardian models · 2.4 enrollment · 2.5 admissions · 2.6 year-end re-enrollment | #53, #55, #56, #58, #59, #61 |
+| 3 — Finance administration | 3.1–3.6 | #60, #61 |
+| 4 — HR & staff | 4.1–4.6 | #62 |
+| 5 — Operations | 5.1–5.6 | #62 |
 
 ## Definition of done (every slice)
 
@@ -251,6 +251,27 @@ student's Finance tab):
 4.3 Staff documents (2.1) · 4.4 Leave types, balances, requests (1.10) ·
 4.5 Staff attendance · 4.6 HR reports.
 
+**Built** (server and UI; the HR page, the employee page, and "My leave" in
+Account settings):
+- 4.1 Employees (`EMP-` numbers) with an optional link to one login each.
+  Terminating needs a reason, ends open contracts and cancels future leave;
+  rehire starts a new history entry.
+- 4.2 Departments, positions and contract types are settings lists. Contracts
+  can't overlap; a renewal starts the day after the old one ends. Salary is
+  hidden without `hr.salary.read`. Every change lands in the employment history.
+- 4.3 Employee documents use 2.1, with new categories contract, certificate
+  and licence.
+- 4.4 Leave types (annual 14, sick 14, emergency 3, unpaid unlimited by
+  default), balances per year (entitlement + adjustments − approved −
+  pending), working days counted from the branch calendar. Requests go through
+  the approval engine (`hr.leave`); nobody decides their own. Linked staff can
+  request and cancel their own leave.
+- 4.5 A daily staff attendance sheet per branch; approved leave shows as leave.
+- 4.6 `GET /hr/reports/summary`: headcount, contracts ending, expiring staff
+  documents, leave taken by type.
+- New scopes `hr.attendance.write`, `hr.leave.approve`, `hr.salary.read`,
+  `reports.hr` (admins and the `hr` preset).
+
 ## Phase 5 — Operations
 5.1 Assets and lifecycle (purchase → assignment → maintenance → transfer →
 disposal) · 5.2 Inventory, suppliers, stock movements · 5.3 Facilities,
@@ -258,6 +279,30 @@ buildings, rooms, maintenance requests · 5.4 Transport administration
 (drivers, vehicle/driver documents, insurance/registration expiry, transport
 fees) · 5.5 Library administration (copies, loans, overdue, fines) · 5.6
 Events and activities (registration, capacity, attendance, costs).
+
+**Built** (server and UI; the Operations, Library, Events and Fleet pages):
+- 5.1 Assets (`AST-` numbers): assign to a person or room, return, maintenance,
+  transfer between branches, dispose (reason required). Every step is kept as
+  an asset event.
+- 5.2 Stock items per branch with reorder levels; movements receive / issue /
+  adjust / transfer, never below zero. Suppliers are the finance vendors.
+- 5.3 Buildings and rooms; maintenance requests (`MNT-` numbers) from open to
+  closed. An asset under repair follows its request, and whoever reported a
+  request may cancel it while it's open.
+- 5.4 Bus paperwork (registration, insurance, inspection), drivers with
+  licence expiry and an optional employee link, a compliance list, and
+  transport fees billed onto invoices.
+- 5.5 Books and copies, loans to students or staff with a loan limit and
+  renewals, fines for late returns that block new loans until paid or waived.
+- 5.6 Events from draft to completed, registration with capacity and a
+  waitlist, attendance, costs, and the event fee billed onto invoices.
+- The dashboard has a "Needs attention" card: payments to confirm, refunds
+  and expenses to pay, contracts ending, open maintenance, low stock, overdue
+  loans and expiring transport papers, each shown only with its read scope.
+- New scopes `ops.read`, `ops.events.manage`, `ops.library.manage`,
+  `ops.maintenance.report` (schedulers and up) and `ops.assets.manage`,
+  `ops.facilities.manage`, `ops.inventory.manage` (admins); the `operations`
+  preset has them all.
 
 ## Phase 6 — Communication & Portals
 6.1 General notification service over the existing queue: templates (EN/AR),
