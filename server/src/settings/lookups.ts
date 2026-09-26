@@ -19,6 +19,16 @@ interface Default {
 
 export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
   // Backlog: behaviour incidents — what happened, and what the school did.
+  // SAMS 11.4: what the canteen sells, for parents' restrictions.
+  canteenCategory: {
+    defaults: [
+      { code: 'meals', label: 'Meals', labelAr: 'وجبات' },
+      { code: 'snacks', label: 'Snacks', labelAr: 'وجبات خفيفة' },
+      { code: 'drinks', label: 'Drinks', labelAr: 'مشروبات' },
+      { code: 'sweets', label: 'Sweets', labelAr: 'حلويات' },
+      { code: 'stationery', label: 'Stationery', labelAr: 'قرطاسية' },
+    ],
+  },
   // SAMS 11.2: subjects a grade is assessed in.
   subject: {
     defaults: [

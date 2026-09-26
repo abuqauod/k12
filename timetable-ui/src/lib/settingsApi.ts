@@ -5,6 +5,7 @@ import { authorizedFetch, type TokenGetter } from './http'
 
 export type LookupKind =
   | 'subject'
+  | 'canteenCategory'
   | 'paymentMethod'
   | 'documentCategory'
   | 'admissionSource'

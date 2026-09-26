@@ -21,6 +21,7 @@ export const ROLE_KEYS = [
   'reception',
   'nurse',
   'teacher',
+  'canteen',
 ] as const
 export type RoleKey = (typeof ROLE_KEYS)[number]
 /** A parent portal login (SAMS 6.4): never offered in the role picker. */

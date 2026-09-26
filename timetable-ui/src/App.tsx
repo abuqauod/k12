@@ -30,6 +30,7 @@ import { CommunicationPage } from './pages/CommunicationPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { ClinicPage } from './pages/ClinicPage'
 import { GradesPage } from './pages/GradesPage'
+import { CanteenPage } from './pages/CanteenPage'
 import { BehaviourPage } from './pages/BehaviourPage'
 import { PortalShell } from './portal/PortalShell'
 import { PortalHome } from './portal/PortalHome'
@@ -103,6 +104,7 @@ export default function App() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/clinic" element={<ClinicPage />} />
         <Route path="/grades" element={<GradesPage />} />
+        <Route path="/canteen" element={<CanteenPage />} />
         <Route path="/behaviour" element={<BehaviourPage />} />
         <Route path="/hr" element={<HrPage />} />
         <Route path="/hr/employees/:id" element={<EmployeePage />} />

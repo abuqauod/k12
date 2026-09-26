@@ -72,6 +72,7 @@ type SettingsSection =
   | 'payments'
   | 'incident-types'
   | 'subjects'
+  | 'canteen-categories'
   | 'discipline-actions'
   | 'roles'
   | 'team'
@@ -115,6 +116,7 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'book-categories', key: 'settings.section.bookCategories', scope: 'settings.read' },
       { id: 'event-types', key: 'settings.section.eventTypes', scope: 'settings.read' },
       { id: 'subjects', key: 'settings.section.subjects', scope: 'settings.read' },
+      { id: 'canteen-categories', key: 'settings.section.canteenCategories', scope: 'settings.read' },
       { id: 'incident-types', key: 'settings.section.incidentTypes', scope: 'settings.read' },
       { id: 'discipline-actions', key: 'settings.section.disciplineActions', scope: 'settings.read' },
       { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
@@ -256,6 +258,9 @@ export function SettingsPage() {
           {active?.id === 'book-categories' && <LookupSection kind="bookCategory" title={t('settings.section.bookCategories')} hint={t('settings.bookCategories.hint')} />}
           {active?.id === 'event-types' && <LookupSection kind="eventType" title={t('settings.section.eventTypes')} hint={t('settings.eventTypes.hint')} />}
           {active?.id === 'notification-templates' && <NotificationTemplatesSection />}
+          {active?.id === 'canteen-categories' && (
+            <LookupSection kind="canteenCategory" title={t('settings.section.canteenCategories')} hint={t('settings.canteenCategories.hint')} />
+          )}
           {active?.id === 'subjects' && <LookupSection kind="subject" title={t('settings.section.subjects')} hint={t('settings.subjects.hint')} />}
           {active?.id === 'incident-types' && (
             <LookupSection kind="incidentType" title={t('settings.section.incidentTypes')} hint={t('settings.incidentTypes.hint')} />

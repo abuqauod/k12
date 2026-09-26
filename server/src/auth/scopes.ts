@@ -28,6 +28,8 @@ export type PermissionScope =
   | 'audit.read'
   | 'branches.manage'
   | 'branches.read'
+  | 'canteen.manage'
+  | 'canteen.sell'
   | 'classes.read'
   | 'classes.write'
   | 'dashboard.read'
@@ -165,6 +167,9 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'documents.delete',
   // SAMS 11.2: assessment plans, the grading scale, releasing report cards.
   'grades.manage',
+  // SAMS 11.4: products, office top-ups and corrections; and selling.
+  'canteen.manage',
+  'canteen.sell',
   'documents.upload',
   'documents.verify',
   'enrollments.assign',
@@ -219,6 +224,7 @@ export const ROLE_SCOPES: Record<Role, ReadonlySet<PermissionScope>> = {
 
 export const ROLE_KEYS = [
   'teacher',
+  'canteen',
   'school_admin',
   'branch_admin',
   'registrar',
@@ -356,6 +362,8 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'grades.read',
     'ops.maintenance.report',
   ]),
+  // SAMS 11.4: the canteen till — sells to students' wallets, nothing else.
+  canteen: preset('viewer', ['canteen.sell']),
   // Backlog: the school nurse — health records and the clinic log.
   nurse: preset('viewer', [...OFFICE_READ, 'health.read', 'health.write', 'ops.maintenance.report', 'discipline.report']),
   // A parent sees only the portal, and there only their own children.

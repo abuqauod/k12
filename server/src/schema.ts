@@ -289,4 +289,9 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .createIndex({ tenantId: 1, studentId: 1, academicYearId: 1, assessmentId: 1, subjectCode: 1 }, { unique: true })
   await db.collection('marks').createIndex({ tenantId: 1, classId: 1, termId: 1, subjectCode: 1 })
   await db.collection('marks').createIndex({ tenantId: 1, studentId: 1, termId: 1 })
+
+  // SAMS 11.4: a wallet's statement, a branch's day of sales.
+  await db.collection('walletTransactions').createIndex({ tenantId: 1, studentId: 1, createdAt: -1 })
+  await db.collection('walletTransactions').createIndex({ tenantId: 1, branchId: 1, createdAt: -1 })
+  await db.collection('canteenProducts').createIndex({ tenantId: 1, branchId: 1, active: 1 })
 }

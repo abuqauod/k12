@@ -569,6 +569,24 @@ loans, renewals, limits and fines):
   the Loans → Overdue list, or daily when switched on in Communication →
   Automatic notices; each loan at most once per `repeatDays`.
 
+**Built — 11.4 canteen and student wallet** (`server/src/canteen/`, the
+Canteen page, the portal's Canteen tab):
+- A prepaid **wallet** per student; every change is a transaction with the
+  balance after it. A debit only succeeds if the money is there at that
+  moment (a conditional update), so two tills can't spend the same money —
+  tested with three sales at once.
+- **Products** per branch, in `canteenCategory` groups (settings list).
+- The **till** (new Canteen role, `canteen.sell` only): scan the ID card,
+  tap products, charge. It sees the student's name, number, balance and
+  what is left today — nothing else of the record. Refused when the balance
+  is short, over the family's **daily limit**, or a **category the family
+  blocked**.
+- **Top-ups** at the office (`canteen.manage`, any payment method) or
+  **online by the family** through the school's gateway (11.1; a wallet
+  top-up never touches the fees). Same-day refund of a sale.
+- The family sees the balance and statement, tops up, and sets the limits
+  in the portal; the office sees the day's takings per product.
+
 ## Phase 12 — Pilot run
 A realistic school built through the product itself (bulk import, fee
 structures, timetable, a term of attendance, fees, grades, report cards,

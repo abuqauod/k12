@@ -40,6 +40,7 @@ import { registerImportRoutes } from './imports/routes.js'
 import { registerIdCardRoutes } from './idcards/routes.js'
 import { registerPaymentRoutes } from './payments/routes.js'
 import { registerGradeRoutes } from './grades/routes.js'
+import { registerCanteenRoutes } from './canteen/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 import { reportError } from './runtime/errorReporting.js'
 import { preflight } from './runtime/preflight.js'
@@ -224,6 +225,7 @@ export function buildServer() {
       registerIdCardRoutes(instance)
       registerPaymentRoutes(instance)
       registerGradeRoutes(instance)
+      registerCanteenRoutes(instance)
     },
     { prefix: config.routePrefix },
   )

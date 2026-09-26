@@ -2264,6 +2264,8 @@ export interface OnlinePaymentDoc extends Document {
   tenantId: string
   branchId: string
   studentId: string
+  /** SAMS 11.4: what the money is for; absent = fees. */
+  purpose?: 'fees' | 'wallet'
   parentId: string | null
   /** Minor units. */
   amount: number
@@ -2372,6 +2374,59 @@ export interface ReportCommentDoc extends Document {
   termId: string
   comment: string
   updatedBy: string
+  updatedAt: Date
+}
+
+/** SAMS 11.4: a student's prepaid canteen balance (_id = studentId). */
+export interface WalletAccountDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  branchId: string
+  /** Minor units. */
+  balance: number
+  /** Parent-set: most the child may spend in a day; null = no limit. */
+  dailyLimit: number | null
+  /** Parent-set: `canteenCategory` codes the child may not buy. */
+  blockedCategories: string[]
+  active: boolean
+  updatedAt: Date
+}
+
+export type WalletTxType = 'topup' | 'purchase' | 'refund' | 'adjust'
+
+export interface WalletTransactionDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  branchId: string
+  type: WalletTxType
+  /** Signed, minor units: + in, − out. */
+  amount: number
+  balanceAfter: number
+  /** Top-ups: how the money came in (a `paymentMethod` code or `online`). */
+  method: string | null
+  items: { productId: string; name: string; qty: number; price: number; categoryCode: string | null }[]
+  reference: string | null
+  onlinePaymentId: string | null
+  /** The purchase a refund reverses. */
+  reverses: string | null
+  voided: boolean
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface CanteenProductDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  name: string
+  nameAr: string | null
+  /** Minor units. */
+  price: number
+  categoryCode: string | null
+  active: boolean
+  createdAt: Date
   updatedAt: Date
 }
 
@@ -2546,6 +2601,9 @@ export interface TenantContext {
   marks: TenantScope<MarkDoc>
   reportReleases: TenantScope<ReportReleaseDoc>
   reportComments: TenantScope<ReportCommentDoc>
+  walletAccounts: TenantScope<WalletAccountDoc>
+  walletTransactions: TenantScope<WalletTransactionDoc>
+  canteenProducts: TenantScope<CanteenProductDoc>
 }
 
 /**
@@ -2687,6 +2745,9 @@ export async function withTenant<T>(
         marks: new TenantScope(db.collection<MarkDoc>('marks'), tenantId, session),
         reportReleases: new TenantScope(db.collection<ReportReleaseDoc>('reportReleases'), tenantId, session),
         reportComments: new TenantScope(db.collection<ReportCommentDoc>('reportComments'), tenantId, session),
+        walletAccounts: new TenantScope(db.collection<WalletAccountDoc>('walletAccounts'), tenantId, session),
+        walletTransactions: new TenantScope(db.collection<WalletTransactionDoc>('walletTransactions'), tenantId, session),
+        canteenProducts: new TenantScope(db.collection<CanteenProductDoc>('canteenProducts'), tenantId, session),
       })
     })
     return result as T

@@ -12,6 +12,7 @@ import {
 } from '../lib/portalApi'
 import { formatMinorUnits } from '../domain/finance'
 import { PaymentResult, PayOnline } from './PayOnline'
+import { PortalWallet } from './PortalWallet'
 import { portalReportCardPath, portalReportCards } from '../lib/gradesApi'
 import { openApiPage } from '../lib/printPage'
 import { useAuth } from '../auth/AuthContext'
@@ -21,7 +22,7 @@ import type { TranslationKey } from '../i18n/translations'
 /** One child in the portal: overview and attendance, fees (for a parent
  * responsible for them) and the documents the school shares. */
 
-type Tab = 'overview' | 'finance' | 'reports' | 'documents'
+type Tab = 'overview' | 'finance' | 'reports' | 'wallet' | 'documents'
 
 const INSTALLMENT_TONE: Record<string, string> = {
   paid: 'chip--ok',
@@ -54,7 +55,7 @@ export function PortalChildPage() {
   }
   if (!child) return <div className="skeleton" style={{ height: 160 }} />
 
-  const tabs: Tab[] = child.finance ? ['overview', 'finance', 'reports', 'documents'] : ['overview', 'reports', 'documents']
+  const tabs: Tab[] = child.finance ? ['overview', 'finance', 'reports', 'wallet', 'documents'] : ['overview', 'reports', 'wallet', 'documents']
   const tab = (tabs.includes(params.get('tab') as Tab) ? params.get('tab') : 'overview') as Tab
   const absences = (child.attendance.counts.absent ?? 0) + (child.attendance.counts.excused ?? 0)
 
@@ -116,6 +117,7 @@ export function PortalChildPage() {
         )}
         {tab === 'finance' && <Finance id={id} />}
         {tab === 'reports' && <ReportCards id={id} />}
+        {tab === 'wallet' && <PortalWallet id={id} />}
         {tab === 'documents' && <Documents id={id} />}
       </div>
     </>

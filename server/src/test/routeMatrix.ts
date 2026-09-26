@@ -315,6 +315,17 @@ export const ROUTES: [Method, string, Role][] = [
   ['PUT', '/settings/payments', 'admin'],
   ['GET', '/finance/online-payments', 'viewer'],
   ['POST', `/finance/online-payments/${X}/check`, 'viewer'],
+  // SAMS 11.4 canteen: selling is a scope no default rank below admin holds
+  // (the Canteen role has it); managing is admin.
+  ['GET', '/canteen/products', 'admin'],
+  ['POST', '/canteen/products', 'admin'],
+  ['PATCH', `/canteen/products/${X}`, 'admin'],
+  ['GET', `/canteen/card?card=${X}`, 'admin'],
+  ['POST', '/canteen/sales', 'admin'],
+  ['POST', `/canteen/sales/${X}/refund`, 'admin'],
+  ['GET', '/canteen/summary', 'admin'],
+  ['GET', `/canteen/wallets/${X}`, 'admin'],
+  ['POST', `/canteen/wallets/${X}/topup`, 'admin'],
   // SAMS 11.3 library desk.
   ['GET', `/ops/library/borrower?card=${X}`, 'scheduler'],
   ['POST', '/ops/library/return-by-barcode', 'scheduler'],
@@ -370,5 +381,8 @@ export const PORTAL_ROUTES: [Method, string][] = [
   ['GET', `/portal/payments/${X}`],
   ['GET', `/portal/children/${X}/report-cards`],
   ['GET', `/portal/children/${X}/report-cards/t1`],
+  ['GET', `/portal/children/${X}/wallet`],
+  ['PUT', `/portal/children/${X}/wallet/controls`],
+  ['POST', `/portal/children/${X}/wallet/topup`],
 ]
 

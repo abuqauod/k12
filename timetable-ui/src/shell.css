@@ -3181,3 +3181,52 @@ tr.is-muted td {
   border-block-start: 1px solid var(--line);
   padding-block: 10px;
 }
+
+/* SAMS 11.4: the canteen till */
+.till-who {
+  margin-block: 10px;
+}
+.till-who__balance {
+  font-size: 26px;
+  font-weight: 700;
+}
+.till-basket {
+  margin-block: 10px;
+  border-block-start: 1px solid var(--line);
+}
+.till-total {
+  border-block-start: 1px solid var(--line);
+  padding-block-start: 6px;
+}
+.till-charge {
+  width: 100%;
+  padding-block: 12px;
+  font-size: 16px;
+}
+.till-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-block: 6px 12px;
+}
+.till-product {
+  display: grid;
+  gap: 4px;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.till-product:hover {
+  border-color: var(--accent);
+}
+.row--muted td {
+  opacity: 0.55;
+}
+.text-ok {
+  color: var(--ok);
+}

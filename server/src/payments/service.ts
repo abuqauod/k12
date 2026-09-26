@@ -4,6 +4,7 @@ import { withTenant, withoutTenant } from '../db.js'
 import type { OnlinePaymentDoc, PaymentProviderKey, PaymentSettingsDoc, RefundDoc, TenantContext } from '../db.js'
 import { recordAudit } from '../audit.js'
 import { allocate, openInvoices, recordPayments } from '../finance/service.js'
+import { creditWallet } from '../canteen/wallet.js'
 import { config, isProduction } from '../config.js'
 import { openSecret } from './secrets.js'
 import { payTabs } from './providers/paytabs.js'
@@ -21,6 +22,9 @@ import { GatewayError, type PaymentProvider, type PaymentStatus } from './provid
  */
 
 export const DEFAULT_CURRENCY = 'JOD'
+/** SAMS 11.4: an online wallet top-up, in minor units (1.00 to 500.00). */
+export const WALLET_TOPUP_MIN = 100
+export const WALLET_TOPUP_MAX = 50_000
 
 /** This API's public address: PUBLIC_API_URL, else how the request came in. */
 export function apiBaseOf(request: FastifyRequest): string {
@@ -123,7 +127,10 @@ export async function startCheckout(input: {
   apiBase: string
   lang: 'en' | 'ar'
   actorId: string | null
+  /** SAMS 11.4: a wallet top-up rather than fees. */
+  purpose?: 'fees' | 'wallet'
 }): Promise<StartResult> {
+  const purpose = input.purpose ?? 'fees'
   const pc = { apiBase: input.apiBase, tenantId: input.tenantId }
   type Prepared =
     | { error: string; status: number; outstanding?: number }
@@ -134,18 +141,25 @@ export async function startCheckout(input: {
     if (!provider) return { error: 'PAYMENTS_OFF', status: 409 }
     const student = await ctx.students.findOne({ _id: input.studentId })
     if (!student) return { error: 'NOT_FOUND', status: 404 }
-    const open = await openInvoices(ctx, input.studentId)
-    const outstanding = open.reduce((sum, o) => sum + o.outstanding, 0)
-    if (outstanding <= 0) return { error: 'NOTHING_OUTSTANDING', status: 409 }
-    const amount = input.amount ?? outstanding
-    if (amount <= 0) return { error: 'INVALID_AMOUNT', status: 400 }
-    if (amount > outstanding) return { error: 'AMOUNT_EXCEEDS_OUTSTANDING', status: 400, outstanding }
+    let amount: number
+    if (purpose === 'wallet') {
+      if (!input.amount || input.amount < WALLET_TOPUP_MIN || input.amount > WALLET_TOPUP_MAX) return { error: 'INVALID_AMOUNT', status: 400 }
+      amount = input.amount
+    } else {
+      const open = await openInvoices(ctx, input.studentId)
+      const outstanding = open.reduce((sum, o) => sum + o.outstanding, 0)
+      if (outstanding <= 0) return { error: 'NOTHING_OUTSTANDING', status: 409 }
+      amount = input.amount ?? outstanding
+      if (amount <= 0) return { error: 'INVALID_AMOUNT', status: 400 }
+      if (amount > outstanding) return { error: 'AMOUNT_EXCEEDS_OUTSTANDING', status: 400, outstanding }
+    }
     const now = new Date()
     const doc: OnlinePaymentDoc = {
       _id: randomUUID(),
       tenantId: input.tenantId,
       branchId: student.branchId,
       studentId: student._id,
+      purpose,
       parentId: input.parentId,
       amount,
       currency: settings.currency,
@@ -175,7 +189,7 @@ export async function startCheckout(input: {
       reference: doc._id,
       amount: doc.amount,
       currency: doc.currency,
-      description: `School fees — ${prepared.studentName} (${prepared.studentNumber})`,
+      description: `${purpose === 'wallet' ? 'Canteen top-up' : 'School fees'} — ${prepared.studentName} (${prepared.studentNumber})`,
       customer: input.payer,
       returnUrl: `${input.apiBase}/payments/return/${input.tenantId}/${doc._id}`,
       callbackUrl: `${input.apiBase}/payments/callback/${input.tenantId}/${doc._id}`,
@@ -254,6 +268,28 @@ export async function settle(tenantId: string, id: string, apiBase: string): Pro
       { returnDocument: 'after' },
     )
     if (!claimed) return ctx.onlinePayments.findOne({ _id: id })
+
+    if (claimed.purpose === 'wallet') {
+      const tx = await creditWallet(ctx, {
+        studentId: claimed.studentId,
+        amount: claimed.amount,
+        type: 'topup',
+        method: 'online',
+        reference: answer.paymentId ?? claimed.providerRef,
+        onlinePaymentId: claimed._id,
+        actorId: null,
+      })
+      await recordAudit(ctx.auditLog, {
+        actorId: null,
+        action: 'onlinePayment.settle',
+        entity: 'onlinePayment',
+        entityId: id,
+        branchId: claimed.branchId,
+        before: { status: 'pending' },
+        after: { status: 'paid', purpose: 'wallet', amount: claimed.amount, walletTx: tx._id },
+      })
+      return claimed
+    }
 
     const open = await openInvoices(ctx, claimed.studentId)
     const outstanding = open.reduce((sum, o) => sum + o.outstanding, 0)
@@ -347,6 +383,7 @@ export function onlinePaymentResponse(doc: OnlinePaymentDoc, names?: { student?:
     branchId: doc.branchId,
     amount: doc.amount,
     currency: doc.currency,
+    purpose: doc.purpose ?? 'fees',
     provider: doc.provider,
     providerRef: doc.providerRef,
     status: doc.status,
