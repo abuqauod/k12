@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from 'react'
 import * as authApi from '../lib/authApi'
 import type { AuthTenant, AuthUser, TenantChoice } from '../lib/authApi'
-import { fetchMyAccess, type RoleKey } from '../lib/memberships'
+import { fetchMyAccess, type AccessRoleKey } from '../lib/memberships'
 
 export type { AuthTenant, AuthUser, TenantChoice }
 
@@ -30,8 +30,10 @@ interface AuthValue {
    * expire mid-session.
    */
   getAccessToken: (force?: boolean) => Promise<string | null>
-  /** The caller's named preset, if any (SAMS 1.8). */
-  roleKey: RoleKey | null
+  /** The caller's named preset, if any (SAMS 1.8); 'parent' for a portal login. */
+  roleKey: AccessRoleKey | null
+  /** True once the server has said who the caller is (or failed to). */
+  accessReady: boolean
   /**
    * Whether the server grants the caller `scope` — resolved by the server
    * (`GET /auth/me`), so the UI hides exactly what the API would refuse.
@@ -160,7 +162,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (initial) void getAccessToken()
   }, [initial, getAccessToken])
 
-  const [access, setAccess] = useState<{ roleKey: RoleKey | null; scopes: ReadonlySet<string> } | null>(null)
+  const [access, setAccess] = useState<{ roleKey: AccessRoleKey | null; scopes: ReadonlySet<string> } | null>(null)
+  const [accessFor, setAccessFor] = useState<string | null>(null)
   const userId = user?.id
   const tenantId = tenant?.id
   useEffect(() => {
@@ -171,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void fetchMyAccess(getAccessToken).then((result) => {
       if (cancelled) return
       setAccess(result.kind === 'ok' ? { roleKey: result.data.roleKey, scopes: new Set(result.data.scopes) } : null)
+      setAccessFor(`${userId}:${tenantId}`)
     })
     return () => {
       cancelled = true
@@ -180,7 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = useCallback((scope: string) => (userId ? (access?.scopes.has(scope) ?? false) : false), [access, userId])
   const roleKey = userId ? (access?.roleKey ?? null) : null
 
-  const value: AuthValue = { user, tenant, signIn, signOut, getAccessToken, roleKey, can }
+  const accessReady = !userId || accessFor === `${userId}:${tenantId}`
+
+  const value: AuthValue = { user, tenant, signIn, signOut, getAccessToken, roleKey, accessReady, can }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -83,6 +83,92 @@ const ROUTES: [Method, string, Role][] = [
   ['POST', `/finance/expenses/${X}/pay`, 'admin'],
   ['POST', `/finance/expenses/${X}/cancel`, 'scheduler'],
   ['GET', '/finance/reports/summary?from=2026-01-01&to=2026-12-31', 'admin'],
+  // Phase 4 HR. Leave requests, types and /hr/me are open to any member:
+  // the handler decides (HR in the branch, or the employee themselves).
+  ['GET', '/hr/employees', 'admin'],
+  ['GET', `/hr/employees/${X}`, 'admin'],
+  ['POST', '/hr/employees', 'admin'],
+  ['PATCH', `/hr/employees/${X}`, 'admin'],
+  ['POST', `/hr/employees/${X}/terminate`, 'admin'],
+  ['POST', `/hr/employees/${X}/rehire`, 'admin'],
+  ['PUT', `/hr/employees/${X}/user`, 'admin'],
+  ['GET', `/hr/employees/${X}/history`, 'admin'],
+  ['GET', `/hr/employees/${X}/contracts`, 'admin'],
+  ['POST', `/hr/employees/${X}/contracts`, 'admin'],
+  ['POST', `/hr/contracts/${X}/renew`, 'admin'],
+  ['POST', `/hr/contracts/${X}/end`, 'admin'],
+  ['GET', '/hr/contracts/expiring', 'admin'],
+  ['GET', '/hr/leave-types', 'viewer'],
+  ['POST', '/hr/leave-types', 'admin'],
+  ['PATCH', `/hr/leave-types/${X}`, 'admin'],
+  ['GET', `/hr/employees/${X}/leave`, 'admin'],
+  ['POST', `/hr/employees/${X}/leave-adjustments`, 'admin'],
+  ['GET', '/hr/me', 'viewer'],
+  ['GET', '/hr/leave-requests', 'admin'],
+  ['POST', '/hr/leave-requests', 'viewer'],
+  ['POST', `/hr/leave-requests/${X}/cancel`, 'viewer'],
+  ['GET', `/hr/attendance?branchId=${X}&date=2026-01-01`, 'admin'],
+  ['PUT', '/hr/attendance', 'admin'],
+  ['GET', `/hr/employees/${X}/attendance?from=2026-01-01&to=2026-01-31`, 'admin'],
+  ['GET', '/hr/reports/summary?from=2026-01-01&to=2026-12-31', 'admin'],
+  // Phase 5 operations.
+  ['GET', '/ops/assets', 'scheduler'],
+  ['GET', `/ops/assets/${X}`, 'scheduler'],
+  ['POST', '/ops/assets', 'admin'],
+  ['PATCH', `/ops/assets/${X}`, 'admin'],
+  ['POST', `/ops/assets/${X}/assign`, 'admin'],
+  ['POST', `/ops/assets/${X}/return`, 'admin'],
+  ['POST', `/ops/assets/${X}/maintenance`, 'admin'],
+  ['POST', `/ops/assets/${X}/transfer`, 'admin'],
+  ['POST', `/ops/assets/${X}/dispose`, 'admin'],
+  ['GET', '/ops/inventory/items', 'scheduler'],
+  ['POST', '/ops/inventory/items', 'admin'],
+  ['PATCH', `/ops/inventory/items/${X}`, 'admin'],
+  ['GET', `/ops/inventory/items/${X}/movements`, 'scheduler'],
+  ['POST', `/ops/inventory/items/${X}/movements`, 'admin'],
+  ['GET', '/ops/suppliers', 'scheduler'],
+  ['POST', '/ops/suppliers', 'admin'],
+  ['GET', '/ops/facilities', 'scheduler'],
+  ['POST', '/ops/buildings', 'admin'],
+  ['PATCH', `/ops/buildings/${X}`, 'admin'],
+  ['POST', '/ops/rooms', 'admin'],
+  ['PATCH', `/ops/rooms/${X}`, 'admin'],
+  ['GET', '/ops/maintenance', 'scheduler'],
+  ['POST', '/ops/maintenance', 'scheduler'],
+  ['PATCH', `/ops/maintenance/${X}`, 'scheduler'],
+  ['GET', '/ops/transport/buses', 'viewer'],
+  ['PUT', `/ops/transport/buses/${X}/details`, 'admin'],
+  ['GET', '/ops/transport/drivers', 'viewer'],
+  ['POST', '/ops/transport/drivers', 'admin'],
+  ['PATCH', `/ops/transport/drivers/${X}`, 'admin'],
+  ['GET', '/ops/transport/compliance', 'viewer'],
+  ['GET', `/ops/transport/fees?branchId=${X}&academicYearId=${X}`, 'viewer'],
+  ['PUT', '/ops/transport/fees', 'admin'],
+  ['POST', '/ops/transport/fees/bill', 'admin'],
+  ['GET', '/ops/library/settings', 'scheduler'],
+  ['PUT', '/ops/library/settings', 'scheduler'],
+  ['GET', '/ops/library/books', 'scheduler'],
+  ['POST', '/ops/library/books', 'scheduler'],
+  ['PATCH', `/ops/library/books/${X}`, 'scheduler'],
+  ['POST', `/ops/library/books/${X}/copies`, 'scheduler'],
+  ['POST', `/ops/library/copies/${X}/withdraw`, 'scheduler'],
+  ['GET', '/ops/library/loans', 'scheduler'],
+  ['POST', '/ops/library/loans', 'scheduler'],
+  ['POST', `/ops/library/loans/${X}/return`, 'scheduler'],
+  ['POST', `/ops/library/loans/${X}/renew`, 'scheduler'],
+  ['POST', `/ops/library/loans/${X}/lost`, 'scheduler'],
+  ['POST', `/ops/library/loans/${X}/pay`, 'scheduler'],
+  ['POST', `/ops/library/loans/${X}/waive`, 'scheduler'],
+  ['GET', '/ops/events', 'scheduler'],
+  ['GET', `/ops/events/${X}`, 'scheduler'],
+  ['POST', '/ops/events', 'scheduler'],
+  ['PATCH', `/ops/events/${X}`, 'scheduler'],
+  ['POST', `/ops/events/${X}/status`, 'scheduler'],
+  ['PUT', `/ops/events/${X}/costs`, 'scheduler'],
+  ['POST', `/ops/events/${X}/registrations`, 'scheduler'],
+  ['POST', `/ops/events/${X}/registrations/${X}/cancel`, 'scheduler'],
+  ['PUT', `/ops/events/${X}/attendance`, 'scheduler'],
+  ['POST', `/ops/events/${X}/bill`, 'scheduler'],
   ['GET', '/memberships', 'admin'],
   ['POST', '/memberships/invite', 'admin'],
   ['PATCH', `/memberships/${X}`, 'admin'],
@@ -143,6 +229,58 @@ const ROUTES: [Method, string, Role][] = [
   ['POST', `/documents/${X}/versions`, 'scheduler'],
   ['POST', `/documents/${X}/verify`, 'admin'],
   ['POST', `/documents/${X}/archive`, 'admin'],
+  // Phase 6 communication. The inbox is everyone's own.
+  ['GET', '/inbox', 'viewer'],
+  ['POST', '/inbox/read-all', 'viewer'],
+  ['GET', '/announcements', 'admin'],
+  ['GET', `/announcements/${X}`, 'admin'],
+  ['POST', '/announcements', 'admin'],
+  ['PATCH', `/announcements/${X}`, 'admin'],
+  ['POST', `/announcements/${X}/publish`, 'admin'],
+  ['POST', `/announcements/${X}/archive`, 'admin'],
+  ['GET', '/communication/templates', 'admin'],
+  ['PUT', '/communication/templates/fee_reminder', 'admin'],
+  ['DELETE', '/communication/templates/fee_reminder', 'admin'],
+  ['GET', '/communication/settings', 'admin'],
+  ['PUT', '/communication/settings', 'admin'],
+  ['GET', '/communication/log', 'admin'],
+  ['POST', `/communication/log/${X}/retry`, 'admin'],
+  ['POST', '/communication/documents-expiring/send', 'admin'],
+  ['GET', '/finance/reminders', 'admin'],
+  ['POST', '/finance/reminders/send', 'admin'],
+  ['GET', `/parents/${X}/portal`, 'admin'],
+  ['POST', `/parents/${X}/portal/enable`, 'admin'],
+  ['POST', `/parents/${X}/portal/resend`, 'admin'],
+  ['POST', `/parents/${X}/portal/disable`, 'admin'],
+  // Phase 7: the catalog is open to staff; each report needs its module's
+  // scopes (FORBIDDEN from the catalog itself when missing).
+  ['GET', '/reports/catalog', 'viewer'],
+  ['GET', '/reports/students.roster', 'viewer'],
+  ['GET', '/reports/attendance.byClass?from=2026-09-01&to=2026-09-30', 'viewer'],
+  ['GET', '/reports/admissions.pipeline', 'scheduler'],
+  ['GET', '/reports/ops.loans', 'scheduler'],
+  ['GET', '/reports/finance.outstanding', 'admin'],
+  ['GET', '/reports/hr.staff', 'admin'],
+  ['GET', '/reports/students.roster/export?format=csv', 'viewer'],
+  ['GET', '/reports/finance.outstanding/export?format=xlsx', 'admin'],
+  ['GET', '/reports/schedules', 'admin'],
+  ['POST', '/reports/schedules', 'admin'],
+  ['PATCH', `/reports/schedules/${X}`, 'admin'],
+  ['DELETE', `/reports/schedules/${X}`, 'admin'],
+  ['POST', `/reports/schedules/${X}/run`, 'admin'],
+  ['GET', '/reports/recipients?key=finance.outstanding', 'admin'],
+  ['GET', '/reports/runs', 'viewer'],
+  ['GET', `/reports/runs/${X}/file`, 'viewer'],
+]
+
+/** Only a parent portal login holds `portal.parent`; no staff rank does. */
+const PORTAL_ROUTES: [Method, string][] = [
+  ['GET', '/portal/me'],
+  ['GET', `/portal/children/${X}`],
+  ['GET', `/portal/children/${X}/finance`],
+  ['GET', `/portal/children/${X}/documents`],
+  ['POST', `/portal/documents/${X}/link`],
+  ['GET', '/portal/announcements'],
 ]
 
 const RANK: Record<Role, number> = { viewer: 0, scheduler: 1, admin: 2, owner: 3 }
@@ -166,6 +304,18 @@ describe('role × route matrix', () => {
         const allowed = RANK[role] >= RANK[minimum]
         if (allowed) assert.notEqual(res.error, 'FORBIDDEN', `${role} should pass (got ${res.status})`)
         else assert.equal(res.error, 'FORBIDDEN', `${role} should be denied (got ${res.status} ${res.error})`)
+      }
+    })
+  }
+})
+
+describe('parent portal routes', () => {
+  for (const [method, path] of PORTAL_ROUTES) {
+    test(`${method} ${path} refuses every staff rank`, async () => {
+      for (const role of ROLES) {
+        const res = await call(fx.app, fx.tokens[role], method, path, method === 'GET' ? undefined : {})
+        assert.notEqual(res.error, 'Not Found', `no such route: ${method} ${path}`)
+        assert.equal(res.error, 'FORBIDDEN', `${role} should be denied`)
       }
     })
   }

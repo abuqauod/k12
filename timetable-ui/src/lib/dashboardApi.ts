@@ -13,6 +13,18 @@ export interface DashboardSummary {
   /** `pending`: planned places not yet started (SAMS 2.4). */
   enrollments?: { academicYear: string | null; active: number; withdrawals: number; transfers: number; pending?: number }
   approvals?: { pendingToDecide: number }
+  /** SAMS 7.1: unpaid invoices as of today (with `finance.read`), from the
+   * shared reporting query: balances after payments and refunds, overdue
+   * by installment. */
+  receivables?: { openInvoices: number; outstanding: number; overdueInvoices: number; overdue: number }
+  /** Work waiting across finance, HR and operations (Phases 3–5); only the
+   * counts the caller may see. */
+  attention?: Partial<
+    Record<
+      'paymentsToConfirm' | 'refundsToPay' | 'expensesToPay' | 'contractsEnding' | 'maintenanceOpen' | 'lowStock' | 'overdueLoans' | 'transportExpiring' | 'messagesFailed',
+      number
+    >
+  >
 }
 
 export function getDashboardSummary(

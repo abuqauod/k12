@@ -189,7 +189,7 @@ export function ExpensesTab({ branchId }: { branchId: string }) {
               {t('fin.expense.submit')}
             </button>
             <button type="button" className="btn btn--sm btn--ghost" onClick={() => setAdding(false)}>
-              {t('approvals.cancel')}
+              {t('docs.cancel')}
             </button>
           </div>
         )}
@@ -279,7 +279,7 @@ export function ExpensesTab({ branchId }: { branchId: string }) {
               {t('fin.markPaid')}
             </button>
             <button type="button" className="btn btn--sm btn--ghost" onClick={() => setPaying(null)}>
-              {t('approvals.cancel')}
+              {t('docs.cancel')}
             </button>
           </div>
         )}
@@ -361,7 +361,7 @@ function VendorsCard({ vendors, canEdit, onChanged }: { vendors: Vendor[]; canEd
           />
           <div className="page__actions">
             <button type="button" className="btn btn--sm btn--ghost" onClick={() => setAdding(false)}>
-              {t('approvals.cancel')}
+              {t('docs.cancel')}
             </button>
             <button type="button" className="btn btn--sm btn--primary" onClick={() => void add()}>
               {t('fin.add')}

@@ -6,6 +6,7 @@ import { useI18n } from '../i18n/I18nContext'
 import { BrandMark } from '../components/BrandMark'
 import { LanguageToggle } from '../components/LanguageToggle'
 import { GlobalSearch } from '../components/GlobalSearch'
+import { InboxBell } from '../components/InboxBell'
 import type { TranslationKey } from '../i18n/translations'
 
 interface NavEntry {
@@ -14,7 +15,9 @@ interface NavEntry {
   icon: string
   /** Shown only with this scope (the page itself enforces it too). */
   scope?: string
-  group: 'plan' | 'account'
+  /** Shown with any one of these. */
+  anyScope?: string[]
+  group: 'plan' | 'ops' | 'account'
 }
 
 // Day-to-day work sits under "plan"; the rest under "account".
@@ -26,9 +29,22 @@ const NAV: NavEntry[] = [
   { to: '/parents', key: 'nav.parents', icon: '⚭', group: 'plan' },
   { to: '/classes', key: 'nav.classes', icon: '▣', group: 'plan' },
   { to: '/attendance', key: 'nav.attendance', icon: '✓', group: 'plan' },
+  { to: '/hr', key: 'nav.hr', icon: '♙', group: 'ops', scope: 'hr.read' },
+  { to: '/operations', key: 'nav.operations', icon: '⚒', group: 'ops', scope: 'ops.read' },
+  { to: '/library', key: 'nav.library', icon: '❏', group: 'ops', scope: 'ops.read' },
+  { to: '/events', key: 'nav.events', icon: '✷', group: 'ops', scope: 'ops.read' },
+  { to: '/fleet', key: 'nav.fleet', icon: '⛟', group: 'ops', scope: 'transport.read' },
   { to: '/routes', key: 'nav.routes', icon: '⌖', group: 'account' },
   { to: '/finance', key: 'nav.finance', icon: '⛃', group: 'account' },
   { to: '/approvals', key: 'nav.approvals', icon: '⚖', group: 'account' },
+  {
+    to: '/communication',
+    key: 'nav.communication',
+    icon: '✉',
+    group: 'account',
+    anyScope: ['announcements.manage', 'finance.reminders', 'notifications.manage'],
+  },
+  { to: '/reports', key: 'nav.reports', icon: '▥', group: 'account', scope: 'dashboard.read' },
   { to: '/logs', key: 'nav.logs', icon: '☰', group: 'account' },
   { to: '/settings', key: 'nav.settings', icon: '⚙', group: 'account' },
 ]
@@ -89,6 +105,8 @@ export function AppShell() {
     .map((part) => part[0])
     .slice(0, 2)
     .join('')
+
+  const visible = (e: NavEntry) => (!e.scope || can(e.scope)) && (!e.anyScope || e.anyScope.some(can))
 
   const renderLink = (entry: NavEntry) => (
     <NavLink
@@ -158,9 +176,13 @@ export function AppShell() {
 
         <nav className="sidebar__nav" aria-label={t('nav.menu')}>
           <p className="sidebar__section">{t('nav.section.plan')}</p>
-          {NAV.filter((e) => e.group === 'plan' && (!e.scope || can(e.scope))).map(renderLink)}
+          {NAV.filter((e) => e.group === 'plan' && visible(e)).map(renderLink)}
+          {NAV.some((e) => e.group === 'ops' && visible(e)) && (
+            <p className="sidebar__section">{t('nav.section.ops')}</p>
+          )}
+          {NAV.filter((e) => e.group === 'ops' && visible(e)).map(renderLink)}
           <p className="sidebar__section">{t('nav.section.account')}</p>
-          {NAV.filter((e) => e.group === 'account' && (!e.scope || can(e.scope))).map(renderLink)}
+          {NAV.filter((e) => e.group === 'account' && visible(e)).map(renderLink)}
         </nav>
 
         <div className="sidebar__foot">
@@ -203,8 +225,8 @@ export function AppShell() {
         >
           ☰
         </button>
-        {branches.length > 1 && (
-          <div className="shell__bar">
+        <div className="shell__bar">
+          {branches.length > 1 && (
             <label className="shell__branch">
               <span className="shell__branch-label">{t('nav.branch')}</span>
               <select
@@ -219,8 +241,9 @@ export function AppShell() {
                 ))}
               </select>
             </label>
-          </div>
-        )}
+          )}
+          <InboxBell />
+        </div>
         <Outlet />
       </div>
 

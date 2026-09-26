@@ -19,15 +19,39 @@ import { AttendancePage } from './pages/AttendancePage'
 import { ClassesPage } from './pages/ClassesPage'
 import { LogsPage } from './pages/LogsPage'
 import { FinancePage } from './pages/FinancePage'
+import { HrPage } from './pages/HrPage'
+import { EmployeePage } from './pages/EmployeePage'
+import { OperationsPage } from './pages/OperationsPage'
+import { LibraryPage } from './pages/LibraryPage'
+import { EventPage, EventsPage } from './pages/EventsPage'
+import { FleetPage } from './pages/FleetPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
+import { CommunicationPage } from './pages/CommunicationPage'
+import { ReportsPage } from './pages/ReportsPage'
+import { PortalShell } from './portal/PortalShell'
+import { PortalHome } from './portal/PortalHome'
+import { PortalChildPage } from './portal/PortalChildPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
+  const { user, accessReady } = useAuth()
   const location = useLocation()
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
+  // Staff and parents get different apps; wait to know which this is.
+  if (!accessReady) return <div className="page-loading" aria-busy="true" />
   return <>{children}</>
+}
+
+/** The staff app: a parent portal login is sent to the portal instead. */
+function StaffOnly({ children }: { children: ReactNode }) {
+  const { roleKey } = useAuth()
+  return roleKey === 'parent' ? <Navigate to="/portal" replace /> : <>{children}</>
+}
+
+function ParentOnly({ children }: { children: ReactNode }) {
+  const { roleKey } = useAuth()
+  return roleKey === 'parent' ? <>{children}</> : <Navigate to="/dashboard" replace />
 }
 
 export default function App() {
@@ -40,7 +64,21 @@ export default function App() {
       <Route
         element={
           <RequireAuth>
-            <AppShell />
+            <ParentOnly>
+              <PortalShell />
+            </ParentOnly>
+          </RequireAuth>
+        }
+      >
+        <Route path="/portal" element={<PortalHome />} />
+        <Route path="/portal/children/:id" element={<PortalChildPage />} />
+      </Route>
+      <Route
+        element={
+          <RequireAuth>
+            <StaffOnly>
+              <AppShell />
+            </StaffOnly>
           </RequireAuth>
         }
       >
@@ -58,6 +96,15 @@ export default function App() {
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/finance" element={<FinancePage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
+        <Route path="/communication" element={<CommunicationPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/hr" element={<HrPage />} />
+        <Route path="/hr/employees/:id" element={<EmployeePage />} />
+        <Route path="/operations" element={<OperationsPage />} />
+        <Route path="/library" element={<LibraryPage />} />
+        <Route path="/events" element={<EventsPage />} />
+        <Route path="/events/:id" element={<EventPage />} />
+        <Route path="/fleet" element={<FleetPage />} />
         <Route path="/settings/:section?" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

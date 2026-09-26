@@ -792,7 +792,16 @@ export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 
 /** SAMS 2.1: records a document can be attached to. Staff and applications
  * join this list in later phases. */
-export type DocumentOwnerType = 'student' | 'parent' | 'application' | 'scholarship' | 'expense'
+export type DocumentOwnerType =
+  | 'student'
+  | 'parent'
+  | 'application'
+  | 'scholarship'
+  | 'expense'
+  | 'employee'
+  | 'asset'
+  | 'bus'
+  | 'driver'
 export type DocumentVerificationStatus = 'unverified' | 'verified' | 'rejected'
 
 /**
@@ -1007,6 +1016,8 @@ export interface InvoiceDoc extends Document {
   installments?: InvoiceInstallment[]
   /** SAMS 3.2; absent = none. `total` is the lines' net sum less these. */
   adjustments?: InvoiceAdjustment[]
+  /** SAMS 6.3: the last day families were reminded about it; absent = never. */
+  remindedAt?: string | null
   status: InvoiceStatus
   notes: string | null
   createdAt: Date
@@ -1225,6 +1236,463 @@ export interface ExpenseDoc extends Document {
   updatedAt: Date
 }
 
+// -------------------------------------------------------------------- hr --
+// SAMS Phase 4. An employee is a person the school employs, kept apart from
+// `MembershipDoc` (a login): many staff never sign in, and a login can be
+// linked to its employee record through `userId`. Departments, positions,
+// and contract types are settings lists (1.11); leave types
+// carry an entitlement, so they have their own collection.
+
+export type EmployeeStatus = 'active' | 'terminated'
+
+export interface EmployeeDoc extends Document {
+  _id: string
+  tenantId: string
+  /** EMP-000001, sequential per tenant. */
+  employeeNumber: string
+  /** The branch the employee works at. */
+  branchId: string
+  givenName: string
+  familyName: string
+  fullNameAr: string | null
+  gender: 'male' | 'female' | null
+  dob: string | null
+  nationality: string | null
+  nationalId: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  /** `department` / `position` lookup codes. */
+  departmentCode: string | null
+  positionCode: string | null
+  hireDate: string
+  status: EmployeeStatus
+  terminationDate: string | null
+  terminationReason: string | null
+  /** Optional link to a login (UserDoc._id) — for self-service leave. */
+  userId: string | null
+  emergencyContactName: string | null
+  emergencyContactPhone: string | null
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+/** One employment contract. Never edited away: a renewal is a new row and
+ * the old one is closed as `renewed`. At most one contract per employee
+ * covers any given day. */
+export interface ContractDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  /** The employee's branch when the contract was made, for isolation. */
+  branchId: string
+  /** A `contractType` lookup code. */
+  typeCode: string
+  startDate: string
+  /** Null = open-ended. */
+  endDate: string | null
+  /** Monthly, minor units; visible only with `hr.salary.read`. */
+  salary: number | null
+  hoursPerWeek: number | null
+  notes: string | null
+  closedReason: 'renewed' | 'terminated' | 'ended' | null
+  closedAt: Date | null
+  renewedFromId: string | null
+  createdAt: Date
+  createdBy: string | null
+}
+
+export type EmploymentEventType =
+  | 'hire'
+  | 'branch_change'
+  | 'department_change'
+  | 'position_change'
+  | 'contract_start'
+  | 'contract_renew'
+  | 'contract_end'
+  | 'terminate'
+  | 'rehire'
+
+/** Employment history: what changed and when, written with each change. */
+export interface EmploymentEventDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  type: EmploymentEventType
+  /** ISO yyyy-mm-dd the change took effect. */
+  date: string
+  from: string | null
+  to: string | null
+  note: string | null
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface LeaveTypeDoc extends Document {
+  _id: string
+  tenantId: string
+  /** Immutable, unique per tenant; what requests store. */
+  code: string
+  name: string
+  nameAr: string | null
+  /** Working days per calendar year; null = not limited (e.g. unpaid). */
+  daysPerYear: number | null
+  paid: boolean
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+export interface LeaveRequestDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  typeCode: string
+  startDate: string
+  endDate: string
+  /** Working days in the range (branch calendar), fixed at request time. */
+  days: number
+  reason: string | null
+  status: LeaveStatus
+  requestedBy: string
+  decidedBy: string | null
+  decidedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** A change to a balance on top of the yearly entitlement (carry-over,
+ * correction). Days may be negative. */
+export interface LeaveAdjustmentDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  typeCode: string
+  year: number
+  days: number
+  reason: string
+  createdAt: Date
+  createdBy: string | null
+}
+
+export type StaffAttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'leave'
+
+export interface StaffAttendanceDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  date: string
+  status: StaffAttendanceStatus
+  /** "HH:MM", optional. */
+  checkIn: string | null
+  checkOut: string | null
+  note: string | null
+  recordedBy: string | null
+  updatedAt: Date
+}
+
+// ------------------------------------------------------------ operations --
+// SAMS Phase 5. Categories and types are settings lists (1.11): assetCategory,
+// inventoryCategory, roomType, bookCategory, eventType. Suppliers are finance
+// vendors (VendorDoc). Money is minor units, as in finance.
+
+export type AssetStatus = 'in_stock' | 'assigned' | 'maintenance' | 'disposed'
+
+export interface AssetDoc extends Document {
+  _id: string
+  tenantId: string
+  /** AST-000001. */
+  assetTag: string
+  name: string
+  categoryCode: string
+  branchId: string
+  roomId: string | null
+  serialNumber: string | null
+  vendorId: string | null
+  purchaseDate: string | null
+  purchaseCost: number | null
+  warrantyUntil: string | null
+  status: AssetStatus
+  /** Who or where has it while `assigned`. */
+  assignedTo: { type: 'employee' | 'room'; id: string } | null
+  notes: string | null
+  disposedAt: string | null
+  disposalReason: string | null
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+export type AssetEventType = 'purchase' | 'assign' | 'return' | 'maintenance_start' | 'maintenance_end' | 'transfer' | 'dispose'
+
+/** An asset's life, one row per step; never edited. */
+export interface AssetEventDoc extends Document {
+  _id: string
+  tenantId: string
+  assetId: string
+  branchId: string
+  type: AssetEventType
+  date: string
+  from: string | null
+  to: string | null
+  note: string | null
+  cost: number | null
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface InventoryItemDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  /** Unique per branch; the same SKU at two branches is two stock lines. */
+  sku: string
+  name: string
+  unit: string
+  categoryCode: string
+  reorderLevel: number
+  /** Kept equal to the sum of the item's movements, in the same transaction. */
+  quantity: number
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type StockMovementType = 'receive' | 'issue' | 'adjust' | 'transfer_out' | 'transfer_in'
+
+export interface StockMovementDoc extends Document {
+  _id: string
+  tenantId: string
+  itemId: string
+  branchId: string
+  type: StockMovementType
+  /** Signed change to the quantity. */
+  quantity: number
+  /** Stock after this movement. */
+  balance: number
+  supplierId: string | null
+  unitCost: number | null
+  reference: string | null
+  issuedTo: string | null
+  note: string | null
+  /** The other half of a transfer. */
+  relatedMovementId: string | null
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface BuildingDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  name: string
+  code: string | null
+  floors: number | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface RoomDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  buildingId: string
+  name: string
+  code: string | null
+  typeCode: string
+  capacity: number | null
+  floor: number | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type MaintenancePriority = 'low' | 'normal' | 'high' | 'urgent'
+export type MaintenanceStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled'
+
+export interface MaintenanceRequestDoc extends Document {
+  _id: string
+  tenantId: string
+  /** MNT-000001. */
+  requestNumber: string
+  branchId: string
+  buildingId: string | null
+  roomId: string | null
+  assetId: string | null
+  title: string
+  description: string | null
+  priority: MaintenancePriority
+  status: MaintenanceStatus
+  assignedToEmployeeId: string | null
+  reportedBy: string
+  resolution: string | null
+  cost: number | null
+  resolvedAt: Date | null
+  closedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DriverDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  /** Optional link to the HR record. */
+  employeeId: string | null
+  name: string
+  phone: string | null
+  licenseNumber: string | null
+  licenseExpiry: string | null
+  busId: string | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** SAMS 5.4: a bus's paperwork, one row per bus (`_id` = busId). Kept apart
+ * from `BusDoc`, which the route solver reads. */
+export interface BusDetailsDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  plateNumber: string | null
+  registrationExpiry: string | null
+  insuranceExpiry: string | null
+  inspectionExpiry: string | null
+  attendantName: string | null
+  updatedAt: Date
+}
+
+/** SAMS 5.4: what riding the bus costs for one branch and year. */
+export interface TransportFeeDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  academicYearId: string
+  /** Minor units, for TWO_WAY riders. */
+  twoWay: number
+  /** Minor units, for MORNING or EVENING only. */
+  oneWay: number
+  updatedAt: Date
+}
+
+export interface BookDoc extends Document {
+  _id: string
+  tenantId: string
+  title: string
+  author: string | null
+  isbn: string | null
+  publisher: string | null
+  year: number | null
+  categoryCode: string | null
+  language: string | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type CopyStatus = 'available' | 'on_loan' | 'lost' | 'withdrawn'
+
+export interface BookCopyDoc extends Document {
+  _id: string
+  tenantId: string
+  bookId: string
+  branchId: string
+  /** Unique per tenant. */
+  barcode: string
+  shelf: string | null
+  status: CopyStatus
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type FineStatus = 'none' | 'due' | 'paid' | 'waived'
+
+export interface LoanDoc extends Document {
+  _id: string
+  tenantId: string
+  copyId: string
+  bookId: string
+  branchId: string
+  borrowerType: 'student' | 'employee'
+  borrowerId: string
+  loanedAt: string
+  dueDate: string
+  returnedAt: string | null
+  lostAt: string | null
+  renewals: number
+  /** Minor units, fixed at return (or when marked lost). */
+  fine: number
+  fineStatus: FineStatus
+  fineSettledAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface LibrarySettingsDoc extends Document {
+  /** = tenantId. */
+  _id: string
+  tenantId: string
+  loanDays: number
+  maxLoans: number
+  maxRenewals: number
+  /** Minor units per day overdue. */
+  finePerDay: number
+  /** Minor units charged for a lost copy. */
+  lostFee: number
+  updatedAt: Date
+}
+
+export type EventStatus = 'draft' | 'open' | 'closed' | 'cancelled' | 'completed'
+
+export interface EventDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  title: string
+  titleAr: string | null
+  typeCode: string
+  description: string | null
+  location: string | null
+  startDate: string
+  endDate: string
+  /** Null = no limit. */
+  capacity: number | null
+  registrationDeadline: string | null
+  /** Minor units per participant; null = free. */
+  fee: number | null
+  /** Empty = every grade. */
+  gradeLevels: string[]
+  status: EventStatus
+  costs: { id: string; label: string; amount: number }[]
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+export type RegistrationStatus = 'registered' | 'waitlisted' | 'cancelled'
+
+export interface EventRegistrationDoc extends Document {
+  _id: string
+  tenantId: string
+  eventId: string
+  branchId: string
+  studentId: string
+  status: RegistrationStatus
+  attended: boolean | null
+  registeredAt: Date
+  updatedAt: Date
+}
+
 // ----------------------------------------------------------- transport --
 // Bus routing — depot/buses/stops/routing-rules for one branch. Previously
 // existed only as an opaque JSON blob synced through the generic
@@ -1330,6 +1798,23 @@ export interface TransportSettingsDoc extends Document {
 
 export type NotifyChannel = 'email' | 'sms'
 
+/** SAMS 6.1: every kind of message the school sends. `absence` keeps its
+ * per-branch templates (`NotificationSettingsDoc`); the others use
+ * `MessageTemplateDoc`. */
+export const MESSAGE_KINDS = [
+  'absence',
+  'announcement',
+  'fee_reminder',
+  'payment_received',
+  'admission_decision',
+  'document_rejected',
+  'document_expiring',
+  'approval_decided',
+  /** SAMS 7.4: a scheduled report export is ready (staff only). */
+  'report_ready',
+] as const
+export type MessageKind = (typeof MESSAGE_KINDS)[number]
+
 export interface NotificationSettingsDoc extends Document {
   /** `${tenantId}:${branchId}` — one per branch. */
   _id: string
@@ -1405,6 +1890,13 @@ export interface NotificationJobDoc extends Document {
   /** 'auto' = the scheduled sweep; 'manual' = someone pressed the button. */
   trigger: 'auto' | 'manual'
   actorId: string | null
+  /** SAMS 6.1: what the message is about. Absent = an absence notice (every
+   * job before 6.1). For other kinds `studentId` may be '' (an applicant)
+   * and `date` is the day it was queued. */
+  kind?: MessageKind
+  /** The record the message is about: an invoice, payment, application,
+   * document or announcement id. */
+  sourceId?: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -1420,6 +1912,176 @@ export interface NotificationAttemptDoc extends Document {
   error: string | null
   startedAt: Date
   finishedAt: Date
+}
+
+// --------------------------------------------------------- communication --
+// SAMS Phase 6. Templates for each message kind, the in-app inbox (staff and
+// portal parents alike), announcements, and the tenant's automatic notice
+// settings. Email and SMS still go through the queue above.
+
+/** One per tenant and kind (`${tenantId}:${kind}`). A kind with no row uses
+ * the defaults in notifications/templates.ts. */
+export interface MessageTemplateDoc extends Document {
+  _id: string
+  tenantId: string
+  kind: MessageKind
+  /** Off = nothing of this kind is sent, in any channel. */
+  enabled: boolean
+  subject: string
+  body: string
+  smsBody: string
+  subjectAr: string
+  bodyAr: string
+  smsBodyAr: string
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+export interface InboxItemDoc extends Document {
+  /** Deterministic (`${tenantId}:${userId}:${kind}:${sourceId}`), so the same
+   * notice never lands twice. */
+  _id: string
+  tenantId: string
+  userId: string
+  kind: MessageKind
+  sourceId: string
+  title: string
+  body: string
+  /** A path in the app to open, e.g. `/approvals` or `/portal/children/…`. */
+  link: string | null
+  createdAt: Date
+  readAt: Date | null
+}
+
+export type AnnouncementAudience = 'school' | 'branch' | 'grade' | 'class' | 'bus'
+export type AnnouncementStatus = 'draft' | 'published' | 'archived'
+
+export interface AnnouncementDoc extends Document {
+  _id: string
+  tenantId: string
+  title: string
+  body: string
+  titleAr: string | null
+  bodyAr: string | null
+  audience: {
+    type: AnnouncementAudience
+    /** Required for every type but `school`. */
+    branchId: string | null
+    gradeLevels: string[]
+    classIds: string[]
+    busIds: string[]
+  }
+  /** In-app always; these are sent on top to families who opted in. */
+  channels: NotifyChannel[]
+  status: AnnouncementStatus
+  /** Who it went to, fixed at publishing: the portal shows it to parents
+   * of these students. */
+  studentIds: string[]
+  sent: { families: number; inApp: number; email: number; sms: number } | null
+  publishedAt: Date | null
+  publishedBy: string | null
+  createdBy: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** One per tenant (`_id` = tenantId): the automatic notices. */
+export interface CommunicationSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  feeReminders: {
+    auto: boolean
+    /** Remind this many days before an installment or invoice falls due. */
+    daysBefore: number
+    /** Never remind about the same invoice more often than this. */
+    repeatDays: number
+  }
+  documentExpiry: { auto: boolean; daysBefore: number }
+  /** `documentCategory` codes parents may see in the portal (verified only). */
+  portalDocumentCategories: string[]
+  /** UTC date the daily run last happened. */
+  lastRunDate: string | null
+  updatedAt: Date
+}
+
+// -------------------------------------------------------------- reports --
+// SAMS 7.4. A scheduled export runs one catalog report (reports/catalog.ts)
+// on a timetable, as its owner (their scopes and branches, re-read on every
+// run), stores the file and tells the recipients. The file bytes live in
+// the document store (GridFS); the run row is what lists and downloads it.
+
+export type ReportFormat = 'csv' | 'xlsx'
+export type ReportFrequency = 'daily' | 'weekly' | 'monthly'
+/** A date range relative to the day the export runs. */
+export type ReportRange =
+  | 'yesterday'
+  | 'last_7_days'
+  | 'last_30_days'
+  | 'month_to_date'
+  | 'previous_month'
+  | 'year_to_date'
+  | 'academic_year'
+
+export interface ReportFilters {
+  branchId: string | null
+  academicYearId: string | null
+  gradeLevel: string | null
+  classId: string | null
+  status: string | null
+}
+
+export interface ReportScheduleDoc extends Document {
+  _id: string
+  tenantId: string
+  name: string
+  reportKey: string
+  filters: ReportFilters
+  /** Ignored by a report without a date range. */
+  range: ReportRange
+  format: ReportFormat
+  language: GuardianLanguage
+  frequency: ReportFrequency
+  /** 0 = Sunday; weekly only. */
+  weekday: number | null
+  /** 1–28; monthly only. */
+  monthDay: number | null
+  /** Members (user ids) told when it is ready; each must be able to run
+   * the report over the same branches, re-checked on every run. */
+  recipients: string[]
+  ownerId: string
+  active: boolean
+  /** UTC date the next run is due. */
+  nextRunDate: string
+  lastRunAt: Date | null
+  lastRunId: string | null
+  /** Why the last run produced nothing (e.g. the owner lost access). */
+  lastError: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ReportRunDoc extends Document {
+  /** `${scheduleId}:${date}` for a scheduled run, so a second instance
+   * running the same day finds it already there. */
+  _id: string
+  tenantId: string
+  scheduleId: string
+  reportKey: string
+  title: string
+  filters: ReportFilters
+  from: string | null
+  to: string | null
+  /** The branches the file covers (null = every branch). */
+  branchIds: string[] | null
+  format: ReportFormat
+  language: GuardianLanguage
+  fileId: string
+  fileName: string
+  size: number
+  rows: number
+  recipients: string[]
+  ownerId: string
+  createdAt: Date
 }
 
 /**
@@ -1550,9 +2212,38 @@ export interface TenantContext {
   refunds: TenantScope<RefundDoc>
   vendors: TenantScope<VendorDoc>
   expenses: TenantScope<ExpenseDoc>
+  employees: TenantScope<EmployeeDoc>
+  contracts: TenantScope<ContractDoc>
+  employmentEvents: TenantScope<EmploymentEventDoc>
+  leaveTypes: TenantScope<LeaveTypeDoc>
+  leaveRequests: TenantScope<LeaveRequestDoc>
+  leaveAdjustments: TenantScope<LeaveAdjustmentDoc>
+  staffAttendance: TenantScope<StaffAttendanceDoc>
+  assets: TenantScope<AssetDoc>
+  assetEvents: TenantScope<AssetEventDoc>
+  inventoryItems: TenantScope<InventoryItemDoc>
+  stockMovements: TenantScope<StockMovementDoc>
+  buildings: TenantScope<BuildingDoc>
+  rooms: TenantScope<RoomDoc>
+  maintenanceRequests: TenantScope<MaintenanceRequestDoc>
+  drivers: TenantScope<DriverDoc>
+  busDetails: TenantScope<BusDetailsDoc>
+  transportFees: TenantScope<TransportFeeDoc>
+  books: TenantScope<BookDoc>
+  bookCopies: TenantScope<BookCopyDoc>
+  loans: TenantScope<LoanDoc>
+  librarySettings: TenantScope<LibrarySettingsDoc>
+  events: TenantScope<EventDoc>
+  eventRegistrations: TenantScope<EventRegistrationDoc>
   buses: TenantScope<BusDoc>
   stops: TenantScope<StopDoc>
   transportSettings: TenantScope<TransportSettingsDoc>
+  messageTemplates: TenantScope<MessageTemplateDoc>
+  inboxItems: TenantScope<InboxItemDoc>
+  announcements: TenantScope<AnnouncementDoc>
+  communicationSettings: TenantScope<CommunicationSettingsDoc>
+  reportSchedules: TenantScope<ReportScheduleDoc>
+  reportRuns: TenantScope<ReportRunDoc>
 }
 
 /**
@@ -1643,6 +2334,29 @@ export async function withTenant<T>(
         refunds: new TenantScope(db.collection<RefundDoc>('refunds'), tenantId, session),
         vendors: new TenantScope(db.collection<VendorDoc>('vendors'), tenantId, session),
         expenses: new TenantScope(db.collection<ExpenseDoc>('expenses'), tenantId, session),
+        employees: new TenantScope(db.collection<EmployeeDoc>('employees'), tenantId, session),
+        contracts: new TenantScope(db.collection<ContractDoc>('contracts'), tenantId, session),
+        employmentEvents: new TenantScope(db.collection<EmploymentEventDoc>('employmentEvents'), tenantId, session),
+        leaveTypes: new TenantScope(db.collection<LeaveTypeDoc>('leaveTypes'), tenantId, session),
+        leaveRequests: new TenantScope(db.collection<LeaveRequestDoc>('leaveRequests'), tenantId, session),
+        leaveAdjustments: new TenantScope(db.collection<LeaveAdjustmentDoc>('leaveAdjustments'), tenantId, session),
+        staffAttendance: new TenantScope(db.collection<StaffAttendanceDoc>('staffAttendance'), tenantId, session),
+        assets: new TenantScope(db.collection<AssetDoc>('assets'), tenantId, session),
+        assetEvents: new TenantScope(db.collection<AssetEventDoc>('assetEvents'), tenantId, session),
+        inventoryItems: new TenantScope(db.collection<InventoryItemDoc>('inventoryItems'), tenantId, session),
+        stockMovements: new TenantScope(db.collection<StockMovementDoc>('stockMovements'), tenantId, session),
+        buildings: new TenantScope(db.collection<BuildingDoc>('buildings'), tenantId, session),
+        rooms: new TenantScope(db.collection<RoomDoc>('rooms'), tenantId, session),
+        maintenanceRequests: new TenantScope(db.collection<MaintenanceRequestDoc>('maintenanceRequests'), tenantId, session),
+        drivers: new TenantScope(db.collection<DriverDoc>('drivers'), tenantId, session),
+        busDetails: new TenantScope(db.collection<BusDetailsDoc>('busDetails'), tenantId, session),
+        transportFees: new TenantScope(db.collection<TransportFeeDoc>('transportFees'), tenantId, session),
+        books: new TenantScope(db.collection<BookDoc>('books'), tenantId, session),
+        bookCopies: new TenantScope(db.collection<BookCopyDoc>('bookCopies'), tenantId, session),
+        loans: new TenantScope(db.collection<LoanDoc>('loans'), tenantId, session),
+        librarySettings: new TenantScope(db.collection<LibrarySettingsDoc>('librarySettings'), tenantId, session),
+        events: new TenantScope(db.collection<EventDoc>('events'), tenantId, session),
+        eventRegistrations: new TenantScope(db.collection<EventRegistrationDoc>('eventRegistrations'), tenantId, session),
         buses: new TenantScope(db.collection<BusDoc>('buses'), tenantId, session),
         stops: new TenantScope(db.collection<StopDoc>('stops'), tenantId, session),
         transportSettings: new TenantScope(
@@ -1650,6 +2364,16 @@ export async function withTenant<T>(
           tenantId,
           session,
         ),
+        messageTemplates: new TenantScope(db.collection<MessageTemplateDoc>('messageTemplates'), tenantId, session),
+        inboxItems: new TenantScope(db.collection<InboxItemDoc>('inboxItems'), tenantId, session),
+        announcements: new TenantScope(db.collection<AnnouncementDoc>('announcements'), tenantId, session),
+        communicationSettings: new TenantScope(
+          db.collection<CommunicationSettingsDoc>('communicationSettings'),
+          tenantId,
+          session,
+        ),
+        reportSchedules: new TenantScope(db.collection<ReportScheduleDoc>('reportSchedules'), tenantId, session),
+        reportRuns: new TenantScope(db.collection<ReportRunDoc>('reportRuns'), tenantId, session),
       })
     })
     return result as T
@@ -1682,6 +2406,9 @@ export interface UnscopedDb {
   schoolCalendars: Collection<SchoolCalendarDoc>
   notificationJobs: Collection<NotificationJobDoc>
   notificationAttempts: Collection<NotificationAttemptDoc>
+  communicationSettings: Collection<CommunicationSettingsDoc>
+  /** SAMS 7.4: which schedules, across tenants, are due. */
+  reportSchedules: Collection<ReportScheduleDoc>
   locks: Collection<LockDoc>
 }
 
@@ -1709,6 +2436,8 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     schoolCalendars: database.collection<SchoolCalendarDoc>('schoolCalendars'),
     notificationJobs: database.collection<NotificationJobDoc>('notificationJobs'),
     notificationAttempts: database.collection<NotificationAttemptDoc>('notificationAttempts'),
+    communicationSettings: database.collection<CommunicationSettingsDoc>('communicationSettings'),
+    reportSchedules: database.collection<ReportScheduleDoc>('reportSchedules'),
     locks: database.collection<LockDoc>('locks'),
   })
 }

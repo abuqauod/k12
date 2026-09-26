@@ -11,17 +11,19 @@ per-area status reference.
 
 ## Where we are
 
-**Phase 1 — Administration Foundation: shipped slices 1.1–1.6, closeout
-(1.7–1.12) in progress.**
+**Phases 1–6 are shipped and on `main`. Phase 7 (Reporting) is built on
+`claude/sams-7-reporting`.**
 
-| Slice | What shipped | PR |
+| Phase | Slices | PRs |
 |---|---|---|
-| 1.1 | Permission-scope layer (`requirePermission`) on top of the 4 ranked roles; students/attendance branch-scoping gap closed | #25 |
-| 1.2 | School's own subscription status in Settings (read-only; replaced the original branch self-service scope) | #26 |
-| 1.3/1.4 | Audit log: branch attribution, before/after, filters, CSV export | #27 |
-| — | Transport moved from a JSON blob to a real backend (off-plan) | #30, #34 |
-| 1.5 | Dashboard cross-module Overview | #36 |
-| 1.6 | Tenant-scoped global search (students, parents, classes, buses, stops) | #37 |
+| 1 — Administration foundation | 1.1–1.6: permission scopes, subscription status, audit log, dashboard overview, global search. Transport moved to a real backend (off-plan, #30, #34) | #25–#27, #36, #37 |
+| 1 — Closeout | 1.7 test harness · 1.8 admin roles · 1.9 parent branch isolation · 1.10 approvals · 1.11 settings · 1.12 audit/search/dashboard | #40, #42–#44, #46, #49, #50, #52 |
+| 2 — Student administration | 2.1 documents · 2.2 student profile · 2.3 guardian models · 2.4 enrollment · 2.5 admissions · 2.6 year-end re-enrollment | #53, #55, #56, #58, #59, #61 |
+| 3 — Finance administration | 3.1–3.6 | #60, #61 |
+| 4 — HR & staff | 4.1–4.6 | #62 |
+| 5 — Operations | 5.1–5.6 | #62 |
+| 6 — Communication & portals | 6.1–6.4 | #64 |
+| 7 — Reporting | 7.1–7.4 | `claude/sams-7-reporting` (not yet merged) |
 
 ## Definition of done (every slice)
 
@@ -251,6 +253,27 @@ student's Finance tab):
 4.3 Staff documents (2.1) · 4.4 Leave types, balances, requests (1.10) ·
 4.5 Staff attendance · 4.6 HR reports.
 
+**Built** (server and UI; the HR page, the employee page, and "My leave" in
+Account settings):
+- 4.1 Employees (`EMP-` numbers) with an optional link to one login each.
+  Terminating needs a reason, ends open contracts and cancels future leave;
+  rehire starts a new history entry.
+- 4.2 Departments, positions and contract types are settings lists. Contracts
+  can't overlap; a renewal starts the day after the old one ends. Salary is
+  hidden without `hr.salary.read`. Every change lands in the employment history.
+- 4.3 Employee documents use 2.1, with new categories contract, certificate
+  and licence.
+- 4.4 Leave types (annual 14, sick 14, emergency 3, unpaid unlimited by
+  default), balances per year (entitlement + adjustments − approved −
+  pending), working days counted from the branch calendar. Requests go through
+  the approval engine (`hr.leave`); nobody decides their own. Linked staff can
+  request and cancel their own leave.
+- 4.5 A daily staff attendance sheet per branch; approved leave shows as leave.
+- 4.6 `GET /hr/reports/summary`: headcount, contracts ending, expiring staff
+  documents, leave taken by type.
+- New scopes `hr.attendance.write`, `hr.leave.approve`, `hr.salary.read`,
+  `reports.hr` (admins and the `hr` preset).
+
 ## Phase 5 — Operations
 5.1 Assets and lifecycle (purchase → assignment → maintenance → transfer →
 disposal) · 5.2 Inventory, suppliers, stock movements · 5.3 Facilities,
@@ -259,6 +282,30 @@ buildings, rooms, maintenance requests · 5.4 Transport administration
 fees) · 5.5 Library administration (copies, loans, overdue, fines) · 5.6
 Events and activities (registration, capacity, attendance, costs).
 
+**Built** (server and UI; the Operations, Library, Events and Fleet pages):
+- 5.1 Assets (`AST-` numbers): assign to a person or room, return, maintenance,
+  transfer between branches, dispose (reason required). Every step is kept as
+  an asset event.
+- 5.2 Stock items per branch with reorder levels; movements receive / issue /
+  adjust / transfer, never below zero. Suppliers are the finance vendors.
+- 5.3 Buildings and rooms; maintenance requests (`MNT-` numbers) from open to
+  closed. An asset under repair follows its request, and whoever reported a
+  request may cancel it while it's open.
+- 5.4 Bus paperwork (registration, insurance, inspection), drivers with
+  licence expiry and an optional employee link, a compliance list, and
+  transport fees billed onto invoices.
+- 5.5 Books and copies, loans to students or staff with a loan limit and
+  renewals, fines for late returns that block new loans until paid or waived.
+- 5.6 Events from draft to completed, registration with capacity and a
+  waitlist, attendance, costs, and the event fee billed onto invoices.
+- The dashboard has a "Needs attention" card: payments to confirm, refunds
+  and expenses to pay, contracts ending, open maintenance, low stock, overdue
+  loans and expiring transport papers, each shown only with its read scope.
+- New scopes `ops.read`, `ops.events.manage`, `ops.library.manage`,
+  `ops.maintenance.report` (schedulers and up) and `ops.assets.manage`,
+  `ops.facilities.manage`, `ops.inventory.manage` (admins); the `operations`
+  preset has them all.
+
 ## Phase 6 — Communication & Portals
 6.1 General notification service over the existing queue: templates (EN/AR),
 in-app channel, read state, failure tracking · 6.2 Announcements by
@@ -266,10 +313,74 @@ branch/grade/class/route · 6.3 Fee reminders and payment/admission/document
 notices · 6.4 Parent portal (parent login, strictly linked-students-only
 data, invoices, payments, permitted documents, announcements).
 
+**Built** (server and UI; the Communication page, the notification bell, the
+parent record's portal panel, and the parent portal at `/portal`):
+- 6.1 One template per message kind in English and Arabic (a blank Arabic
+  text falls back to the English), editable and switchable off per school.
+  Every family notice goes through one service: in-app for parents with a
+  portal login whose link grants the portal, email/SMS through the existing
+  queue for parents who opted in. Keys are deterministic, so repeating a
+  notice sends nothing new. The delivery log shows every message with its
+  status and failure reason, and a failed one can be retried. Staff and
+  parents share one inbox; an approval decision reaches the requester there.
+- 6.2 Announcements by school, branch, grades, classes or bus (students at
+  stops pinned to it): draft, publish once, archive. The students it reached
+  are fixed when it is published; the portal shows it to those families.
+  A school-wide announcement needs a tenant-wide caller.
+- 6.3 Fee reminders for money due within N days or overdue (installments
+  counted oldest first), to the parents responsible for fees, at most every
+  `repeatDays` per invoice; preview and send by hand, or daily when switched
+  on. Automatic notices: payment receipts, admission decisions (to the
+  applicant's primary guardian), rejected and expiring student documents.
+- 6.4 A `parent` preset whose only scope is `portal.parent`, given by
+  enabling the portal on a parent record with an email (invite link to set a
+  password; an existing account just gains access). It can't be picked or
+  edited in Team settings. A parent sees only children whose link grants the
+  portal; fees only where they are responsible for them; documents only
+  verified ones in the categories the school shares. Disabling removes the
+  membership and revokes sessions at once.
+- New scopes `announcements.manage` (admins, registrar, operations),
+  `finance.reminders` (admins, finance officer), `portal.manage` (admins,
+  registrar, reception) and `portal.parent`. Also fixed: a session whose
+  membership was removed kept its rank's scopes until the token expired; it
+  now has none.
+
 ## Phase 7 — Reporting
 7.1 Shared reporting service/queries (replace per-page calculations) · 7.2
 Report catalog with branch/year/date/grade/class/status filters · 7.3 CSV,
 Excel, PDF and print output · 7.4 Scheduled report exports.
+
+**Built** (server and UI; the Reports page at `/reports`):
+- 7.1 `server/src/reports/`: the finance summary (3.6) and HR summary (4.6)
+  moved into shared queries, and one `receivables` function (balance after
+  payments and refunds, overdue per installment, aging) now feeds the
+  finance summary, the catalog and the dashboard. The dashboard's finance
+  tiles came from a browser-side sum of open invoices' totals (ignoring part
+  payments and installments); they now come from the server.
+- 7.2 A catalog of 14 table reports: student roster, enrollment by class,
+  withdrawals and transfers, attendance by student and by class, admissions
+  by grade, outstanding balances, payments received, billing by grade,
+  expenses, staff list, leave, maintenance and library loans. Each declares
+  its scopes (the module's read scope, or `reports.finance` / `reports.hr`)
+  and which filters it takes (branch, year, dates, grade, class, status); a
+  member sees only the reports they may run, over their own branches.
+  Labels and values come in English or Arabic.
+- 7.3 CSV (UTF-8 with BOM, formula-safe), Excel (.xlsx written by a small
+  zip writer — no new dependency; right-to-left in Arabic, frozen header,
+  money and percentage formats, totals row) and a print page that the
+  browser saves as PDF. PDF is deliberately the browser's: it shapes Arabic
+  correctly, which a hand-built PDF would not. Every export and download is
+  in the audit log.
+- 7.4 Scheduled exports (new scope `reports.schedule`: admins, registrar,
+  finance officer, HR): a report, its filters, a relative period (yesterday,
+  last 7/30 days, this or last month, year to date, the academic year),
+  daily/weekly/monthly, CSV or Excel, English or Arabic. The sweep runs what
+  is due as the owner, re-reading their access each time (a removed owner
+  or one who lost the scope stops the export). Recipients must be able to
+  run the same report over the same branches, checked when saved and again
+  on every run. The file goes to the document store (last 12 kept per
+  schedule); each recipient gets an inbox item and an email through the
+  Phase 6 queue (`report_ready` template) linking to "My files".
 
 ---
 

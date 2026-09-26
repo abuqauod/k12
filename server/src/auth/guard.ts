@@ -127,9 +127,12 @@ export async function callerScopes(request: FastifyRequest): Promise<ReadonlySet
   if (!auth) return new Set()
   if (!auth.tenantId || auth.sub.startsWith('apikey:')) return scopesFor(auth.role)
   const membership = await loadCallerMembership(request)
+  // A removed member (or a parent whose portal was switched off) keeps a
+  // valid token for a few minutes; it must not fall back to its rank.
+  if (!membership) return new Set()
   // The membership's rank, not the token's: a demotion applies on the next
   // request, same as a preset change.
-  return scopesFor(membership?.role ?? auth.role, membership?.roleKey)
+  return scopesFor(membership.role, membership.roleKey)
 }
 
 /** For an inline check inside a handler body — when only part of a route's

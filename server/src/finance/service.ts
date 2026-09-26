@@ -14,6 +14,8 @@ import type {
 import { activeEnrollment } from '../enrollments/service.js'
 import { recordAudit } from '../audit.js'
 import { oldestUnpaidDueDate } from './installments.js'
+import { money } from '../records.js'
+import { notifyFamilies, schoolName } from '../notifications/messages.js'
 
 /**
  * Fee structures, invoices, payments and receipts — the Finance & Accounting
@@ -217,6 +219,9 @@ export function addLineItem(
     amount: number
     discount: { type: DiscountType; value: number } | null
     actorId: string | null
+    /** Where a generated charge came from (e.g. `transport:<feeId>`), so it
+     * is never added twice. */
+    sourceFeeItemId?: string | null
   },
 ): Promise<LineItemResult> {
   return writeLineItems(ctx, invoiceId, params.actorId, 'invoice.lineItem.add', (before) => [
@@ -225,7 +230,7 @@ export function addLineItem(
       id: randomUUID(),
       label: params.label,
       labelAr: params.labelAr,
-      sourceFeeItemId: null,
+      sourceFeeItemId: params.sourceFeeItemId ?? null,
       amount: params.amount,
       discount: params.discount,
       netAmount: computeLineNet(params.amount, params.discount),
@@ -494,6 +499,24 @@ async function issueReceipt(
     createdBy: actorId,
   }
   await ctx.receipts.insertOne(receipt)
+  // SAMS 6.3: the paying family hears it arrived.
+  const school = await schoolName(tenantId)
+  await notifyFamilies(ctx, tenantId, {
+    kind: 'payment_received',
+    sourceId: receipt._id,
+    studentIds: [receipt.studentId],
+    recipients: 'financial',
+    tokens: (student, parent) => ({
+      parentName: parent.fullName,
+      studentName: `${student.givenName} ${student.familyName}`.trim(),
+      amount: money(receipt.amount),
+      receiptNumber: receipt.receiptNumber,
+      schoolName: school,
+    }),
+    link: (studentId) => `/portal/children/${studentId}?tab=finance`,
+    trigger: 'manual',
+    actorId,
+  })
   await recordAudit(ctx.auditLog, {
     actorId,
     action: 'receipt.issue',
@@ -705,6 +728,60 @@ export async function computeStudentBalances(
     bucket.invoicedTotal += invoice.total
     bucket.paidTotal += paidForInvoice
     bucket.outstandingBalance = bucket.invoicedTotal - bucket.paidTotal
+  }
+  return result
+}
+
+export interface ChargeResult {
+  charged: { studentId: string; invoiceId: string; amount: number }[]
+  /** Already carrying this charge. */
+  alreadyCharged: string[]
+  /** No non-void invoice for the year to add it to. */
+  noInvoice: string[]
+}
+
+/**
+ * Adds one charge line to each student's invoice for a year (SAMS 5.4
+ * transport fees, 5.6 event fees): the most recent non-void invoice of that
+ * student and year. A line with the same `sourceFeeItemId` is never added
+ * twice, so running it again only charges newcomers.
+ */
+export async function chargeStudents(
+  ctx: TenantContext,
+  params: {
+    academicYearId: string
+    charges: { studentId: string; amount: number }[]
+    label: string
+    labelAr: string | null
+    sourceFeeItemId: string
+    actorId: string | null
+  },
+): Promise<ChargeResult> {
+  const result: ChargeResult = { charged: [], alreadyCharged: [], noInvoice: [] }
+  const invoices = await ctx.invoices
+    .find({ studentId: { $in: params.charges.map((c) => c.studentId) }, academicYearId: params.academicYearId, status: { $ne: 'void' } })
+    .sort({ issueDate: -1, createdAt: -1 })
+    .toArray()
+  for (const charge of params.charges) {
+    const mine = invoices.filter((i) => i.studentId === charge.studentId)
+    if (mine.some((i) => i.lineItems.some((l) => l.sourceFeeItemId === params.sourceFeeItemId))) {
+      result.alreadyCharged.push(charge.studentId)
+      continue
+    }
+    const target = mine[0]
+    if (!target || charge.amount <= 0) {
+      if (!target) result.noInvoice.push(charge.studentId)
+      continue
+    }
+    const res = await addLineItem(ctx, target._id, {
+      label: params.label,
+      labelAr: params.labelAr,
+      amount: charge.amount,
+      discount: null,
+      actorId: params.actorId,
+      sourceFeeItemId: params.sourceFeeItemId,
+    })
+    if (res.ok) result.charged.push({ studentId: charge.studentId, invoiceId: target._id, amount: charge.amount })
   }
   return result
 }

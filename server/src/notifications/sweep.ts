@@ -2,6 +2,8 @@ import { withoutTenant } from '../db.js'
 import { isSessionDay } from '../calendar.js'
 import { withLock } from '../lock.js'
 import { enqueueAbsenceNotifications, processQueue } from './queue.js'
+import { runAllDailyNotices } from '../communication/notices.js'
+import { runDueSchedules } from '../reports/schedules.js'
 
 /**
  * The scheduled side of absence notifications. On each tick:
@@ -82,6 +84,10 @@ export async function runDueSweeps(): Promise<void> {
 /** One full tick: enqueue what's due, then process the queue. */
 export async function sweepTick(): Promise<void> {
   await runDueSweeps()
+  // SAMS 6.3: automatic fee reminders and expiring-document notices.
+  await runAllDailyNotices()
+  // SAMS 7.4: scheduled report exports due today (their emails join the queue).
+  await runDueSchedules()
   await processQueue()
 }
 
