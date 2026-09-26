@@ -63,6 +63,13 @@ export type PermissionScope =
   | 'memberships.manage'
   | 'notifications.manage'
   | 'notifications.run'
+  | 'ops.assets.manage'
+  | 'ops.events.manage'
+  | 'ops.facilities.manage'
+  | 'ops.inventory.manage'
+  | 'ops.library.manage'
+  | 'ops.maintenance.report'
+  | 'ops.read'
   | 'parents.manage'
   | 'parents.read'
   | 'parents.write'
@@ -114,6 +121,11 @@ const SCHEDULER_SCOPES: readonly PermissionScope[] = [
   'finance.refund.request',
   'finance.scholarship.request',
   'notifications.run',
+  // Operations (SAMS Phase 5): day-to-day desks.
+  'ops.events.manage',
+  'ops.library.manage',
+  'ops.maintenance.report',
+  'ops.read',
   'parents.write',
   'students.create',
   'students.update',
@@ -152,6 +164,9 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'hr.salary.read',
   'memberships.manage',
   'notifications.manage',
+  'ops.assets.manage',
+  'ops.facilities.manage',
+  'ops.inventory.manage',
   'parents.manage',
   'reports.finance',
   'reports.hr',
@@ -215,6 +230,8 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ),
   registrar: preset('scheduler', [
     ...OFFICE_READ,
+    'ops.maintenance.report',
+    'ops.read',
     'academicYears.write',
     'admissions.manage',
     'admissions.read',
@@ -231,6 +248,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ]),
   finance_officer: preset('scheduler', [
     ...VIEWER_SCOPES,
+    'ops.maintenance.report',
     'finance.discount.approve',
     'finance.expense.approve',
     'finance.expense.create',
@@ -250,6 +268,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ]),
   hr: preset('viewer', [
     ...OFFICE_READ,
+    'ops.maintenance.report',
     'hr.attendance.write',
     'hr.employee.update',
     'hr.leave.approve',
@@ -262,11 +281,20 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'attendance.write',
     'datasets.write',
     'notifications.run',
+    'ops.assets.manage',
+    'ops.events.manage',
+    'ops.facilities.manage',
+    'ops.inventory.manage',
+    'ops.library.manage',
+    'ops.maintenance.report',
+    'ops.read',
     'transport.manage',
     'transport.write',
   ]),
   reception: preset('viewer', [
     ...OFFICE_READ,
+    'ops.maintenance.report',
+    'ops.read',
     'admissions.manage',
     'admissions.read',
     'attendance.write',

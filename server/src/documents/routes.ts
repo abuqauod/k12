@@ -51,6 +51,10 @@ const OWNER_READ_SCOPE: Record<DocumentOwnerType, PermissionScope> = {
   expense: 'finance.read',
   // SAMS 4.3: staff files are personal data — HR only.
   employee: 'hr.read',
+  // SAMS 5.1 / 5.4: asset papers, vehicle and driver documents.
+  asset: 'ops.read',
+  bus: 'transport.read',
+  driver: 'transport.read',
 }
 
 /** Who may add files to an owner besides `documents.upload` holders: the
@@ -60,28 +64,31 @@ const OWNER_UPLOAD_SCOPE: Partial<Record<DocumentOwnerType, PermissionScope>> = 
   scholarship: 'finance.scholarship.request',
   expense: 'finance.expense.create',
   employee: 'hr.employee.update',
+  asset: 'ops.assets.manage',
+  bus: 'transport.manage',
+  driver: 'transport.manage',
 }
 
 /** Owners that are a single branch-scoped record. */
 async function recordBranch(ctx: TenantContext, ownerType: DocumentOwnerType, ownerId: string) {
   const find = { _id: ownerId }
-  const doc =
-    ownerType === 'application'
-      ? await ctx.applications.findOne(find)
-      : ownerType === 'scholarship'
-        ? await ctx.scholarships.findOne(find)
-        : ownerType === 'expense'
-          ? await ctx.expenses.findOne(find)
-          : ownerType === 'employee'
-            ? await ctx.employees.findOne(find)
-            : ownerType === 'student'
-            ? await ctx.students.findOne(find)
-            : null
+  const load: Record<Exclude<DocumentOwnerType, 'parent'>, () => Promise<{ branchId: string } | null>> = {
+    student: () => ctx.students.findOne(find),
+    application: () => ctx.applications.findOne(find),
+    scholarship: () => ctx.scholarships.findOne(find),
+    expense: () => ctx.expenses.findOne(find),
+    employee: () => ctx.employees.findOne(find),
+    asset: () => ctx.assets.findOne(find),
+    bus: () => ctx.buses.findOne(find),
+    driver: () => ctx.drivers.findOne(find),
+  }
+  if (ownerType === 'parent') return null
+  const doc = await load[ownerType]()
   return doc ? { branchId: doc.branchId } : null
 }
 
 const ownerQuery = z.object({
-  ownerType: z.enum(['student', 'parent', 'application', 'scholarship', 'expense', 'employee']),
+  ownerType: z.enum(['student', 'parent', 'application', 'scholarship', 'expense', 'employee', 'asset', 'bus', 'driver']),
   ownerId: z.string().min(1).max(64),
 })
 

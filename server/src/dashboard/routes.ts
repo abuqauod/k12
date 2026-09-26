@@ -41,6 +41,11 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
       enrollments: await callerHasPermission(request, 'enrollments.read'),
       students: await callerHasPermission(request, 'students.read'),
       admissions: await callerHasPermission(request, 'admissions.read'),
+      confirmPayments: await callerHasPermission(request, 'finance.payment.confirm'),
+      payout: await callerHasPermission(request, 'finance.payout'),
+      hr: await callerHasPermission(request, 'hr.read'),
+      ops: await callerHasPermission(request, 'ops.read'),
+      transport: await callerHasPermission(request, 'transport.read'),
     }
     const toDecide = await toDecideFilter(request)
 
@@ -112,6 +117,46 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
             }
           : { academicYear: null, active: 0, withdrawals: 0, transfers: 0, pending: 0 }
       }
+
+      // Work waiting across Phases 3–5, each only with its read scope. Every
+      // count is a plain query on the module's own records.
+      const attention: Record<string, number> = {}
+      const today = new Date().toISOString().slice(0, 10)
+      const soon = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10)
+      if (can.confirmPayments) {
+        const pending = await ctx.payments.find({ confirmation: 'pending', voidedAt: null }).toArray()
+        const invoices = await ctx.invoices.find({ _id: { $in: pending.map((p) => p.invoiceId) }, ...branchFilter }).toArray()
+        const inScope = new Set(invoices.map((i) => i._id))
+        attention.paymentsToConfirm = pending.filter((p) => inScope.has(p.invoiceId)).length
+      }
+      if (can.payout) {
+        attention.refundsToPay = await ctx.refunds.countDocuments({ ...branchFilter, status: 'approved' })
+        attention.expensesToPay = await ctx.expenses.countDocuments({ ...branchFilter, status: 'approved' })
+      }
+      if (can.hr) {
+        const open = await ctx.contracts.find({ ...branchFilter, closedReason: null, endDate: { $ne: null, $lte: soon } }).toArray()
+        const active = new Set(
+          (await ctx.employees.find({ _id: { $in: open.map((c) => c.employeeId) }, status: 'active' }).toArray()).map((e) => e._id),
+        )
+        attention.contractsEnding = open.filter((c) => active.has(c.employeeId)).length
+      }
+      if (can.ops) {
+        attention.maintenanceOpen = await ctx.maintenanceRequests.countDocuments({ ...branchFilter, status: { $in: ['open', 'in_progress'] } })
+        attention.lowStock = (await ctx.inventoryItems.find({ ...branchFilter, active: true }).toArray()).filter(
+          (i) => i.quantity <= i.reorderLevel,
+        ).length
+        attention.overdueLoans = await ctx.loans.countDocuments({ ...branchFilter, returnedAt: null, lostAt: null, dueDate: { $lt: today } })
+      }
+      if (can.transport) {
+        const buses = await ctx.busDetails.find({ ...branchFilter }).toArray()
+        const drivers = await ctx.drivers.find({ ...branchFilter, active: true }).toArray()
+        const dates = [
+          ...buses.flatMap((b) => [b.registrationExpiry, b.insuranceExpiry, b.inspectionExpiry]),
+          ...drivers.map((d) => d.licenseExpiry),
+        ]
+        attention.transportExpiring = dates.filter((d) => d !== null && d <= soon).length
+      }
+      if (Object.keys(attention).length > 0) result.attention = attention
 
       // Only when the caller can decide at least one approval type.
       const decidable = (toDecide.type as { $in: string[] }).$in
