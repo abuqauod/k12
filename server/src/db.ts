@@ -2226,6 +2226,63 @@ export interface LockDoc extends Document {
   expiresAt: Date
 }
 
+/** SAMS 11.1: which card gateway a school takes online payments through. */
+export type PaymentProviderKey = 'paytabs' | 'hyperpay' | 'test'
+
+/** SAMS 11.1: a school's online payment setup (one per tenant, _id =
+ * tenantId). Secrets are stored encrypted (payments/secrets.ts) and never
+ * returned by the API. */
+export interface PaymentSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  enabled: boolean
+  provider: PaymentProviderKey | null
+  /** ISO 4217, e.g. JOD, SAR, AED, USD. Amounts stay in hundredths. */
+  currency: string
+  /** Public identifiers: PayTabs profile id and region, HyperPay entity id
+   * and mode. */
+  settings: Record<string, string>
+  /** Encrypted: the PayTabs server key, the HyperPay access token. */
+  secrets: Record<string, string>
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+export type OnlinePaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled'
+
+/** SAMS 11.1: one attempt by a family to pay online. Becomes a normal
+ * payment (with receipt) when the gateway confirms it. */
+export interface OnlinePaymentDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  studentId: string
+  parentId: string | null
+  /** Minor units. */
+  amount: number
+  currency: string
+  provider: PaymentProviderKey
+  /** The gateway's id for the checkout (PayTabs tran_ref, HyperPay checkout id). */
+  providerRef: string | null
+  /** The gateway's id for the captured payment, where it differs (HyperPay). */
+  providerPaymentId: string | null
+  status: OnlinePaymentStatus
+  message: string | null
+  /** Set when settled: the payment batch it became. */
+  paymentBatchId: string | null
+  receiptId: string | null
+  /** Paid more than was outstanding by settlement time (left as credit). */
+  overpaid: number
+  /** Refunded through the gateway, minor units. */
+  refunded: number
+  /** Test provider only: the outcome picked on the fake checkout page. */
+  testOutcome?: 'paid' | 'failed' | null
+  createdAt: Date
+  updatedAt: Date
+  settledAt: Date | null
+  createdBy: string | null
+}
+
 // ---------------------------------------------------------- tenant scoping --
 
 /**
@@ -2390,6 +2447,8 @@ export interface TenantContext {
   studentHealth: TenantScope<StudentHealthDoc>
   clinicVisits: TenantScope<ClinicVisitDoc>
   incidents: TenantScope<IncidentDoc>
+  paymentSettings: TenantScope<PaymentSettingsDoc>
+  onlinePayments: TenantScope<OnlinePaymentDoc>
 }
 
 /**
@@ -2524,6 +2583,8 @@ export async function withTenant<T>(
         studentHealth: new TenantScope(db.collection<StudentHealthDoc>('studentHealth'), tenantId, session),
         clinicVisits: new TenantScope(db.collection<ClinicVisitDoc>('clinicVisits'), tenantId, session),
         incidents: new TenantScope(db.collection<IncidentDoc>('incidents'), tenantId, session),
+        paymentSettings: new TenantScope(db.collection<PaymentSettingsDoc>('paymentSettings'), tenantId, session),
+        onlinePayments: new TenantScope(db.collection<OnlinePaymentDoc>('onlinePayments'), tenantId, session),
       })
     })
     return result as T
@@ -2559,6 +2620,8 @@ export interface UnscopedDb {
   communicationSettings: Collection<CommunicationSettingsDoc>
   /** SAMS 7.4: which schedules, across tenants, are due. */
   reportSchedules: Collection<ReportScheduleDoc>
+  /** SAMS 11.1: payments still waiting on a gateway, across tenants. */
+  onlinePayments: Collection<OnlinePaymentDoc>
   locks: Collection<LockDoc>
 }
 
@@ -2588,6 +2651,7 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     notificationAttempts: database.collection<NotificationAttemptDoc>('notificationAttempts'),
     communicationSettings: database.collection<CommunicationSettingsDoc>('communicationSettings'),
     reportSchedules: database.collection<ReportScheduleDoc>('reportSchedules'),
+    onlinePayments: database.collection<OnlinePaymentDoc>('onlinePayments'),
     locks: database.collection<LockDoc>('locks'),
   })
 }

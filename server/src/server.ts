@@ -38,6 +38,7 @@ import { registerHealthRoutes } from './health/routes.js'
 import { registerDisciplineRoutes } from './discipline/routes.js'
 import { registerImportRoutes } from './imports/routes.js'
 import { registerIdCardRoutes } from './idcards/routes.js'
+import { registerPaymentRoutes } from './payments/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 import { reportError } from './runtime/errorReporting.js'
 import { preflight } from './runtime/preflight.js'
@@ -121,7 +122,9 @@ export function buildServer() {
   // DELETE. Every route that actually needs a body already validates its
   // presence with zod, so treating "empty" as "no body" here just moves that
   // check to the place that already produces a sane error for it.
-  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (request, body, done) => {
+    // SAMS 11.1: a payment gateway signs the exact bytes it sent.
+    ;(request as { rawBody?: string }).rawBody = body as string
     if (body === '') {
       done(null, undefined)
       return
@@ -132,6 +135,14 @@ export function buildServer() {
       // A client's mistake, not ours: 400, not the 500 a bare SyntaxError got.
       done(Object.assign(new Error('Body is not valid JSON'), { statusCode: 400, code: 'INVALID_JSON' }), undefined)
     }
+  })
+
+  // SAMS 11.1: payment gateways return the family's browser with a form
+  // post. Parsed flat (every value a string); no route but the payment
+  // return pages reads one.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (request, body, done) => {
+    ;(request as { rawBody?: string }).rawBody = body as string
+    done(null, Object.fromEntries(new URLSearchParams(body as string)))
   })
 
   // Audit context (SAMS 1.12): every recordAudit in this request picks up
@@ -210,6 +221,7 @@ export function buildServer() {
       registerDisciplineRoutes(instance)
       registerImportRoutes(instance)
       registerIdCardRoutes(instance)
+      registerPaymentRoutes(instance)
     },
     { prefix: config.routePrefix },
   )

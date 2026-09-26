@@ -41,6 +41,7 @@ import {
   RolesSection,
 } from '../components/SettingsSections'
 import type { TenantProfile } from '../lib/tenantApi'
+import { PaymentsSection } from '../components/settings/PaymentsSection'
 import { NumberingSection } from '../components/settings/NumberingSection'
 import { ImportSection } from '../components/settings/ImportSection'
 
@@ -68,6 +69,7 @@ type SettingsSection =
   | 'notification-templates'
   | 'numbering'
   | 'import'
+  | 'payments'
   | 'incident-types'
   | 'discipline-actions'
   | 'roles'
@@ -97,6 +99,7 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
       { id: 'numbering', key: 'settings.section.numbering', scope: 'settings.read' },
       { id: 'import', key: 'settings.section.import', anyScope: ['students.create', 'hr.employee.update'] },
+      { id: 'payments', key: 'settings.section.payments', scope: 'settings.read' },
       { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
@@ -200,6 +203,7 @@ export function SettingsPage() {
           {active?.id === 'grades-classes' && <GradesClassesSection />}
           {active?.id === 'numbering' && <NumberingSection />}
           {active?.id === 'import' && <ImportSection />}
+          {active?.id === 'payments' && <PaymentsSection />}
           {active?.id === 'payment-methods' && (
             <LookupSection
               kind="paymentMethod"

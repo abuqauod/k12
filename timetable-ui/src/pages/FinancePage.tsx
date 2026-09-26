@@ -1,3 +1,4 @@
+import { OnlinePaymentsTab } from '../components/finance/OnlinePaymentsTab'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { FeeStructure, Invoice, InvoiceStatus } from '../domain/finance'
@@ -18,10 +19,11 @@ import type { TranslationKey } from '../i18n/translations'
 
 type StatusFilter = InvoiceStatus | 'ALL'
 
-type Tab = 'invoices' | 'confirmations' | 'scholarships' | 'refunds' | 'expenses' | 'reports'
+type Tab = 'invoices' | 'confirmations' | 'online' | 'scholarships' | 'refunds' | 'expenses' | 'reports'
 const TABS: { id: Tab; label: TranslationKey; scope?: string }[] = [
   { id: 'invoices', label: 'billing.invoices' },
   { id: 'confirmations', label: 'fin.tab.confirmations' },
+  { id: 'online', label: 'fin.tab.online' },
   { id: 'scholarships', label: 'fin.scholarships' },
   { id: 'refunds', label: 'fin.refunds' },
   { id: 'expenses', label: 'fin.expenses' },
@@ -154,6 +156,7 @@ export function FinancePage() {
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="finance-panel">
         {tab === 'confirmations' && <ConfirmationsTab branchId={branchId} onOpenInvoice={setOpenInvoiceId} />}
+        {tab === 'online' && <OnlinePaymentsTab branchId={branchId} />}
         {tab === 'scholarships' && <ScholarshipsPanel branchId={branchId || undefined} />}
         {tab === 'refunds' && <RefundsTab branchId={branchId} onOpenInvoice={setOpenInvoiceId} />}
         {tab === 'expenses' && <ExpensesTab branchId={branchId} />}

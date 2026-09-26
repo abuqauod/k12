@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   portalChild,
@@ -11,6 +11,7 @@ import {
   type PortalReceipt,
 } from '../lib/portalApi'
 import { formatMinorUnits } from '../domain/finance'
+import { PaymentResult, PayOnline } from './PayOnline'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
@@ -123,21 +124,27 @@ function Finance({ id }: { id: string }) {
   const { getAccessToken } = useAuth()
   const [data, setData] = useState<{
     balance: number
+    onlinePayment: { currency: string } | null
     invoices: PortalInvoice[]
     receipts: PortalReceipt[]
   } | null>(null)
   const [error, setError] = useState(false)
-  useEffect(() => {
+  const load = useCallback(() => {
     void portalFinance(getAccessToken, id).then((r) => (r.kind === 'ok' ? setData(r.data) : setError(true)))
   }, [getAccessToken, id])
+  useEffect(() => {
+    load()
+  }, [load])
   if (error) return <div className="empty-state">{t('portal.financeHidden')}</div>
   if (!data) return <div className="skeleton" style={{ height: 120 }} />
   return (
     <>
+      <PaymentResult onSettled={load} />
       <section className="card portal-balance">
         <small>{t('portal.balance')}</small>
         <b className="mono">{formatMinorUnits(data.balance)}</b>
       </section>
+      {data.onlinePayment && data.balance > 0 && <PayOnline studentId={id} balance={data.balance} currency={data.onlinePayment.currency} />}
       <section className="card">
         <h3 className="card__title">{t('portal.invoices')}</h3>
         {data.invoices.length === 0 ? (

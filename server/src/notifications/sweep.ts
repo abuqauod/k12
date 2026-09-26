@@ -1,3 +1,4 @@
+import { reconcilePending } from '../payments/service.js'
 import { withoutTenant } from '../db.js'
 import { isSessionDay } from '../calendar.js'
 import { withLock } from '../lock.js'
@@ -88,6 +89,8 @@ export async function sweepTick(): Promise<void> {
   await runAllDailyNotices()
   // SAMS 7.4: scheduled report exports due today (their emails join the queue).
   await runDueSchedules()
+  // SAMS 11.1: online payments the family never came back from.
+  await reconcilePending(process.env.PUBLIC_API_URL ?? '')
   await processQueue()
 }
 

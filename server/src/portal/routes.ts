@@ -4,6 +4,7 @@ import type { ParentDoc, ParentStudentLinkDoc, StudentDoc, TenantContext } from 
 import { callerBranchIds } from '../auth/guard.js'
 import { parentHiddenFromBranches } from '../parents/service.js'
 import { invoicePaidTotals } from '../finance/service.js'
+import { loadPaymentSettings } from '../payments/service.js'
 import { installmentViews } from '../finance/installments.js'
 import { signFileLink } from '../documents/fileTokens.js'
 import { scoped, todayIso } from '../records.js'
@@ -43,13 +44,13 @@ async function staffParent(request: FastifyRequest, reply: FastifyReply): Promis
   return parent
 }
 
-interface PortalContext {
+export interface PortalContext {
   parent: ParentDoc
   links: ParentStudentLinkDoc[]
 }
 
 /** The signed-in parent and the links that grant portal access. */
-async function portalContext(ctx: TenantContext, userId: string): Promise<PortalContext | null> {
+export async function portalContext(ctx: TenantContext, userId: string): Promise<PortalContext | null> {
   const parent = await ctx.parents.findOne({ 'portalAccess.userId': userId, 'portalAccess.enabled': true, status: 'active' })
   if (!parent) return null
   const links = await ctx.parentStudentLinks.find({ parentId: parent._id, active: true, portalAccess: true }).toArray()
@@ -237,8 +238,11 @@ export function registerPortalRoutes(app: FastifyInstance): void {
           })),
         }
       })
+      const payments = await loadPaymentSettings(ctx, request.auth!.tenantId!)
       return {
         balance: rows.reduce((s, r) => s + r.balance, 0),
+        // SAMS 11.1: whether the family can pay here, and in what currency.
+        onlinePayment: payments.enabled && payments.provider !== null ? { currency: payments.currency } : null,
         invoices: rows,
         receipts: receipts.map((r) => ({
           id: r._id,

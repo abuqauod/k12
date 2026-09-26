@@ -51,6 +51,8 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'card', label: 'Card', labelAr: 'بطاقة' },
       { code: 'cheque', label: 'Cheque', labelAr: 'شيك' },
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
+      // SAMS 11.1: paid by the family through the school's card gateway.
+      { code: 'online', label: 'Online (card)', labelAr: 'دفع إلكتروني (بطاقة)' },
     ],
   },
   admissionSource: {
@@ -197,7 +199,10 @@ export async function ensureDefaults(tenantId: string, kind: string): Promise<vo
   const defaults = LOOKUP_KINDS[kind]?.defaults ?? []
   try {
     await withTenant(tenantId, async (ctx) => {
-      if ((await ctx.lookups.countDocuments({ kind })) >= defaults.length) return
+      // Every built-in present, not just as many rows: a school that added
+      // its own entries still gets a built-in added later (SAMS 11.1 online).
+      const codes = defaults.map((d) => d.code)
+      if ((await ctx.lookups.countDocuments({ kind, code: { $in: codes } })) >= codes.length) return
       const now = new Date()
       for (const [order, d] of defaults.entries()) {
         await ctx.lookups.findOneAndUpdate(

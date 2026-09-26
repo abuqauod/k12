@@ -22,6 +22,12 @@ const EXEMPT: Record<string, string> = {
   'GET /auth/sessions': 'any signed-in user, their own sessions',
   'DELETE /auth/sessions/:id': 'any signed-in user, their own sessions',
   'POST /auth/change-password': 'any signed-in user, their own password',
+  'GET /payments/return/:tenantId/:id': 'public; the gateway returns the browser here — settles only on the gateway’s own status answer',
+  'POST /payments/return/:tenantId/:id': 'public; as above (form post)',
+  'POST /payments/callback/:tenantId/:id': 'public; signature-checked where the gateway signs, then a status query',
+  'GET /payments/hyperpay/:tenantId/:id': 'public; the card widget page for a pending checkout',
+  'GET /payments/test/:tenantId/:id': 'public; the test gateway page, off in production',
+  'POST /payments/test/:tenantId/:id': 'public; the test gateway page, off in production',
   'GET /documents/file': 'signed, expiring download link (auth.test / documents.test)',
 }
 

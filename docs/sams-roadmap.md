@@ -509,6 +509,26 @@ ID cards'), limits, overdue notices and fines into billing · 11.4
 office or online (11.1), sales at the canteen by card scan, daily limits
 and parent-set restrictions, statements in the portal.
 
+**Built — 11.1 online fee payment** (`server/src/payments/`):
+- One provider interface; **PayTabs** (hosted page, signed callbacks,
+  query, refund; regions Jordan/UAE/Saudi/Egypt/Oman/global) and
+  **HyperPay** (COPYandPAY widget on a page this API serves, status,
+  refund), plus a **test gateway** (a Pay/Decline page; off in production).
+- Each school's own merchant keys (Settings → Online payments), stored
+  AES-256-GCM encrypted, never returned or audited; currency per school.
+- A family pays all or part of what is owed from the portal. A payment is
+  settled **only on the gateway's answer to a status query** (the callback
+  and the browser's return merely prompt it; the sweep checks the rest every
+  few minutes, gives up after two days), exactly once, and only if amount
+  and currency match. It then goes through the normal `recordPayments`:
+  oldest due first, receipt, "payment received" email. Paid while the
+  office also took cash: the rest stays as credit and is flagged.
+- The office's Finance → Online payments list (per branch) with "check
+  now". An approved refund paid out with method "online" is sent back to
+  the card through the gateway first.
+- Found on the way: built-in settings entries added in a later release
+  never reached a school that had added its own entries; fixed.
+
 ## Phase 12 — Pilot run
 A realistic school built through the product itself (bulk import, fee
 structures, timetable, a term of attendance, fees, grades, report cards,

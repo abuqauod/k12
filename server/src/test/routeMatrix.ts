@@ -309,6 +309,11 @@ export const ROUTES: [Method, string, Role][] = [
   ['POST', `/approvals/${X}/approve`, 'viewer'],
   ['POST', `/approvals/${X}/reject`, 'viewer'],
   ['POST', `/approvals/${X}/cancel`, 'viewer'],
+  // SAMS 11.1 online payments.
+  ['GET', '/settings/payments', 'viewer'],
+  ['PUT', '/settings/payments', 'admin'],
+  ['GET', '/finance/online-payments', 'viewer'],
+  ['POST', `/finance/online-payments/${X}/check`, 'viewer'],
   // A school's own team (memberships.manage).
   ['GET', '/memberships', 'admin'],
   ['GET', '/memberships/roles', 'admin'],
@@ -343,5 +348,7 @@ export const PORTAL_ROUTES: [Method, string][] = [
   ['GET', `/portal/children/${X}/documents`],
   ['POST', `/portal/documents/${X}/link`],
   ['GET', '/portal/announcements'],
+  ['POST', `/portal/children/${X}/pay`],
+  ['GET', `/portal/payments/${X}`],
 ]
 
