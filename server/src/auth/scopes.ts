@@ -40,6 +40,8 @@ export type PermissionScope =
   | 'enrollments.read'
   | 'enrollments.transfer'
   | 'enrollments.withdraw'
+  | 'discipline.manage'
+  | 'discipline.report'
   | 'finance.discount.approve'
   | 'finance.expense.approve'
   | 'finance.expense.create'
@@ -57,6 +59,8 @@ export type PermissionScope =
   | 'finance.refund.request'
   | 'finance.scholarship.approve'
   | 'finance.scholarship.request'
+  | 'health.read'
+  | 'health.write'
   | 'hr.attendance.write'
   | 'hr.employee.update'
   | 'hr.leave.approve'
@@ -119,6 +123,8 @@ const SCHEDULER_SCOPES: readonly PermissionScope[] = [
   'admissions.read',
   'attendance.write',
   'datasets.write',
+  // Backlog: any teacher can log a behaviour incident.
+  'discipline.report',
   'finance.expense.create',
   'finance.invoice.create',
   'finance.invoice.lineItems',
@@ -149,6 +155,7 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'audit.read',
   'branches.manage',
   'classes.write',
+  'discipline.manage',
   'documents.delete',
   'documents.upload',
   'documents.verify',
@@ -165,6 +172,8 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'finance.refund.approve',
   'finance.reminders',
   'finance.scholarship.approve',
+  'health.read',
+  'health.write',
   'hr.attendance.write',
   'hr.employee.update',
   'hr.leave.approve',
@@ -208,6 +217,7 @@ export const ROLE_KEYS = [
   'hr',
   'operations',
   'reception',
+  'nurse',
 ] as const
 /** The parent portal's login (SAMS 6.4). Not in `ROLE_KEYS`: it can't be
  * picked in Team settings, only given by enabling a parent's portal. */
@@ -249,6 +259,8 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'ops.maintenance.report',
     'ops.read',
     'reports.schedule',
+    'discipline.manage',
+    'discipline.report',
     'academicYears.write',
     'admissions.manage',
     'admissions.read',
@@ -314,6 +326,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ]),
   reception: preset('viewer', [
     ...OFFICE_READ,
+    'discipline.report',
     'portal.manage',
     'ops.maintenance.report',
     'ops.read',
@@ -323,6 +336,8 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'parents.write',
     'students.create',
   ]),
+  // Backlog: the school nurse — health records and the clinic log.
+  nurse: preset('viewer', [...OFFICE_READ, 'health.read', 'health.write', 'ops.maintenance.report', 'discipline.report']),
   // A parent sees only the portal, and there only their own children.
   parent: preset('viewer', ['portal.parent']),
 }

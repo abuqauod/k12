@@ -17,6 +17,8 @@ export type LookupKind =
   | 'roomType'
   | 'bookCategory'
   | 'eventType'
+  | 'incidentType'
+  | 'disciplineAction'
 
 export interface LookupItem {
   code: string

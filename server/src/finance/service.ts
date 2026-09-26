@@ -16,6 +16,7 @@ import { recordAudit } from '../audit.js'
 import { oldestUnpaidDueDate } from './installments.js'
 import { money } from '../records.js'
 import { notifyFamilies, schoolName } from '../notifications/messages.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * Fee structures, invoices, payments and receipts — the Finance & Accounting
@@ -26,19 +27,6 @@ import { notifyFamilies, schoolName } from '../notifications/messages.js'
  */
 
 const today = () => new Date().toISOString().slice(0, 10)
-
-export async function nextSequence(
-  ctx: TenantContext,
-  tenantId: string,
-  kind: 'invoiceNumber' | 'receiptNumber' | 'refundNumber' | 'expenseNumber',
-): Promise<number> {
-  const updated = await ctx.financeCounters.findOneAndUpdate(
-    { _id: `${tenantId}:${kind}` },
-    { $inc: { seq: 1 } },
-    { upsert: true, returnDocument: 'after' },
-  )
-  return updated!.seq
-}
 
 /** The one place discount math happens — called by both invoice generation
  * and every line-item write, so it is never duplicated. Floored at 0: a
@@ -128,7 +116,6 @@ export async function generateInvoice(
     scholarships.map((sch) => scholarshipAdjustment(sch, now, params.actorId)),
   )
 
-  const seq = await nextSequence(ctx, tenantId, 'invoiceNumber')
   const invoice: InvoiceDoc = {
     _id: randomUUID(),
     tenantId,
@@ -137,7 +124,7 @@ export async function generateInvoice(
     academicYearId: enrollment.academicYearId,
     termId: null,
     feeStructureId: structure._id,
-    invoiceNumber: `INV-${String(seq).padStart(6, '0')}`,
+    invoiceNumber: await nextNumber(ctx, tenantId, 'invoiceNumber'),
     issueDate: today(),
     dueDate: params.dueDate ?? null,
     lineItems,
@@ -477,14 +464,13 @@ async function issueReceipt(
   actorId: string | null,
 ): Promise<ReceiptDoc> {
   const first = payments[0]!
-  const seq = await nextSequence(ctx, tenantId, 'receiptNumber')
   const receipt: ReceiptDoc = {
     _id: randomUUID(),
     tenantId,
     paymentId: first._id,
     invoiceId: first.invoiceId,
     studentId: first.studentId,
-    receiptNumber: `RCT-${String(seq).padStart(6, '0')}`,
+    receiptNumber: await nextNumber(ctx, tenantId, 'receiptNumber'),
     amount: payments.reduce((sum, p) => sum + p.amount, 0),
     method: first.method,
     payerName: first.payerName,

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { ApplicationDoc, ParentDoc, StudentDoc, TenantContext } from '../db.js'
 import { recordAudit } from '../audit.js'
 import { openEnrollment } from '../enrollments/service.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * Admissions (SAMS 2.5): an application moves
@@ -27,13 +28,7 @@ export const EDITABLE: ReadonlySet<ApplicationDoc['status']> = new Set([
 ])
 
 export async function nextApplicationNumber(ctx: TenantContext, tenantId: string): Promise<string> {
-  // The per-tenant counters live in `financeCounters` (one doc per kind).
-  const counter = await ctx.financeCounters.findOneAndUpdate(
-    { _id: `${tenantId}:applicationNumber` },
-    { $inc: { seq: 1 } },
-    { upsert: true, returnDocument: 'after' },
-  )
-  return `APP-${String(counter!.seq).padStart(6, '0')}`
+  return nextNumber(ctx, tenantId, 'applicationNumber')
 }
 
 export interface ChecklistItem {
@@ -88,7 +83,7 @@ export type ConvertResult =
 export async function convertApplication(
   ctx: TenantContext,
   tenantId: string,
-  params: { applicationId: string; classId: string; studentNumber: string; startDate: string; actorId: string },
+  params: { applicationId: string; classId: string; studentNumber: string | null; startDate: string; actorId: string },
 ): Promise<ConvertResult> {
   const app = await ctx.applications.findOne({ _id: params.applicationId })
   if (!app) return { ok: false, error: 'NOT_FOUND' }
@@ -99,7 +94,7 @@ export async function convertApplication(
   if (klass.academicYearId && klass.academicYearId !== app.academicYearId) {
     return { ok: false, error: 'CLASS_WRONG_YEAR' }
   }
-  if (await ctx.students.findOne({ studentNumber: params.studentNumber })) {
+  if (params.studentNumber && (await ctx.students.findOne({ studentNumber: params.studentNumber }))) {
     return { ok: false, error: 'STUDENT_NUMBER_TAKEN' }
   }
 
@@ -110,7 +105,7 @@ export async function convertApplication(
   const student: StudentDoc = {
     _id: studentId,
     tenantId,
-    studentNumber: params.studentNumber,
+    studentNumber: params.studentNumber ?? (await nextNumber(ctx, tenantId, 'studentNumber')),
     givenName: a.givenName,
     familyName: a.familyName,
     givenNameAr: a.givenNameAr,

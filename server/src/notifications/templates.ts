@@ -32,6 +32,8 @@ export const TEMPLATE_TOKENS: Record<TemplateKind, string[]> = {
   document_expiring: ['parentName', 'studentName', 'document', 'expiresAt', 'schoolName'],
   approval_decided: ['summary', 'outcome'],
   report_ready: ['report', 'period', 'rows', 'link', 'schoolName'],
+  clinic_visit: ['parentName', 'studentName', 'time', 'complaint', 'outcome', 'treatment', 'schoolName'],
+  incident: ['parentName', 'studentName', 'date', 'type', 'description', 'action', 'schoolName'],
 }
 
 export const TEMPLATE_KINDS = Object.keys(TEMPLATE_TOKENS) as TemplateKind[]
@@ -136,6 +138,42 @@ export const DEFAULT_TEMPLATES: Record<TemplateKind, TemplateText> = {
     subjectAr: 'التقرير جاهز: {report}',
     bodyAr: 'تقريرك المجدول "{report}" ({period}، {rows} صف) جاهز.\n\nيمكنك تنزيله من هنا: {link}\n\n{schoolName}',
     smsBodyAr: '{schoolName}: التقرير "{report}" جاهز.',
+  },
+  clinic_visit: {
+    enabled: true,
+    subject: 'Clinic visit — {studentName}',
+    body:
+      'Dear {parentName},\n\n' +
+      '{studentName} visited the school clinic at {time} ({complaint}). Outcome: {outcome}.\n' +
+      'Treatment: {treatment}\n\n' +
+      'Please contact the school if you have any questions.\n\n{schoolName}',
+    smsBody: '{schoolName}: {studentName} visited the clinic ({complaint}). Outcome: {outcome}.',
+    subjectAr: 'زيارة العيادة — {studentName}',
+    bodyAr:
+      'عزيزي {parentName}،\n\n' +
+      'راجع {studentName} عيادة المدرسة الساعة {time} ({complaint}). النتيجة: {outcome}.\n' +
+      'الإجراء: {treatment}\n\n' +
+      'يُرجى التواصل مع المدرسة لأي استفسار.\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: راجع {studentName} العيادة ({complaint}). النتيجة: {outcome}.',
+  },
+  incident: {
+    enabled: true,
+    subject: 'Behaviour report — {studentName}',
+    body:
+      'Dear {parentName},\n\n' +
+      'We would like to inform you of an incident involving {studentName} on {date} ({type}).\n\n' +
+      '{description}\n\n' +
+      'Action taken: {action}\n\n' +
+      'Please contact the school to discuss it.\n\n{schoolName}',
+    smsBody: '{schoolName}: an incident involving {studentName} on {date} ({type}). Please contact the school.',
+    subjectAr: 'تقرير سلوكي — {studentName}',
+    bodyAr:
+      'عزيزي {parentName}،\n\n' +
+      'نود إعلامكم بحادثة تخص {studentName} بتاريخ {date} ({type}).\n\n' +
+      '{description}\n\n' +
+      'الإجراء المتخذ: {action}\n\n' +
+      'يُرجى التواصل مع المدرسة لمناقشتها.\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: حادثة تخص {studentName} بتاريخ {date} ({type}). يُرجى التواصل مع المدرسة.',
   },
 }
 

@@ -591,7 +591,12 @@ function ConvertPanel({ app, onConverted }: { app: Application; onConverted: (st
         </label>
         <label className="field">
           <span>{t('admissions.studentNumber')}</span>
-          <input className="input" value={studentNumber} onChange={(e) => setStudentNumber(e.target.value)} />
+          <input
+            className="input"
+            placeholder={t('students.number.auto')}
+            value={studentNumber}
+            onChange={(e) => setStudentNumber(e.target.value)}
+          />
         </label>
         <label className="field">
           <span>{t('enroll.startDate')}</span>
@@ -600,7 +605,7 @@ function ConvertPanel({ app, onConverted }: { app: Application; onConverted: (st
       </div>
       {error && <p className="login__error">{error}</p>}
       <div className="page__actions">
-        <button type="button" className="btn btn--primary" disabled={busy || !classId || !studentNumber.trim()} onClick={() => void convert()}>
+        <button type="button" className="btn btn--primary" disabled={busy || !classId} onClick={() => void convert()}>
           {t('admissions.convertConfirm')}
         </button>
       </div>

@@ -7,8 +7,9 @@ import type { AssetDoc, TenantContext } from '../db.js'
 import { callerCanUseBranch } from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
 import { readReason, setAuditReason } from '../requestContext.js'
-import { Abort, branchFilter, isFailure, nextNumber, scoped, sendFailure, todayIso, transact } from '../records.js'
+import { Abort, branchFilter, isFailure, scoped, sendFailure, todayIso, transact } from '../records.js'
 import { assetEvent, checkCode, escapeRegex, recordAccess } from './common.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * SAMS 5.1: assets and their lifecycle — purchase → assignment (to an
@@ -142,7 +143,7 @@ export function registerAssetRoutes(app: FastifyInstance): void {
       const doc: AssetDoc = {
         _id: randomUUID(),
         tenantId,
-        assetTag: await nextNumber(ctx, tenantId, 'assetTag', 'AST'),
+        assetTag: await nextNumber(ctx, tenantId, 'assetTag'),
         ...body,
         status: 'in_stock',
         assignedTo: null,

@@ -15,6 +15,8 @@ export type MessageKind =
   | 'document_expiring'
   | 'approval_decided'
   | 'report_ready'
+  | 'clinic_visit'
+  | 'incident'
 
 // ---------------------------------------------------------------- inbox --
 
@@ -196,3 +198,15 @@ export const resendPortalInvite = (getToken: TokenGetter, parentId: string) =>
   api<{ emailSent: boolean; emailError: string | null }>(getToken, 'POST', `/parents/${enc(parentId)}/portal/resend`, {})
 export const disablePortal = (getToken: TokenGetter, parentId: string) =>
   api<PortalAccess>(getToken, 'POST', `/parents/${enc(parentId)}/portal/disable`, {})
+
+// ---------------------------------------------------- delivery channels --
+
+export interface ChannelStatus {
+  email: { configured: boolean; from: string | null }
+  sms: { configured: boolean; provider: 'twilio' | 'webhook' | 'log' | null }
+}
+export const getChannels = (getToken: TokenGetter) => api<ChannelStatus>(getToken, 'GET', '/communication/channels')
+export const testSend = (getToken: TokenGetter, channel: Channel, to: string) =>
+  api<{ ok: true; providerMessageId: string | null }>(getToken, 'POST', '/communication/test-send', { channel, to })
+export const retryAllFailed = (getToken: TokenGetter, body: { kind?: string; error?: string } = {}) =>
+  api<{ requeued: number }>(getToken, 'POST', '/communication/log/retry', body)

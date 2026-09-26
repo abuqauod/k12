@@ -31,6 +31,7 @@ import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { printIdCards } from '../lib/idCards'
 
 /**
  * One employee (SAMS Phase 4): details, employment (contracts and
@@ -43,7 +44,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export function EmployeePage() {
   const { id = '' } = useParams()
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { getAccessToken, can } = useAuth()
   const { branches } = useApp()
   const departments = useLookup('department')
@@ -100,8 +101,16 @@ export function EmployeePage() {
             </span>
           </div>
         </div>
+        <button
+          type="button"
+          className="btn btn--sm"
+          style={{ marginInlineStart: 'auto' }}
+          onClick={() => void printIdCards(getAccessToken, 'employees', { ids: [employee.id], layout: 'card', lang })}
+        >
+          {t('idcards.one')}
+        </button>
         {canEdit && (
-          <div className="page__actions" style={{ marginInlineStart: 'auto' }}>
+          <div className="page__actions">
             {employee.status === 'active' ? (
               <>
                 <input

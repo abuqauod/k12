@@ -24,6 +24,7 @@ before(async () => {
     ['hr', null],
     ['operations', null],
     ['reception', null],
+    ['nurse', null],
   ]
   for (const [key, branches] of presets) tokens[key] = (await member(fx.tenantId, 'viewer', branches, key)).token
   studentB = randomUUID()
@@ -60,6 +61,13 @@ const MATRIX: [RoleKey, Method, string, boolean][] = [
   ['reception', 'PATCH', `/students/${X}`, false],
   ['reception', 'POST', `/students/${X}/transfer`, false],
   ['reception', 'GET', '/finance/invoices', false],
+  ['nurse', 'GET', '/clinic/visits', true],
+  ['nurse', 'PUT' as Method, `/students/${X}/health`, true],
+  ['nurse', 'POST', '/discipline/incidents', true],
+  ['nurse', 'POST', '/students', false],
+  ['nurse', 'GET', '/finance/invoices', false],
+  ['registrar', 'GET', '/clinic/visits', false],
+  ['registrar', 'POST', `/discipline/incidents/${X}/actions`, true],
   ['hr', 'GET', '/students', true],
   ['hr', 'GET', '/finance/invoices', false],
   ['hr', 'POST', '/students', false],
@@ -178,7 +186,8 @@ describe('granting roles', () => {
   test('the roles catalog lists every preset with its scopes', async () => {
     const res = await call(fx.app, owner(), 'GET', '/memberships/roles')
     const body = res.body as { presets: { key: string; scopes: string[] }[] }
-    assert.equal(body.presets.length, 7)
+    assert.equal(body.presets.length, 8)
+    assert.ok(body.presets.find((p) => p.key === 'nurse')?.scopes.includes('health.write'))
     assert.ok(body.presets.find((p) => p.key === 'reception')?.scopes.includes('students.create'))
   })
 })

@@ -41,6 +41,8 @@ import {
   RolesSection,
 } from '../components/SettingsSections'
 import type { TenantProfile } from '../lib/tenantApi'
+import { NumberingSection } from '../components/settings/NumberingSection'
+import { ImportSection } from '../components/settings/ImportSection'
 
 const THEMES: Theme[] = ['auto', 'light', 'dark']
 
@@ -64,6 +66,10 @@ type SettingsSection =
   | 'book-categories'
   | 'event-types'
   | 'notification-templates'
+  | 'numbering'
+  | 'import'
+  | 'incident-types'
+  | 'discipline-actions'
   | 'roles'
   | 'team'
   | 'calendar'
@@ -75,6 +81,8 @@ interface SectionDef {
   key: TranslationKey
   /** Scope that shows the section; the API enforces the same. */
   scope?: string
+  /** Shown with any one of these. */
+  anyScope?: string[]
 }
 
 /** Settings information architecture (SAMS 1.11): one place, grouped. */
@@ -87,6 +95,8 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'branches', key: 'branches.title', scope: 'notifications.manage' },
       { id: 'academic-years', key: 'settings.section.academicYears', scope: 'academicYears.read' },
       { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
+      { id: 'numbering', key: 'settings.section.numbering', scope: 'settings.read' },
+      { id: 'import', key: 'settings.section.import', anyScope: ['students.create', 'hr.employee.update'] },
       { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
@@ -100,6 +110,8 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'room-types', key: 'settings.section.roomTypes', scope: 'settings.read' },
       { id: 'book-categories', key: 'settings.section.bookCategories', scope: 'settings.read' },
       { id: 'event-types', key: 'settings.section.eventTypes', scope: 'settings.read' },
+      { id: 'incident-types', key: 'settings.section.incidentTypes', scope: 'settings.read' },
+      { id: 'discipline-actions', key: 'settings.section.disciplineActions', scope: 'settings.read' },
       { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
     ],
   },
@@ -128,7 +140,7 @@ export function SettingsPage() {
 
   const groups = SECTION_GROUPS.map((group) => ({
     ...group,
-    sections: group.sections.filter((s) => !s.scope || can(s.scope)),
+    sections: group.sections.filter((s) => (!s.scope || can(s.scope)) && (!s.anyScope || s.anyScope.some(can))),
   })).filter((group) => group.sections.length > 0)
   const allowed = groups.flatMap((group) => group.sections)
   // Unknown or not-permitted sections fall back to the first allowed one.
@@ -186,6 +198,8 @@ export function SettingsPage() {
           {active?.id === 'branches' && <BranchesSettingsTab />}
           {active?.id === 'academic-years' && <AcademicYearsSection />}
           {active?.id === 'grades-classes' && <GradesClassesSection />}
+          {active?.id === 'numbering' && <NumberingSection />}
+          {active?.id === 'import' && <ImportSection />}
           {active?.id === 'payment-methods' && (
             <LookupSection
               kind="paymentMethod"
@@ -236,6 +250,12 @@ export function SettingsPage() {
           {active?.id === 'book-categories' && <LookupSection kind="bookCategory" title={t('settings.section.bookCategories')} hint={t('settings.bookCategories.hint')} />}
           {active?.id === 'event-types' && <LookupSection kind="eventType" title={t('settings.section.eventTypes')} hint={t('settings.eventTypes.hint')} />}
           {active?.id === 'notification-templates' && <NotificationTemplatesSection />}
+          {active?.id === 'incident-types' && (
+            <LookupSection kind="incidentType" title={t('settings.section.incidentTypes')} hint={t('settings.incidentTypes.hint')} />
+          )}
+          {active?.id === 'discipline-actions' && (
+            <LookupSection kind="disciplineAction" title={t('settings.section.disciplineActions')} hint={t('settings.disciplineActions.hint')} />
+          )}
           {active?.id === 'team' && <TeamSettingsTab />}
           {active?.id === 'roles' && <RolesSection />}
           {active?.id === 'calendar' && <CalendarSettingsTab />}

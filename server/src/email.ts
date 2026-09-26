@@ -9,7 +9,7 @@ function getTransporter() {
     host: config.smtp.host,
     port: config.smtp.port,
     secure: config.smtp.secure,
-    auth: { user: config.smtp.user, pass: config.smtp.pass },
+    ...(config.smtp.user ? { auth: { user: config.smtp.user, pass: config.smtp.pass ?? '' } } : {}),
   })
   return transporter
 }
@@ -21,17 +21,19 @@ export class EmailNotConfiguredError extends Error {
   }
 }
 
-async function send(to: string, subject: string, html: string): Promise<void> {
+/** Sends one email; the provider's message id when it gives one. */
+async function send(to: string, subject: string, html: string, text?: string): Promise<string | null> {
   const client = getTransporter()
   if (!client || !config.smtp) throw new EmailNotConfiguredError()
-  await client.sendMail({ from: config.smtp.from, to, subject, html })
+  const info = await client.sendMail({ from: config.smtp.from, to, subject, html, ...(text ? { text } : {}) })
+  return info.messageId ?? null
 }
 
 /** Simple, dependency-free templating — this is not marketing email. */
 function layout(title: string, bodyHtml: string): string {
   return `<!doctype html>
 <html><body style="font-family: sans-serif; color: #1a1a1a; max-width: 480px; margin: 0 auto; padding: 24px;">
-  <h2 style="margin: 0 0 16px;">${title}</h2>
+  <h2 dir="auto" style="margin: 0 0 16px;">${title}</h2>
   ${bodyHtml}
   <p style="margin-top: 32px; color: #888; font-size: 12px;">ArrangeMySchool</p>
 </body></html>`
@@ -109,14 +111,23 @@ function escapeHtml(text: string): string {
  * here uses. Throws `EmailNotConfiguredError` if SMTP isn't set up, same as
  * the rest.
  */
+/** Web addresses in already-escaped text become links. */
+const linkify = (escaped: string) =>
+  escaped.replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, (url) => `<a href="${url}" style="color:#1a56db;">${url}</a>`)
+
 export async function sendPlainEmail(params: {
   to: string
   subject: string
   body: string
-}): Promise<void> {
+}): Promise<string | null> {
   const paragraphs = params.body
     .split(/\n{2,}/)
-    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .map((block) => `<p dir="auto">${linkify(escapeHtml(block)).replace(/\n/g, '<br>')}</p>`)
     .join('\n')
-  await send(params.to, params.subject, layout(escapeHtml(params.subject), paragraphs))
+  // A plain-text part next to the HTML: mail filters trust it more, and
+  // simple clients show it as written.
+  return send(params.to, params.subject, layout(escapeHtml(params.subject), paragraphs), params.body)
 }
+
+/** Whether SMTP is set up, and the sender address (for the settings page). */
+export const emailStatus = () => ({ configured: config.smtp !== null, from: config.smtp?.from ?? null })

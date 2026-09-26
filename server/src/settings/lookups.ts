@@ -18,6 +18,32 @@ interface Default {
 }
 
 export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
+  // Backlog: behaviour incidents — what happened, and what the school did.
+  incidentType: {
+    defaults: [
+      { code: 'disruption', label: 'Classroom disruption', labelAr: 'إخلال بالنظام الصفي' },
+      { code: 'bullying', label: 'Bullying', labelAr: 'تنمّر' },
+      { code: 'fighting', label: 'Fighting', labelAr: 'شجار' },
+      { code: 'disrespect', label: 'Disrespect', labelAr: 'عدم احترام' },
+      { code: 'lateness', label: 'Repeated lateness', labelAr: 'تأخر متكرر' },
+      { code: 'damage', label: 'Damage to property', labelAr: 'إتلاف ممتلكات' },
+      { code: 'cheating', label: 'Cheating', labelAr: 'غش' },
+      { code: 'uniform', label: 'Uniform', labelAr: 'الزي المدرسي' },
+      { code: 'device', label: 'Phone or device misuse', labelAr: 'سوء استخدام الهاتف أو الأجهزة' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  disciplineAction: {
+    defaults: [
+      { code: 'verbal_warning', label: 'Verbal warning', labelAr: 'تنبيه شفهي' },
+      { code: 'written_warning', label: 'Written warning', labelAr: 'إنذار كتابي' },
+      { code: 'parent_meeting', label: 'Parent meeting', labelAr: 'اجتماع مع ولي الأمر' },
+      { code: 'detention', label: 'Detention', labelAr: 'احتجاز بعد الدوام' },
+      { code: 'counselling', label: 'Referred to counsellor', labelAr: 'إحالة إلى المرشد' },
+      { code: 'suspension', label: 'Suspension', labelAr: 'فصل مؤقت' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
   paymentMethod: {
     defaults: [
       { code: 'cash', label: 'Cash', labelAr: 'نقدًا' },
