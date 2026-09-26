@@ -107,9 +107,20 @@ describe('dashboard summary', () => {
     const admin = (await call(fx.app, fx.tokens.admin, 'GET', '/dashboard/summary')).body as Record<string, unknown>
     assert.ok(admin.parents && admin.enrollments && admin.approvals, 'admin sees every section')
 
-    const hr = (await member(fx.tenantId, 'viewer', null, 'hr')).token
-    const hrSummary = (await call(fx.app, hr, 'GET', '/dashboard/summary')).body as Record<string, unknown>
-    assert.equal(hrSummary.approvals, undefined, 'hr decides no approval type')
+    // Reception decides no approval type (HR now decides leave, SAMS 4.4).
+    const reception = (await member(fx.tenantId, 'viewer', null, 'reception')).token
+    const summary = (await call(fx.app, reception, 'GET', '/dashboard/summary')).body as Record<string, unknown>
+    assert.equal(summary.approvals, undefined, 'reception decides no approval type')
+
+    // "Needs attention" (Phases 3–5): each count only with its scope.
+    const all = admin.attention as Record<string, number>
+    for (const key of ['paymentsToConfirm', 'refundsToPay', 'expensesToPay', 'contractsEnding', 'maintenanceOpen', 'lowStock', 'overdueLoans', 'transportExpiring']) {
+      assert.equal(typeof all[key], 'number', key)
+    }
+    const front = summary.attention as Record<string, number>
+    assert.equal(front.paymentsToConfirm, undefined, 'no finance for reception')
+    assert.equal(front.contractsEnding, undefined, 'no HR for reception')
+    assert.equal(typeof front.maintenanceOpen, 'number')
   })
 
   test('a branch outside the caller scope is refused', async () => {

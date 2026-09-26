@@ -792,7 +792,16 @@ export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 
 /** SAMS 2.1: records a document can be attached to. Staff and applications
  * join this list in later phases. */
-export type DocumentOwnerType = 'student' | 'parent' | 'application' | 'scholarship' | 'expense'
+export type DocumentOwnerType =
+  | 'student'
+  | 'parent'
+  | 'application'
+  | 'scholarship'
+  | 'expense'
+  | 'employee'
+  | 'asset'
+  | 'bus'
+  | 'driver'
 export type DocumentVerificationStatus = 'unverified' | 'verified' | 'rejected'
 
 /**
@@ -1225,6 +1234,463 @@ export interface ExpenseDoc extends Document {
   updatedAt: Date
 }
 
+// -------------------------------------------------------------------- hr --
+// SAMS Phase 4. An employee is a person the school employs, kept apart from
+// `MembershipDoc` (a login): many staff never sign in, and a login can be
+// linked to its employee record through `userId`. Departments, positions,
+// and contract types are settings lists (1.11); leave types
+// carry an entitlement, so they have their own collection.
+
+export type EmployeeStatus = 'active' | 'terminated'
+
+export interface EmployeeDoc extends Document {
+  _id: string
+  tenantId: string
+  /** EMP-000001, sequential per tenant. */
+  employeeNumber: string
+  /** The branch the employee works at. */
+  branchId: string
+  givenName: string
+  familyName: string
+  fullNameAr: string | null
+  gender: 'male' | 'female' | null
+  dob: string | null
+  nationality: string | null
+  nationalId: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  /** `department` / `position` lookup codes. */
+  departmentCode: string | null
+  positionCode: string | null
+  hireDate: string
+  status: EmployeeStatus
+  terminationDate: string | null
+  terminationReason: string | null
+  /** Optional link to a login (UserDoc._id) — for self-service leave. */
+  userId: string | null
+  emergencyContactName: string | null
+  emergencyContactPhone: string | null
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+/** One employment contract. Never edited away: a renewal is a new row and
+ * the old one is closed as `renewed`. At most one contract per employee
+ * covers any given day. */
+export interface ContractDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  /** The employee's branch when the contract was made, for isolation. */
+  branchId: string
+  /** A `contractType` lookup code. */
+  typeCode: string
+  startDate: string
+  /** Null = open-ended. */
+  endDate: string | null
+  /** Monthly, minor units; visible only with `hr.salary.read`. */
+  salary: number | null
+  hoursPerWeek: number | null
+  notes: string | null
+  closedReason: 'renewed' | 'terminated' | 'ended' | null
+  closedAt: Date | null
+  renewedFromId: string | null
+  createdAt: Date
+  createdBy: string | null
+}
+
+export type EmploymentEventType =
+  | 'hire'
+  | 'branch_change'
+  | 'department_change'
+  | 'position_change'
+  | 'contract_start'
+  | 'contract_renew'
+  | 'contract_end'
+  | 'terminate'
+  | 'rehire'
+
+/** Employment history: what changed and when, written with each change. */
+export interface EmploymentEventDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  type: EmploymentEventType
+  /** ISO yyyy-mm-dd the change took effect. */
+  date: string
+  from: string | null
+  to: string | null
+  note: string | null
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface LeaveTypeDoc extends Document {
+  _id: string
+  tenantId: string
+  /** Immutable, unique per tenant; what requests store. */
+  code: string
+  name: string
+  nameAr: string | null
+  /** Working days per calendar year; null = not limited (e.g. unpaid). */
+  daysPerYear: number | null
+  paid: boolean
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+export interface LeaveRequestDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  typeCode: string
+  startDate: string
+  endDate: string
+  /** Working days in the range (branch calendar), fixed at request time. */
+  days: number
+  reason: string | null
+  status: LeaveStatus
+  requestedBy: string
+  decidedBy: string | null
+  decidedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** A change to a balance on top of the yearly entitlement (carry-over,
+ * correction). Days may be negative. */
+export interface LeaveAdjustmentDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  typeCode: string
+  year: number
+  days: number
+  reason: string
+  createdAt: Date
+  createdBy: string | null
+}
+
+export type StaffAttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'leave'
+
+export interface StaffAttendanceDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  date: string
+  status: StaffAttendanceStatus
+  /** "HH:MM", optional. */
+  checkIn: string | null
+  checkOut: string | null
+  note: string | null
+  recordedBy: string | null
+  updatedAt: Date
+}
+
+// ------------------------------------------------------------ operations --
+// SAMS Phase 5. Categories and types are settings lists (1.11): assetCategory,
+// inventoryCategory, roomType, bookCategory, eventType. Suppliers are finance
+// vendors (VendorDoc). Money is minor units, as in finance.
+
+export type AssetStatus = 'in_stock' | 'assigned' | 'maintenance' | 'disposed'
+
+export interface AssetDoc extends Document {
+  _id: string
+  tenantId: string
+  /** AST-000001. */
+  assetTag: string
+  name: string
+  categoryCode: string
+  branchId: string
+  roomId: string | null
+  serialNumber: string | null
+  vendorId: string | null
+  purchaseDate: string | null
+  purchaseCost: number | null
+  warrantyUntil: string | null
+  status: AssetStatus
+  /** Who or where has it while `assigned`. */
+  assignedTo: { type: 'employee' | 'room'; id: string } | null
+  notes: string | null
+  disposedAt: string | null
+  disposalReason: string | null
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+export type AssetEventType = 'purchase' | 'assign' | 'return' | 'maintenance_start' | 'maintenance_end' | 'transfer' | 'dispose'
+
+/** An asset's life, one row per step; never edited. */
+export interface AssetEventDoc extends Document {
+  _id: string
+  tenantId: string
+  assetId: string
+  branchId: string
+  type: AssetEventType
+  date: string
+  from: string | null
+  to: string | null
+  note: string | null
+  cost: number | null
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface InventoryItemDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  /** Unique per branch; the same SKU at two branches is two stock lines. */
+  sku: string
+  name: string
+  unit: string
+  categoryCode: string
+  reorderLevel: number
+  /** Kept equal to the sum of the item's movements, in the same transaction. */
+  quantity: number
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type StockMovementType = 'receive' | 'issue' | 'adjust' | 'transfer_out' | 'transfer_in'
+
+export interface StockMovementDoc extends Document {
+  _id: string
+  tenantId: string
+  itemId: string
+  branchId: string
+  type: StockMovementType
+  /** Signed change to the quantity. */
+  quantity: number
+  /** Stock after this movement. */
+  balance: number
+  supplierId: string | null
+  unitCost: number | null
+  reference: string | null
+  issuedTo: string | null
+  note: string | null
+  /** The other half of a transfer. */
+  relatedMovementId: string | null
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface BuildingDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  name: string
+  code: string | null
+  floors: number | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface RoomDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  buildingId: string
+  name: string
+  code: string | null
+  typeCode: string
+  capacity: number | null
+  floor: number | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type MaintenancePriority = 'low' | 'normal' | 'high' | 'urgent'
+export type MaintenanceStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled'
+
+export interface MaintenanceRequestDoc extends Document {
+  _id: string
+  tenantId: string
+  /** MNT-000001. */
+  requestNumber: string
+  branchId: string
+  buildingId: string | null
+  roomId: string | null
+  assetId: string | null
+  title: string
+  description: string | null
+  priority: MaintenancePriority
+  status: MaintenanceStatus
+  assignedToEmployeeId: string | null
+  reportedBy: string
+  resolution: string | null
+  cost: number | null
+  resolvedAt: Date | null
+  closedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface DriverDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  /** Optional link to the HR record. */
+  employeeId: string | null
+  name: string
+  phone: string | null
+  licenseNumber: string | null
+  licenseExpiry: string | null
+  busId: string | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** SAMS 5.4: a bus's paperwork, one row per bus (`_id` = busId). Kept apart
+ * from `BusDoc`, which the route solver reads. */
+export interface BusDetailsDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  plateNumber: string | null
+  registrationExpiry: string | null
+  insuranceExpiry: string | null
+  inspectionExpiry: string | null
+  attendantName: string | null
+  updatedAt: Date
+}
+
+/** SAMS 5.4: what riding the bus costs for one branch and year. */
+export interface TransportFeeDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  academicYearId: string
+  /** Minor units, for TWO_WAY riders. */
+  twoWay: number
+  /** Minor units, for MORNING or EVENING only. */
+  oneWay: number
+  updatedAt: Date
+}
+
+export interface BookDoc extends Document {
+  _id: string
+  tenantId: string
+  title: string
+  author: string | null
+  isbn: string | null
+  publisher: string | null
+  year: number | null
+  categoryCode: string | null
+  language: string | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type CopyStatus = 'available' | 'on_loan' | 'lost' | 'withdrawn'
+
+export interface BookCopyDoc extends Document {
+  _id: string
+  tenantId: string
+  bookId: string
+  branchId: string
+  /** Unique per tenant. */
+  barcode: string
+  shelf: string | null
+  status: CopyStatus
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type FineStatus = 'none' | 'due' | 'paid' | 'waived'
+
+export interface LoanDoc extends Document {
+  _id: string
+  tenantId: string
+  copyId: string
+  bookId: string
+  branchId: string
+  borrowerType: 'student' | 'employee'
+  borrowerId: string
+  loanedAt: string
+  dueDate: string
+  returnedAt: string | null
+  lostAt: string | null
+  renewals: number
+  /** Minor units, fixed at return (or when marked lost). */
+  fine: number
+  fineStatus: FineStatus
+  fineSettledAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface LibrarySettingsDoc extends Document {
+  /** = tenantId. */
+  _id: string
+  tenantId: string
+  loanDays: number
+  maxLoans: number
+  maxRenewals: number
+  /** Minor units per day overdue. */
+  finePerDay: number
+  /** Minor units charged for a lost copy. */
+  lostFee: number
+  updatedAt: Date
+}
+
+export type EventStatus = 'draft' | 'open' | 'closed' | 'cancelled' | 'completed'
+
+export interface EventDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  title: string
+  titleAr: string | null
+  typeCode: string
+  description: string | null
+  location: string | null
+  startDate: string
+  endDate: string
+  /** Null = no limit. */
+  capacity: number | null
+  registrationDeadline: string | null
+  /** Minor units per participant; null = free. */
+  fee: number | null
+  /** Empty = every grade. */
+  gradeLevels: string[]
+  status: EventStatus
+  costs: { id: string; label: string; amount: number }[]
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+export type RegistrationStatus = 'registered' | 'waitlisted' | 'cancelled'
+
+export interface EventRegistrationDoc extends Document {
+  _id: string
+  tenantId: string
+  eventId: string
+  branchId: string
+  studentId: string
+  status: RegistrationStatus
+  attended: boolean | null
+  registeredAt: Date
+  updatedAt: Date
+}
+
 // ----------------------------------------------------------- transport --
 // Bus routing — depot/buses/stops/routing-rules for one branch. Previously
 // existed only as an opaque JSON blob synced through the generic
@@ -1550,6 +2016,29 @@ export interface TenantContext {
   refunds: TenantScope<RefundDoc>
   vendors: TenantScope<VendorDoc>
   expenses: TenantScope<ExpenseDoc>
+  employees: TenantScope<EmployeeDoc>
+  contracts: TenantScope<ContractDoc>
+  employmentEvents: TenantScope<EmploymentEventDoc>
+  leaveTypes: TenantScope<LeaveTypeDoc>
+  leaveRequests: TenantScope<LeaveRequestDoc>
+  leaveAdjustments: TenantScope<LeaveAdjustmentDoc>
+  staffAttendance: TenantScope<StaffAttendanceDoc>
+  assets: TenantScope<AssetDoc>
+  assetEvents: TenantScope<AssetEventDoc>
+  inventoryItems: TenantScope<InventoryItemDoc>
+  stockMovements: TenantScope<StockMovementDoc>
+  buildings: TenantScope<BuildingDoc>
+  rooms: TenantScope<RoomDoc>
+  maintenanceRequests: TenantScope<MaintenanceRequestDoc>
+  drivers: TenantScope<DriverDoc>
+  busDetails: TenantScope<BusDetailsDoc>
+  transportFees: TenantScope<TransportFeeDoc>
+  books: TenantScope<BookDoc>
+  bookCopies: TenantScope<BookCopyDoc>
+  loans: TenantScope<LoanDoc>
+  librarySettings: TenantScope<LibrarySettingsDoc>
+  events: TenantScope<EventDoc>
+  eventRegistrations: TenantScope<EventRegistrationDoc>
   buses: TenantScope<BusDoc>
   stops: TenantScope<StopDoc>
   transportSettings: TenantScope<TransportSettingsDoc>
@@ -1643,6 +2132,29 @@ export async function withTenant<T>(
         refunds: new TenantScope(db.collection<RefundDoc>('refunds'), tenantId, session),
         vendors: new TenantScope(db.collection<VendorDoc>('vendors'), tenantId, session),
         expenses: new TenantScope(db.collection<ExpenseDoc>('expenses'), tenantId, session),
+        employees: new TenantScope(db.collection<EmployeeDoc>('employees'), tenantId, session),
+        contracts: new TenantScope(db.collection<ContractDoc>('contracts'), tenantId, session),
+        employmentEvents: new TenantScope(db.collection<EmploymentEventDoc>('employmentEvents'), tenantId, session),
+        leaveTypes: new TenantScope(db.collection<LeaveTypeDoc>('leaveTypes'), tenantId, session),
+        leaveRequests: new TenantScope(db.collection<LeaveRequestDoc>('leaveRequests'), tenantId, session),
+        leaveAdjustments: new TenantScope(db.collection<LeaveAdjustmentDoc>('leaveAdjustments'), tenantId, session),
+        staffAttendance: new TenantScope(db.collection<StaffAttendanceDoc>('staffAttendance'), tenantId, session),
+        assets: new TenantScope(db.collection<AssetDoc>('assets'), tenantId, session),
+        assetEvents: new TenantScope(db.collection<AssetEventDoc>('assetEvents'), tenantId, session),
+        inventoryItems: new TenantScope(db.collection<InventoryItemDoc>('inventoryItems'), tenantId, session),
+        stockMovements: new TenantScope(db.collection<StockMovementDoc>('stockMovements'), tenantId, session),
+        buildings: new TenantScope(db.collection<BuildingDoc>('buildings'), tenantId, session),
+        rooms: new TenantScope(db.collection<RoomDoc>('rooms'), tenantId, session),
+        maintenanceRequests: new TenantScope(db.collection<MaintenanceRequestDoc>('maintenanceRequests'), tenantId, session),
+        drivers: new TenantScope(db.collection<DriverDoc>('drivers'), tenantId, session),
+        busDetails: new TenantScope(db.collection<BusDetailsDoc>('busDetails'), tenantId, session),
+        transportFees: new TenantScope(db.collection<TransportFeeDoc>('transportFees'), tenantId, session),
+        books: new TenantScope(db.collection<BookDoc>('books'), tenantId, session),
+        bookCopies: new TenantScope(db.collection<BookCopyDoc>('bookCopies'), tenantId, session),
+        loans: new TenantScope(db.collection<LoanDoc>('loans'), tenantId, session),
+        librarySettings: new TenantScope(db.collection<LibrarySettingsDoc>('librarySettings'), tenantId, session),
+        events: new TenantScope(db.collection<EventDoc>('events'), tenantId, session),
+        eventRegistrations: new TenantScope(db.collection<EventRegistrationDoc>('eventRegistrations'), tenantId, session),
         buses: new TenantScope(db.collection<BusDoc>('buses'), tenantId, session),
         stops: new TenantScope(db.collection<StopDoc>('stops'), tenantId, session),
         transportSettings: new TenantScope(

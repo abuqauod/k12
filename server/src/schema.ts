@@ -202,6 +202,51 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('expenses').createIndex({ tenantId: 1, expenseNumber: 1 }, { unique: true })
   await db.collection('expenses').createIndex({ tenantId: 1, branchId: 1, status: 1, expenseDate: -1 })
 
+  // SAMS Phase 4 (HR).
+  await db.collection('employees').createIndex({ tenantId: 1, employeeNumber: 1 }, { unique: true })
+  await db.collection('employees').createIndex({ tenantId: 1, branchId: 1, status: 1, familyName: 1 })
+  await db
+    .collection('employees')
+    .createIndex({ tenantId: 1, userId: 1 }, { unique: true, partialFilterExpression: { userId: { $type: 'string' } } })
+  await db.collection('contracts').createIndex({ tenantId: 1, employeeId: 1, startDate: 1 })
+  await db.collection('contracts').createIndex({ tenantId: 1, branchId: 1, endDate: 1 })
+  await db.collection('employmentEvents').createIndex({ tenantId: 1, employeeId: 1, date: -1, createdAt: -1 })
+  await db.collection('leaveTypes').createIndex({ tenantId: 1, code: 1 }, { unique: true })
+  await db.collection('leaveRequests').createIndex({ tenantId: 1, employeeId: 1, startDate: 1 })
+  await db.collection('leaveRequests').createIndex({ tenantId: 1, branchId: 1, status: 1, startDate: -1 })
+  await db.collection('leaveAdjustments').createIndex({ tenantId: 1, employeeId: 1, year: 1 })
+  await db.collection('staffAttendance').createIndex({ tenantId: 1, employeeId: 1, date: 1 }, { unique: true })
+  await db.collection('staffAttendance').createIndex({ tenantId: 1, branchId: 1, date: 1 })
+
+  // SAMS Phase 5 (operations).
+  await db.collection('assets').createIndex({ tenantId: 1, assetTag: 1 }, { unique: true })
+  await db.collection('assets').createIndex({ tenantId: 1, branchId: 1, status: 1, categoryCode: 1 })
+  await db.collection('assetEvents').createIndex({ tenantId: 1, assetId: 1, date: -1, createdAt: -1 })
+  await db.collection('inventoryItems').createIndex({ tenantId: 1, branchId: 1, sku: 1 }, { unique: true })
+  await db.collection('stockMovements').createIndex({ tenantId: 1, itemId: 1, createdAt: -1 })
+  await db.collection('buildings').createIndex({ tenantId: 1, branchId: 1, name: 1 })
+  await db.collection('rooms').createIndex({ tenantId: 1, branchId: 1, buildingId: 1, name: 1 })
+  await db.collection('maintenanceRequests').createIndex({ tenantId: 1, requestNumber: 1 }, { unique: true })
+  await db.collection('maintenanceRequests').createIndex({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
+  await db.collection('drivers').createIndex({ tenantId: 1, branchId: 1, active: 1 })
+  await db.collection('transportFees').createIndex({ tenantId: 1, branchId: 1, academicYearId: 1 }, { unique: true })
+  await db.collection('books').createIndex({ tenantId: 1, title: 1 })
+  await db.collection('bookCopies').createIndex({ tenantId: 1, barcode: 1 }, { unique: true })
+  await db.collection('bookCopies').createIndex({ tenantId: 1, bookId: 1 })
+  await db.collection('loans').createIndex({ tenantId: 1, borrowerId: 1, returnedAt: 1 })
+  await db.collection('loans').createIndex({ tenantId: 1, branchId: 1, returnedAt: 1, dueDate: 1 })
+  // One open loan per copy.
+  await db
+    .collection('loans')
+    .createIndex({ tenantId: 1, copyId: 1 }, { unique: true, partialFilterExpression: { returnedAt: null, lostAt: null }, name: 'loan_open_per_copy' })
+  await db.collection('events').createIndex({ tenantId: 1, branchId: 1, startDate: -1 })
+  await db
+    .collection('eventRegistrations')
+    .createIndex(
+      { tenantId: 1, eventId: 1, studentId: 1 },
+      { unique: true, partialFilterExpression: { status: { $in: ['registered', 'waitlisted'] } }, name: 'registration_once' },
+    )
+
   await db.collection('buses').createIndex({ tenantId: 1, branchId: 1, active: 1 })
   await db.collection('stops').createIndex({ tenantId: 1, branchId: 1, active: 1 })
   // Lets deactivating a bus unpin every stop pointing at it in one indexed

@@ -14,7 +14,7 @@ interface NavEntry {
   icon: string
   /** Shown only with this scope (the page itself enforces it too). */
   scope?: string
-  group: 'plan' | 'account'
+  group: 'plan' | 'ops' | 'account'
 }
 
 // Day-to-day work sits under "plan"; the rest under "account".
@@ -26,6 +26,11 @@ const NAV: NavEntry[] = [
   { to: '/parents', key: 'nav.parents', icon: '⚭', group: 'plan' },
   { to: '/classes', key: 'nav.classes', icon: '▣', group: 'plan' },
   { to: '/attendance', key: 'nav.attendance', icon: '✓', group: 'plan' },
+  { to: '/hr', key: 'nav.hr', icon: '♙', group: 'ops', scope: 'hr.read' },
+  { to: '/operations', key: 'nav.operations', icon: '⚒', group: 'ops', scope: 'ops.read' },
+  { to: '/library', key: 'nav.library', icon: '❏', group: 'ops', scope: 'ops.read' },
+  { to: '/events', key: 'nav.events', icon: '✷', group: 'ops', scope: 'ops.read' },
+  { to: '/fleet', key: 'nav.fleet', icon: '⛟', group: 'ops', scope: 'transport.read' },
   { to: '/routes', key: 'nav.routes', icon: '⌖', group: 'account' },
   { to: '/finance', key: 'nav.finance', icon: '⛃', group: 'account' },
   { to: '/approvals', key: 'nav.approvals', icon: '⚖', group: 'account' },
@@ -159,6 +164,10 @@ export function AppShell() {
         <nav className="sidebar__nav" aria-label={t('nav.menu')}>
           <p className="sidebar__section">{t('nav.section.plan')}</p>
           {NAV.filter((e) => e.group === 'plan' && (!e.scope || can(e.scope))).map(renderLink)}
+          {NAV.some((e) => e.group === 'ops' && (!e.scope || can(e.scope))) && (
+            <p className="sidebar__section">{t('nav.section.ops')}</p>
+          )}
+          {NAV.filter((e) => e.group === 'ops' && (!e.scope || can(e.scope))).map(renderLink)}
           <p className="sidebar__section">{t('nav.section.account')}</p>
           {NAV.filter((e) => e.group === 'account' && (!e.scope || can(e.scope))).map(renderLink)}
         </nav>

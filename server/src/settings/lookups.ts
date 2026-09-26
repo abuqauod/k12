@@ -57,6 +57,90 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'photo', label: 'Photo', labelAr: 'صورة شخصية' },
       // Scholarship evidence, vendor invoices (SAMS 3.2, 3.5).
       { code: 'financial', label: 'Financial document', labelAr: 'مستند مالي' },
+      // Staff files (SAMS 4.3).
+      { code: 'contract', label: 'Signed contract', labelAr: 'عقد موقّع' },
+      { code: 'certificate', label: 'Qualification / certificate', labelAr: 'مؤهل / شهادة' },
+      { code: 'license', label: 'Licence / permit', labelAr: 'رخصة / تصريح' },
+      // Vehicles and assets (SAMS 5.1, 5.4).
+      { code: 'registration', label: 'Vehicle registration', labelAr: 'رخصة المركبة' },
+      { code: 'insurance', label: 'Insurance', labelAr: 'تأمين' },
+      { code: 'warranty', label: 'Warranty / invoice', labelAr: 'كفالة / فاتورة شراء' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  // SAMS Phase 4.
+  department: {
+    defaults: [
+      { code: 'administration', label: 'Administration', labelAr: 'الإدارة' },
+      { code: 'teaching', label: 'Teaching', labelAr: 'الهيئة التدريسية' },
+      { code: 'finance', label: 'Finance', labelAr: 'المالية' },
+      { code: 'operations', label: 'Operations', labelAr: 'العمليات' },
+      { code: 'transport', label: 'Transport', labelAr: 'النقل' },
+    ],
+  },
+  position: {
+    defaults: [
+      { code: 'principal', label: 'Principal', labelAr: 'مدير المدرسة' },
+      { code: 'teacher', label: 'Teacher', labelAr: 'معلم' },
+      { code: 'accountant', label: 'Accountant', labelAr: 'محاسب' },
+      { code: 'registrar', label: 'Registrar', labelAr: 'مسجل' },
+      { code: 'driver', label: 'Driver', labelAr: 'سائق' },
+      { code: 'custodian', label: 'Custodian', labelAr: 'عامل خدمات' },
+    ],
+  },
+  contractType: {
+    defaults: [
+      { code: 'permanent', label: 'Permanent', labelAr: 'دائم' },
+      { code: 'fixed_term', label: 'Fixed term', labelAr: 'محدد المدة' },
+      { code: 'part_time', label: 'Part time', labelAr: 'دوام جزئي' },
+      { code: 'probation', label: 'Probation', labelAr: 'فترة تجربة' },
+    ],
+  },
+  // SAMS Phase 5.
+  assetCategory: {
+    defaults: [
+      { code: 'it', label: 'IT equipment', labelAr: 'أجهزة تقنية' },
+      { code: 'furniture', label: 'Furniture', labelAr: 'أثاث' },
+      { code: 'lab', label: 'Lab equipment', labelAr: 'معدات مختبر' },
+      { code: 'sports', label: 'Sports equipment', labelAr: 'معدات رياضية' },
+      { code: 'vehicle', label: 'Vehicle', labelAr: 'مركبة' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  inventoryCategory: {
+    defaults: [
+      { code: 'stationery', label: 'Stationery', labelAr: 'قرطاسية' },
+      { code: 'cleaning', label: 'Cleaning supplies', labelAr: 'مواد تنظيف' },
+      { code: 'uniforms', label: 'Uniforms', labelAr: 'زي مدرسي' },
+      { code: 'books', label: 'Textbooks', labelAr: 'كتب مدرسية' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  roomType: {
+    defaults: [
+      { code: 'classroom', label: 'Classroom', labelAr: 'صف دراسي' },
+      { code: 'lab', label: 'Laboratory', labelAr: 'مختبر' },
+      { code: 'office', label: 'Office', labelAr: 'مكتب' },
+      { code: 'library', label: 'Library', labelAr: 'مكتبة' },
+      { code: 'hall', label: 'Hall', labelAr: 'قاعة' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  bookCategory: {
+    defaults: [
+      { code: 'fiction', label: 'Fiction', labelAr: 'قصص وروايات' },
+      { code: 'nonfiction', label: 'Non-fiction', labelAr: 'كتب معرفية' },
+      { code: 'reference', label: 'Reference', labelAr: 'مراجع' },
+      { code: 'arabic', label: 'Arabic literature', labelAr: 'أدب عربي' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  eventType: {
+    defaults: [
+      { code: 'trip', label: 'Field trip', labelAr: 'رحلة مدرسية' },
+      { code: 'sports', label: 'Sports', labelAr: 'نشاط رياضي' },
+      { code: 'club', label: 'Club / activity', labelAr: 'نادٍ / نشاط' },
+      { code: 'ceremony', label: 'Ceremony', labelAr: 'حفل' },
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
     ],
   },

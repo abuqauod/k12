@@ -19,6 +19,12 @@ import { AttendancePage } from './pages/AttendancePage'
 import { ClassesPage } from './pages/ClassesPage'
 import { LogsPage } from './pages/LogsPage'
 import { FinancePage } from './pages/FinancePage'
+import { HrPage } from './pages/HrPage'
+import { EmployeePage } from './pages/EmployeePage'
+import { OperationsPage } from './pages/OperationsPage'
+import { LibraryPage } from './pages/LibraryPage'
+import { EventPage, EventsPage } from './pages/EventsPage'
+import { FleetPage } from './pages/FleetPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -58,6 +64,13 @@ export default function App() {
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/finance" element={<FinancePage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
+        <Route path="/hr" element={<HrPage />} />
+        <Route path="/hr/employees/:id" element={<EmployeePage />} />
+        <Route path="/operations" element={<OperationsPage />} />
+        <Route path="/library" element={<LibraryPage />} />
+        <Route path="/events" element={<EventsPage />} />
+        <Route path="/events/:id" element={<EventPage />} />
+        <Route path="/fleet" element={<FleetPage />} />
         <Route path="/settings/:section?" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

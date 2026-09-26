@@ -48,6 +48,10 @@ const OWNER_UPLOAD_SCOPE: Partial<Record<DocumentOwnerType, string>> = {
   application: 'admissions.manage',
   scholarship: 'finance.scholarship.request',
   expense: 'finance.expense.create',
+  employee: 'hr.employee.update',
+  asset: 'ops.assets.manage',
+  bus: 'transport.manage',
+  driver: 'transport.manage',
 }
 
 export function DocumentsPanel({ ownerType, ownerId }: { ownerType: DocumentOwnerType; ownerId: string }) {

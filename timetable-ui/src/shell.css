@@ -2517,3 +2517,143 @@ tr.is-muted td {
 .record-list__item .card__hint {
   margin: 4px 0 0;
 }
+
+/* ================================================= HR (SAMS Phase 4) ==== */
+.hr-page .tabs,
+.student-page .tabs {
+  min-height: max-content;
+}
+
+.card--warn {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: var(--text-sm);
+}
+
+/* Attendance marks: one chip per status, the chosen one filled. */
+.mark-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mark-group .chip {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.mark-group .chip[aria-pressed='false'] {
+  color: var(--muted);
+}
+
+.mark-group .chip[aria-pressed='true'] {
+  border-color: currentColor;
+  font-weight: 650;
+}
+
+.timeline__date {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* Record links inside HR / operations lists read as links, not raw anchors. */
+.hr-page .table a,
+.hr-page .stat-row a,
+.ops-page .table a,
+.ops-page .stat-row a,
+.finance-page .stat-row a {
+  color: var(--accent-text);
+  text-decoration: none;
+  font-weight: 550;
+}
+
+.hr-page .table a:hover,
+.ops-page .table a:hover {
+  text-decoration: underline;
+}
+
+/* ======================================== operations (SAMS Phase 5) ===== */
+.ops-page .tabs {
+  min-height: max-content;
+}
+
+.person-picker {
+  position: relative;
+  display: grid;
+  gap: 4px;
+}
+
+.person-picker__results {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.person-picker__results button {
+  width: 100%;
+  text-align: start;
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: inherit;
+  cursor: pointer;
+}
+
+.person-picker__results button:hover,
+.person-picker__results button:focus-visible {
+  background: var(--accent-soft);
+}
+
+.record-detail {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+
+/* Dashboard: work waiting across modules. */
+.attention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attention-list a {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  background: var(--warn-soft);
+}
+
+.attention-list a:hover {
+  border-color: var(--warn);
+}

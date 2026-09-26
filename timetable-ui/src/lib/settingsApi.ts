@@ -3,7 +3,20 @@ import { authorizedFetch, type TokenGetter } from './http'
 
 /** Client for settings lists (SAMS 1.11, server/src/settings). */
 
-export type LookupKind = 'paymentMethod' | 'documentCategory' | 'admissionSource' | 'withdrawalReason' | 'expenseCategory'
+export type LookupKind =
+  | 'paymentMethod'
+  | 'documentCategory'
+  | 'admissionSource'
+  | 'withdrawalReason'
+  | 'expenseCategory'
+  | 'department'
+  | 'position'
+  | 'contractType'
+  | 'assetCategory'
+  | 'inventoryCategory'
+  | 'roomType'
+  | 'bookCategory'
+  | 'eventType'
 
 export interface LookupItem {
   code: string
