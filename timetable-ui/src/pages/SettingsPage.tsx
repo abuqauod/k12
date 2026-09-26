@@ -42,6 +42,7 @@ import {
 } from '../components/SettingsSections'
 import type { TenantProfile } from '../lib/tenantApi'
 import { NumberingSection } from '../components/settings/NumberingSection'
+import { ImportSection } from '../components/settings/ImportSection'
 
 const THEMES: Theme[] = ['auto', 'light', 'dark']
 
@@ -66,6 +67,7 @@ type SettingsSection =
   | 'event-types'
   | 'notification-templates'
   | 'numbering'
+  | 'import'
   | 'incident-types'
   | 'discipline-actions'
   | 'roles'
@@ -79,6 +81,8 @@ interface SectionDef {
   key: TranslationKey
   /** Scope that shows the section; the API enforces the same. */
   scope?: string
+  /** Shown with any one of these. */
+  anyScope?: string[]
 }
 
 /** Settings information architecture (SAMS 1.11): one place, grouped. */
@@ -92,6 +96,7 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'academic-years', key: 'settings.section.academicYears', scope: 'academicYears.read' },
       { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
       { id: 'numbering', key: 'settings.section.numbering', scope: 'settings.read' },
+      { id: 'import', key: 'settings.section.import', anyScope: ['students.create', 'hr.employee.update'] },
       { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
@@ -135,7 +140,7 @@ export function SettingsPage() {
 
   const groups = SECTION_GROUPS.map((group) => ({
     ...group,
-    sections: group.sections.filter((s) => !s.scope || can(s.scope)),
+    sections: group.sections.filter((s) => (!s.scope || can(s.scope)) && (!s.anyScope || s.anyScope.some(can))),
   })).filter((group) => group.sections.length > 0)
   const allowed = groups.flatMap((group) => group.sections)
   // Unknown or not-permitted sections fall back to the first allowed one.
@@ -194,6 +199,7 @@ export function SettingsPage() {
           {active?.id === 'academic-years' && <AcademicYearsSection />}
           {active?.id === 'grades-classes' && <GradesClassesSection />}
           {active?.id === 'numbering' && <NumberingSection />}
+          {active?.id === 'import' && <ImportSection />}
           {active?.id === 'payment-methods' && (
             <LookupSection
               kind="paymentMethod"

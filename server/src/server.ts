@@ -35,6 +35,7 @@ import { registerPortalRoutes } from './portal/routes.js'
 import { registerReportRoutes } from './reports/routes.js'
 import { registerHealthRoutes } from './health/routes.js'
 import { registerDisciplineRoutes } from './discipline/routes.js'
+import { registerImportRoutes } from './imports/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 
 export function buildServer() {
@@ -148,6 +149,7 @@ export function buildServer() {
       registerReportRoutes(instance)
       registerHealthRoutes(instance)
       registerDisciplineRoutes(instance)
+      registerImportRoutes(instance)
     },
     { prefix: config.routePrefix },
   )
