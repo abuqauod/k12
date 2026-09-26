@@ -9,8 +9,9 @@ import { recordAudit } from '../audit.js'
 import { registerApprovalType } from '../approvals/registry.js'
 import { cancelPendingFor, insertRequest } from '../approvals/service.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
-import { COUNTED, nextSequence, refreshStatus } from './service.js'
+import { COUNTED, refreshStatus } from './service.js'
 import { branchFilter, FinanceAbort, isFailure, money, scoped, sendFailure, transact } from './common.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * SAMS 3.3: refunds — money handed back against an invoice, in three
@@ -170,12 +171,11 @@ export function registerRefundRoutes(app: FastifyInstance): void {
     const allowedBranchIds = await callerBranchIds(request)
 
     const result = await transact(tenantId, async (ctx) => {
-      const seq = await nextSequence(ctx, tenantId, 'refundNumber')
       const now = new Date()
       const doc: RefundDoc = {
         _id: randomUUID(),
         tenantId,
-        refundNumber: `RFD-${String(seq).padStart(6, '0')}`,
+        refundNumber: await nextNumber(ctx, tenantId, 'refundNumber'),
         invoiceId: invoice._id,
         studentId: invoice.studentId,
         branchId: invoice.branchId,

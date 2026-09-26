@@ -247,6 +247,8 @@ const ROUTES: [Method, string, Role][] = [
   ['POST', `/communication/log/${X}/retry`, 'admin'],
   ['POST', '/communication/documents-expiring/send', 'admin'],
   ['GET', '/communication/channels', 'admin'],
+  ['GET', '/settings/numbering', 'viewer'],
+  ['PUT', '/settings/numbering/invoiceNumber', 'admin'],
   ['POST', '/communication/test-send', 'admin'],
   ['POST', '/communication/log/retry', 'admin'],
   ['GET', '/finance/reminders', 'admin'],

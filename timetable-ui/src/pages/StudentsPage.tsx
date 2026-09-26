@@ -17,11 +17,11 @@ type ModeFilter = TransportMode | 'ALL' | 'ISSUES' | 'INCOMPLETE'
 const NEW_PREFIX = 'NEW-'
 
 /** The fields the server needs to create a row and can't default. Until all
- * are filled, a draft row stays local-only rather than round-tripping a 400. */
+ * are filled, a draft row stays local-only rather than round-tripping a 400.
+ * A blank student number is given the school's next one. */
 function readyToCreate(student: Student): boolean {
   return Boolean(
-    student.studentNumber.trim() &&
-      student.givenName.trim() &&
+    student.givenName.trim() &&
       student.familyName.trim() &&
       student.classId,
   )
@@ -335,6 +335,8 @@ export function StudentsPage() {
                     <td>
                       <input
                         className="cell-input mono"
+                        placeholder={student.id.startsWith(NEW_PREFIX) ? t('students.number.auto') : undefined}
+                        aria-label={t('students.number')}
                         value={student.studentNumber}
                         onChange={(event) => patch(index, { studentNumber: event.target.value })}
                       />

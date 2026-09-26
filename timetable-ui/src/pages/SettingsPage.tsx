@@ -41,6 +41,7 @@ import {
   RolesSection,
 } from '../components/SettingsSections'
 import type { TenantProfile } from '../lib/tenantApi'
+import { NumberingSection } from '../components/settings/NumberingSection'
 
 const THEMES: Theme[] = ['auto', 'light', 'dark']
 
@@ -64,6 +65,7 @@ type SettingsSection =
   | 'book-categories'
   | 'event-types'
   | 'notification-templates'
+  | 'numbering'
   | 'roles'
   | 'team'
   | 'calendar'
@@ -87,6 +89,7 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'branches', key: 'branches.title', scope: 'notifications.manage' },
       { id: 'academic-years', key: 'settings.section.academicYears', scope: 'academicYears.read' },
       { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
+      { id: 'numbering', key: 'settings.section.numbering', scope: 'settings.read' },
       { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
@@ -186,6 +189,7 @@ export function SettingsPage() {
           {active?.id === 'branches' && <BranchesSettingsTab />}
           {active?.id === 'academic-years' && <AcademicYearsSection />}
           {active?.id === 'grades-classes' && <GradesClassesSection />}
+          {active?.id === 'numbering' && <NumberingSection />}
           {active?.id === 'payment-methods' && (
             <LookupSection
               kind="paymentMethod"

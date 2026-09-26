@@ -7,7 +7,7 @@ import type { ContractDoc, EmployeeDoc, TenantContext } from '../db.js'
 import { callerCanUseBranch, callerHasPermission } from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
 import { readReason, setAuditReason } from '../requestContext.js'
-import { Abort, branchFilter, isFailure, nextNumber, scoped, sendFailure, todayIso, transact } from '../records.js'
+import { Abort, branchFilter, isFailure, scoped, sendFailure, todayIso, transact } from '../records.js'
 import {
   addDays,
   checkCode,
@@ -18,6 +18,7 @@ import {
   fullName,
   recordEvent,
 } from './common.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * SAMS 4.1–4.2: employee records, contracts and employment history.
@@ -165,7 +166,7 @@ export function registerEmployeeRoutes(app: FastifyInstance): void {
       const doc: EmployeeDoc = {
         _id: randomUUID(),
         tenantId,
-        employeeNumber: await nextNumber(ctx, tenantId, 'employeeNumber', 'EMP'),
+        employeeNumber: await nextNumber(ctx, tenantId, 'employeeNumber'),
         branchId: body.branchId,
         givenName: body.givenName,
         familyName: body.familyName,

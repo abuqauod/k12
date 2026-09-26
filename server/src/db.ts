@@ -2004,6 +2004,29 @@ export interface CommunicationSettingsDoc extends Document {
   updatedAt: Date
 }
 
+// ------------------------------------------------------------ numbering --
+// How a school's human-facing record numbers look (INV-000123,
+// REC/2026/00045…). One document per tenant (`_id` = tenantId); a kind with
+// no entry keeps its built-in format. The sequences themselves stay in
+// `financeCounters`.
+
+export interface NumberFormat {
+  prefix: string
+  /** Between the prefix, the year and the number; may be empty. */
+  separator: '-' | '/' | ''
+  /** Digits, zero-padded. */
+  padding: number
+  /** Adds the calendar year; the count then restarts each year. */
+  includeYear: boolean
+}
+
+export interface NumberingSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  formats: Record<string, NumberFormat>
+  updatedAt: Date
+}
+
 // -------------------------------------------------------------- reports --
 // SAMS 7.4. A scheduled export runs one catalog report (reports/catalog.ts)
 // on a timetable, as its owner (their scopes and branches, re-read on every
@@ -2244,6 +2267,7 @@ export interface TenantContext {
   communicationSettings: TenantScope<CommunicationSettingsDoc>
   reportSchedules: TenantScope<ReportScheduleDoc>
   reportRuns: TenantScope<ReportRunDoc>
+  numberingSettings: TenantScope<NumberingSettingsDoc>
 }
 
 /**
@@ -2374,6 +2398,7 @@ export async function withTenant<T>(
         ),
         reportSchedules: new TenantScope(db.collection<ReportScheduleDoc>('reportSchedules'), tenantId, session),
         reportRuns: new TenantScope(db.collection<ReportRunDoc>('reportRuns'), tenantId, session),
+        numberingSettings: new TenantScope(db.collection<NumberingSettingsDoc>('numberingSettings'), tenantId, session),
       })
     })
     return result as T

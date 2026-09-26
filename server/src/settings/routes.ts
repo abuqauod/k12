@@ -7,6 +7,7 @@ import type { LookupDoc } from '../db.js'
 import { authenticate, requireActiveSubscription, requirePermission } from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
 import { ensureDefaults, isLookupKind } from './lookups.js'
+import { counterId, formatFor, formatNumber, isNumberKind, NUMBER_KINDS, previewNext, type NumberKind } from '../numbering.js'
 
 /**
  * Settings lists (SAMS 1.11). Everyone signed in can read them (forms need
@@ -33,6 +34,17 @@ const updateBody = z
   .partial()
   .strict()
 
+const numberingBody = z
+  .object({
+    prefix: z.string().trim().regex(/^[A-Za-z0-9]{0,10}$/),
+    separator: z.enum(['-', '/', '']),
+    padding: z.number().int().min(1).max(10),
+    includeYear: z.boolean(),
+    /** Move the count forward (never back): the next record gets this. */
+    nextNumber: z.number().int().min(1).max(999_999_999).optional(),
+  })
+  .strict()
+
 function toResponse(doc: LookupDoc) {
   return {
     code: doc.code,
@@ -47,6 +59,60 @@ function toResponse(doc: LookupDoc) {
 export function registerSettingsRoutes(app: FastifyInstance): void {
   const readGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('settings.read')] }
   const manageGuard = { preHandler: [authenticate, requireActiveSubscription, requirePermission('settings.manage')] }
+
+  // ------------------------------------------------------------ numbering
+
+  app.get('/settings/numbering', readGuard, async (request, reply) => {
+    const tenantId = request.auth!.tenantId!
+    const kinds = await withTenant(tenantId, async (ctx) => {
+      const out = []
+      for (const kind of Object.keys(NUMBER_KINDS) as NumberKind[]) {
+        const format = await formatFor(ctx, tenantId, kind)
+        const next = await previewNext(ctx, tenantId, kind, format)
+        out.push({ kind, label: NUMBER_KINDS[kind].label, format, nextSeq: next.seq, example: next.example })
+      }
+      return out
+    })
+    return reply.send({ kinds })
+  })
+
+  app.put('/settings/numbering/:kind', manageGuard, async (request, reply) => {
+    const { kind } = request.params as { kind: string }
+    if (!isNumberKind(kind)) return reply.code(404).send({ error: 'UNKNOWN_NUMBER_KIND' })
+    const parsed = numberingBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const { nextNumber, ...format } = parsed.data
+    const tenantId = request.auth!.tenantId!
+    const year = new Date().getUTCFullYear()
+    const result = await withTenant(tenantId, async (ctx) => {
+      const before = await formatFor(ctx, tenantId, kind)
+      const current = (await ctx.financeCounters.findOne({ _id: counterId(tenantId, kind, format, year) }))?.seq ?? 0
+      if (nextNumber !== undefined && nextNumber - 1 < current) return { error: 'NUMBER_GOES_BACK' as const, current: current + 1 }
+      await ctx.numberingSettings.findOneAndUpdate(
+        { _id: tenantId },
+        { $set: { [`formats.${kind}`]: format, updatedAt: new Date() } },
+        { upsert: true },
+      )
+      if (nextNumber !== undefined && nextNumber - 1 > current) {
+        await ctx.financeCounters.findOneAndUpdate(
+          { _id: counterId(tenantId, kind, format, year) },
+          { $max: { seq: nextNumber - 1 } },
+          { upsert: true },
+        )
+      }
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'numbering.update',
+        entity: 'numbering',
+        entityId: kind,
+        before,
+        after: { ...format, ...(nextNumber !== undefined ? { nextNumber } : {}) },
+      })
+      return previewNext(ctx, tenantId, kind, format)
+    })
+    if ('error' in result) return reply.code(409).send(result)
+    return reply.send({ kind, format, nextSeq: result.seq, example: result.example, sample: formatNumber(format, 123, year) })
+  })
 
   app.get('/settings/lookups/:kind', readGuard, async (request, reply) => {
     const { kind } = request.params as { kind: string }
