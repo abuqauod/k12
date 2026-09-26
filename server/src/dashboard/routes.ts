@@ -11,6 +11,7 @@ import {
 import { parentsHiddenFromBranches } from '../parents/service.js'
 import { toDecideFilter } from '../approvals/routes.js'
 import { computeCompleteness } from '../students/completeness.js'
+import { receivablesOverview } from '../reports/finance.js'
 
 /**
  * Dashboard summary (SAMS 1.12): counts computed server-side from the same
@@ -47,6 +48,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
       ops: await callerHasPermission(request, 'ops.read'),
       transport: await callerHasPermission(request, 'transport.read'),
       messages: await callerHasPermission(request, 'notifications.manage'),
+      finance: await callerHasPermission(request, 'finance.read'),
     }
     const toDecide = await toDecideFilter(request)
 
@@ -117,6 +119,13 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
               pending: await ctx.enrollments.countDocuments({ ...branchFilter, status: 'pending' }),
             }
           : { academicYear: null, active: 0, withdrawals: 0, transfers: 0, pending: 0 }
+      }
+
+      if (can.finance) {
+        // SAMS 7.1: from the shared reporting query, so the card agrees
+        // with the finance reports (balances after payments and refunds,
+        // overdue by installment).
+        result.receivables = await receivablesOverview(ctx, scope, new Date().toISOString().slice(0, 10))
       }
 
       // Work waiting across Phases 3–6, each only with its read scope. Every

@@ -252,6 +252,25 @@ const ROUTES: [Method, string, Role][] = [
   ['POST', `/parents/${X}/portal/enable`, 'admin'],
   ['POST', `/parents/${X}/portal/resend`, 'admin'],
   ['POST', `/parents/${X}/portal/disable`, 'admin'],
+  // Phase 7: the catalog is open to staff; each report needs its module's
+  // scopes (FORBIDDEN from the catalog itself when missing).
+  ['GET', '/reports/catalog', 'viewer'],
+  ['GET', '/reports/students.roster', 'viewer'],
+  ['GET', '/reports/attendance.byClass?from=2026-09-01&to=2026-09-30', 'viewer'],
+  ['GET', '/reports/admissions.pipeline', 'scheduler'],
+  ['GET', '/reports/ops.loans', 'scheduler'],
+  ['GET', '/reports/finance.outstanding', 'admin'],
+  ['GET', '/reports/hr.staff', 'admin'],
+  ['GET', '/reports/students.roster/export?format=csv', 'viewer'],
+  ['GET', '/reports/finance.outstanding/export?format=xlsx', 'admin'],
+  ['GET', '/reports/schedules', 'admin'],
+  ['POST', '/reports/schedules', 'admin'],
+  ['PATCH', `/reports/schedules/${X}`, 'admin'],
+  ['DELETE', `/reports/schedules/${X}`, 'admin'],
+  ['POST', `/reports/schedules/${X}/run`, 'admin'],
+  ['GET', '/reports/recipients?key=finance.outstanding', 'admin'],
+  ['GET', '/reports/runs', 'viewer'],
+  ['GET', `/reports/runs/${X}/file`, 'viewer'],
 ]
 
 /** Only a parent portal login holds `portal.parent`; no staff rank does. */

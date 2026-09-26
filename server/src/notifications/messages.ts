@@ -295,6 +295,44 @@ export async function notifyContact(
   return out
 }
 
+/** An email to a staff member (SAMS 7.4, a scheduled report is ready),
+ * through the same queue as family notices. True when newly queued. */
+export async function emailStaff(
+  ctx: TenantContext,
+  tenantId: string,
+  mail: {
+    kind: TemplateKind
+    sourceId: string
+    branchId: string
+    userId: string
+    name: string
+    email: string
+    language: GuardianLanguage
+    subject: string
+    body: string
+  },
+): Promise<boolean> {
+  return queue(
+    ctx,
+    `${tenantId}:${mail.kind}:${mail.sourceId}:email:${mail.userId}`,
+    job({
+      branchId: mail.branchId,
+      studentId: '',
+      recipientId: mail.userId,
+      recipientName: mail.name,
+      channel: 'email',
+      to: mail.email,
+      language: mail.language,
+      subject: mail.subject,
+      body: mail.body,
+      kind: mail.kind,
+      sourceId: mail.sourceId,
+      trigger: 'auto',
+      actorId: null,
+    }),
+  )
+}
+
 /** After a request that queued messages commits: try sending straight
  * away. Never awaited by the request, and the scheduled worker picks up
  * whatever this leaves. */

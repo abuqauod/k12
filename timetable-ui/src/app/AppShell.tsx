@@ -44,6 +44,7 @@ const NAV: NavEntry[] = [
     group: 'account',
     anyScope: ['announcements.manage', 'finance.reminders', 'notifications.manage'],
   },
+  { to: '/reports', key: 'nav.reports', icon: '▥', group: 'account', scope: 'dashboard.read' },
   { to: '/logs', key: 'nav.logs', icon: '☰', group: 'account' },
   { to: '/settings', key: 'nav.settings', icon: '⚙', group: 'account' },
 ]

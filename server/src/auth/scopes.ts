@@ -79,6 +79,7 @@ export type PermissionScope =
   | 'portal.parent'
   | 'reports.finance'
   | 'reports.hr'
+  | 'reports.schedule'
   | 'search.read'
   | 'settings.manage'
   | 'settings.read'
@@ -178,6 +179,8 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'portal.manage',
   'reports.finance',
   'reports.hr',
+  // Scheduled report exports (SAMS 7.4).
+  'reports.schedule',
   'settings.manage',
   'students.custody',
   'students.delete',
@@ -245,6 +248,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'portal.manage',
     'ops.maintenance.report',
     'ops.read',
+    'reports.schedule',
     'academicYears.write',
     'admissions.manage',
     'admissions.read',
@@ -279,6 +283,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'finance.scholarship.approve',
     'finance.scholarship.request',
     'reports.finance',
+    'reports.schedule',
   ]),
   hr: preset('viewer', [
     ...OFFICE_READ,
@@ -289,6 +294,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'hr.read',
     'hr.salary.read',
     'reports.hr',
+    'reports.schedule',
   ]),
   operations: preset('scheduler', [
     ...OFFICE_READ,

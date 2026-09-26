@@ -14,6 +14,7 @@ export type MessageKind =
   | 'document_rejected'
   | 'document_expiring'
   | 'approval_decided'
+  | 'report_ready'
 
 // ---------------------------------------------------------------- inbox --
 

@@ -27,6 +27,7 @@ import { EventPage, EventsPage } from './pages/EventsPage'
 import { FleetPage } from './pages/FleetPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 import { CommunicationPage } from './pages/CommunicationPage'
+import { ReportsPage } from './pages/ReportsPage'
 import { PortalShell } from './portal/PortalShell'
 import { PortalHome } from './portal/PortalHome'
 import { PortalChildPage } from './portal/PortalChildPage'
@@ -96,6 +97,7 @@ export default function App() {
         <Route path="/finance" element={<FinancePage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
         <Route path="/communication" element={<CommunicationPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/hr" element={<HrPage />} />
         <Route path="/hr/employees/:id" element={<EmployeePage />} />
         <Route path="/operations" element={<OperationsPage />} />

@@ -7,19 +7,12 @@ import { useI18n } from '../i18n/I18nContext'
 import { schoolDays } from '../domain/calendar'
 import { coverage, hhmm, naturalCompare, unique } from '../lib/view'
 import { auditStudents } from '../domain/students'
-import { listInvoices } from '../lib/financeApi'
 import { listAuditLog } from '../lib/auditLog'
 import { getDashboardSummary } from '../lib/dashboardApi'
 import type { DashboardSummary } from '../lib/dashboardApi'
 import type { TranslationKey } from '../i18n/translations'
 import type { AuditEntry } from '../lib/auditLog'
 import { formatMinorUnits } from '../domain/finance'
-
-interface InvoiceSummary {
-  outstanding: number
-  overdue: number
-  openTotal: number
-}
 
 /** Stroke icons (24px grid) — inline so they follow `currentColor`. */
 const ICON = {
@@ -142,42 +135,11 @@ export function DashboardPage() {
     }
   }, [getAccessToken, activeBranchId])
 
-  const [invoiceSummary, setInvoiceSummary] = useState<InvoiceSummary | null>(null)
-  const [financeLoading, setFinanceLoading] = useState(false)
-  const [financeError, setFinanceError] = useState(false)
-
-  useEffect(() => {
-    if (!activeBranchId || !canFinance) {
-      setInvoiceSummary(null)
-      setFinanceError(false)
-      return
-    }
-    let cancelled = false
-    setFinanceLoading(true)
-    setFinanceError(false)
-    void (async () => {
-      const [openResult, partialResult] = await Promise.all([
-        listInvoices(getAccessToken, { branchId: activeBranchId, status: 'open' }),
-        listInvoices(getAccessToken, { branchId: activeBranchId, status: 'partially_paid' }),
-      ])
-      if (cancelled) return
-      setFinanceLoading(false)
-      if (openResult.kind !== 'ok' || partialResult.kind !== 'ok') {
-        setFinanceError(true)
-        return
-      }
-      const invoices = [...openResult.data, ...partialResult.data]
-      const today = new Date().toISOString().slice(0, 10)
-      setInvoiceSummary({
-        outstanding: invoices.length,
-        overdue: invoices.filter((inv) => inv.dueDate && inv.dueDate < today).length,
-        openTotal: openResult.data.reduce((sum, inv) => sum + inv.total, 0),
-      })
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [activeBranchId, canFinance, getAccessToken])
+  // Receivables come from the shared reporting query (SAMS 7.1), so the
+  // tiles agree with Finance → Reports and the report catalog.
+  const receivables = summary?.receivables ?? null
+  const financeLoading = summaryLoading
+  const financeError = !summaryLoading && canFinance && !receivables
 
   // Recent activity — the same audit feed the Activity log page reads,
   // branch-filtered by the server for branch-confined members.
@@ -286,26 +248,25 @@ export function DashboardPage() {
                   icon={ICON.invoice}
                   label={t('dash.overview.finance.outstanding')}
                   loading={financeLoading}
-                  value={financeError || !invoiceSummary ? '—' : n(invoiceSummary.outstanding)}
+                  value={financeError || !receivables ? '—' : n(receivables.openInvoices)}
                   tone={financeError ? 'bad' : 'neutral'}
                   hint={
                     financeError
                       ? t('dash.overview.finance.error')
-                      : invoiceSummary &&
-                        t('dash.overview.finance.openHint', { amount: formatMinorUnits(invoiceSummary.openTotal) })
+                      : receivables && t('dash.overview.finance.openHint', { amount: formatMinorUnits(receivables.outstanding) })
                   }
                 />
                 <StatTile
-                  to="/finance"
+                  to="/reports?report=finance.outstanding&status=overdue"
                   icon={ICON.overdue}
                   label={t('dash.overview.finance.overdue')}
                   loading={financeLoading}
-                  value={financeError || !invoiceSummary ? '—' : n(invoiceSummary.overdue)}
-                  tone={invoiceSummary && invoiceSummary.overdue > 0 ? 'bad' : 'ok'}
+                  value={financeError || !receivables ? '—' : n(receivables.overdueInvoices)}
+                  tone={receivables && receivables.overdueInvoices > 0 ? 'bad' : 'ok'}
                   hint={
-                    invoiceSummary &&
-                    (invoiceSummary.overdue > 0
-                      ? t('dash.overview.finance.overdueHint')
+                    receivables &&
+                    (receivables.overdueInvoices > 0
+                      ? t('dash.overview.finance.overdueAmount', { amount: formatMinorUnits(receivables.overdue) })
                       : t('dash.overview.finance.overdueOk'))
                   }
                 />

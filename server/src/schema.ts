@@ -260,4 +260,11 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('announcements').createIndex({ tenantId: 1, status: 1, publishedAt: -1 })
   await db.collection('announcements').createIndex({ tenantId: 1, studentIds: 1 })
   await db.collection('parents').createIndex({ tenantId: 1, 'portalAccess.userId': 1 }, { sparse: true })
+
+  // SAMS 7.4: scheduled report exports. The sweep asks "what is due",
+  // across tenants; a member's list is by owner or recipient.
+  await db.collection('reportSchedules').createIndex({ active: 1, nextRunDate: 1 })
+  await db.collection('reportSchedules').createIndex({ tenantId: 1, ownerId: 1 })
+  await db.collection('reportRuns').createIndex({ tenantId: 1, scheduleId: 1, createdAt: -1 })
+  await db.collection('reportRuns').createIndex({ tenantId: 1, recipients: 1, createdAt: -1 })
 }
