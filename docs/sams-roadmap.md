@@ -439,6 +439,35 @@ parent's own children, only released data · 9.4 Sensitive data (health,
 discipline, salaries): who sees it, what the audit log and exports carry ·
 9.5 Fix everything found; findings and fixes listed here.
 
+**Built**:
+- 9.1 `test/routes.test.ts` lists every route the server registers and
+  fails when one has no row in the permission matrix
+  (`test/routeMatrix.ts`) and no stated exemption. **Found**: 14 routes
+  had no row (student delete, school profile, dashboard, lookups, the
+  inbox, approvals), and the school team routes (`/memberships`) and the
+  platform console API (`/admin/*`) had no permission tests at all. All
+  now have rows; the console API is checked to refuse every school rank,
+  owner included.
+- 9.2 `test/isolation-sweep.test.ts` makes records in branch B (student,
+  family, invoice, payment, receipt, employee, clinic visit, incident,
+  asset, maintenance, application, health profile), each carrying a
+  marker, then calls every read route — each record id put into every
+  route parameter, list routes with branch/student filters, all 16
+  reports and their CSV exports, search — about 750 requests per caller.
+  An admin confined to branch A and the owner of another school receive
+  no marker and no id. **Found**: nothing; a parent with no linked child
+  is visible to every branch, which is the documented rule.
+- 9.3 The same sweep as a parent portal login of another family (which
+  does see its own): nothing.
+- 9.4 Sensitive data swept per role: medical details not marked as alerts
+  reach only the nurse (and admins); salaries only HR (and admins);
+  incidents only their reporter and `discipline.manage`. Checked that the
+  sweep does find each for the role meant to see it. File links and
+  sessions are separate tokens; uploads are typed by content, served
+  `nosniff`.
+- Found and fixed along the way (Phase 8): malformed JSON answered 500;
+  an error could return Fastify's own message to the client.
+
 ## Phase 10 — Polish
 10.1 Arabic/RTL pass over every screen added since Phase 5 · 10.2 Phone
 layouts for the pages staff use on the move (attendance, clinic, behaviour,
