@@ -31,6 +31,7 @@ export const TEMPLATE_TOKENS: Record<TemplateKind, string[]> = {
   document_rejected: ['parentName', 'studentName', 'document', 'note', 'schoolName'],
   document_expiring: ['parentName', 'studentName', 'document', 'expiresAt', 'schoolName'],
   approval_decided: ['summary', 'outcome'],
+  report_ready: ['report', 'period', 'rows', 'link', 'schoolName'],
 }
 
 export const TEMPLATE_KINDS = Object.keys(TEMPLATE_TOKENS) as TemplateKind[]
@@ -126,6 +127,15 @@ export const DEFAULT_TEMPLATES: Record<TemplateKind, TemplateText> = {
     subjectAr: 'الطلب {outcome}: {summary}',
     bodyAr: 'طلبك "{summary}" {outcome}.',
     smsBodyAr: 'طلبك "{summary}" {outcome}.',
+  },
+  report_ready: {
+    enabled: true,
+    subject: 'Report ready: {report}',
+    body: 'Your scheduled report "{report}" ({period}, {rows} rows) is ready.\n\nDownload it here: {link}\n\n{schoolName}',
+    smsBody: '{schoolName}: report "{report}" is ready.',
+    subjectAr: 'التقرير جاهز: {report}',
+    bodyAr: 'تقريرك المجدول "{report}" ({period}، {rows} صف) جاهز.\n\nيمكنك تنزيله من هنا: {link}\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: التقرير "{report}" جاهز.',
   },
 }
 

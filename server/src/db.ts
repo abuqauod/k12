@@ -1810,6 +1810,8 @@ export const MESSAGE_KINDS = [
   'document_rejected',
   'document_expiring',
   'approval_decided',
+  /** SAMS 7.4: a scheduled report export is ready (staff only). */
+  'report_ready',
 ] as const
 export type MessageKind = (typeof MESSAGE_KINDS)[number]
 
@@ -2002,6 +2004,86 @@ export interface CommunicationSettingsDoc extends Document {
   updatedAt: Date
 }
 
+// -------------------------------------------------------------- reports --
+// SAMS 7.4. A scheduled export runs one catalog report (reports/catalog.ts)
+// on a timetable, as its owner (their scopes and branches, re-read on every
+// run), stores the file and tells the recipients. The file bytes live in
+// the document store (GridFS); the run row is what lists and downloads it.
+
+export type ReportFormat = 'csv' | 'xlsx'
+export type ReportFrequency = 'daily' | 'weekly' | 'monthly'
+/** A date range relative to the day the export runs. */
+export type ReportRange =
+  | 'yesterday'
+  | 'last_7_days'
+  | 'last_30_days'
+  | 'month_to_date'
+  | 'previous_month'
+  | 'year_to_date'
+  | 'academic_year'
+
+export interface ReportFilters {
+  branchId: string | null
+  academicYearId: string | null
+  gradeLevel: string | null
+  classId: string | null
+  status: string | null
+}
+
+export interface ReportScheduleDoc extends Document {
+  _id: string
+  tenantId: string
+  name: string
+  reportKey: string
+  filters: ReportFilters
+  /** Ignored by a report without a date range. */
+  range: ReportRange
+  format: ReportFormat
+  language: GuardianLanguage
+  frequency: ReportFrequency
+  /** 0 = Sunday; weekly only. */
+  weekday: number | null
+  /** 1–28; monthly only. */
+  monthDay: number | null
+  /** Members (user ids) told when it is ready; each must be able to run
+   * the report over the same branches, re-checked on every run. */
+  recipients: string[]
+  ownerId: string
+  active: boolean
+  /** UTC date the next run is due. */
+  nextRunDate: string
+  lastRunAt: Date | null
+  lastRunId: string | null
+  /** Why the last run produced nothing (e.g. the owner lost access). */
+  lastError: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ReportRunDoc extends Document {
+  /** `${scheduleId}:${date}` for a scheduled run, so a second instance
+   * running the same day finds it already there. */
+  _id: string
+  tenantId: string
+  scheduleId: string
+  reportKey: string
+  title: string
+  filters: ReportFilters
+  from: string | null
+  to: string | null
+  /** The branches the file covers (null = every branch). */
+  branchIds: string[] | null
+  format: ReportFormat
+  language: GuardianLanguage
+  fileId: string
+  fileName: string
+  size: number
+  rows: number
+  recipients: string[]
+  ownerId: string
+  createdAt: Date
+}
+
 /**
  * A coarse advisory lock, so the periodic work a single-writer design
  * assumed (the absence sweep deciding "enqueue today's jobs") stays
@@ -2160,6 +2242,8 @@ export interface TenantContext {
   inboxItems: TenantScope<InboxItemDoc>
   announcements: TenantScope<AnnouncementDoc>
   communicationSettings: TenantScope<CommunicationSettingsDoc>
+  reportSchedules: TenantScope<ReportScheduleDoc>
+  reportRuns: TenantScope<ReportRunDoc>
 }
 
 /**
@@ -2288,6 +2372,8 @@ export async function withTenant<T>(
           tenantId,
           session,
         ),
+        reportSchedules: new TenantScope(db.collection<ReportScheduleDoc>('reportSchedules'), tenantId, session),
+        reportRuns: new TenantScope(db.collection<ReportRunDoc>('reportRuns'), tenantId, session),
       })
     })
     return result as T
@@ -2321,6 +2407,8 @@ export interface UnscopedDb {
   notificationJobs: Collection<NotificationJobDoc>
   notificationAttempts: Collection<NotificationAttemptDoc>
   communicationSettings: Collection<CommunicationSettingsDoc>
+  /** SAMS 7.4: which schedules, across tenants, are due. */
+  reportSchedules: Collection<ReportScheduleDoc>
   locks: Collection<LockDoc>
 }
 
@@ -2349,6 +2437,7 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     notificationJobs: database.collection<NotificationJobDoc>('notificationJobs'),
     notificationAttempts: database.collection<NotificationAttemptDoc>('notificationAttempts'),
     communicationSettings: database.collection<CommunicationSettingsDoc>('communicationSettings'),
+    reportSchedules: database.collection<ReportScheduleDoc>('reportSchedules'),
     locks: database.collection<LockDoc>('locks'),
   })
 }
