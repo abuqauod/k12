@@ -17,6 +17,7 @@ export type MessageKind =
   | 'report_ready'
   | 'clinic_visit'
   | 'incident'
+  | 'report_card'
 
 // ---------------------------------------------------------------- inbox --
 

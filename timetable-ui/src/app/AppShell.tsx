@@ -29,6 +29,7 @@ const NAV: NavEntry[] = [
   { to: '/parents', key: 'nav.parents', icon: '⚭', group: 'plan' },
   { to: '/classes', key: 'nav.classes', icon: '▣', group: 'plan' },
   { to: '/attendance', key: 'nav.attendance', icon: '✓', group: 'plan' },
+  { to: '/grades', key: 'nav.grades', icon: '✦', group: 'plan', scope: 'grades.read' },
   { to: '/behaviour', key: 'nav.behaviour', icon: '⚑', group: 'plan', scope: 'discipline.report' },
   { to: '/clinic', key: 'nav.clinic', icon: '✚', group: 'plan', scope: 'health.read' },
   { to: '/hr', key: 'nav.hr', icon: '♙', group: 'ops', scope: 'hr.read' },

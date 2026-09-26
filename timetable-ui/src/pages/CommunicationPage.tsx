@@ -677,6 +677,7 @@ const KINDS = [
   'report_ready',
   'clinic_visit',
   'incident',
+  'report_card',
 ] as const
 
 function LogTab() {

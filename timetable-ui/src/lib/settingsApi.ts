@@ -4,6 +4,7 @@ import { authorizedFetch, type TokenGetter } from './http'
 /** Client for settings lists (SAMS 1.11, server/src/settings). */
 
 export type LookupKind =
+  | 'subject'
   | 'paymentMethod'
   | 'documentCategory'
   | 'admissionSource'

@@ -1,3 +1,4 @@
+import { api, enc } from './apiClient'
 import { loadSyncSettings } from './sync'
 import { authorizedFetch, type TokenGetter } from './http'
 
@@ -12,6 +13,7 @@ export interface AcademicYear {
   startDate: string
   endDate: string
   current: boolean
+  terms?: { id: string; name: string; startDate: string; endDate: string }[]
 }
 
 function baseUrl(): string {
@@ -64,3 +66,7 @@ async function mutate<T>(getToken: TokenGetter, path: string, body: unknown): Pr
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }
 }
+
+/** SAMS 11.2: sets a year's terms (a kept term keeps its id). */
+export const setAcademicYearTerms = (getToken: TokenGetter, id: string, terms: { id?: string; name: string; startDate: string; endDate: string }[]) =>
+  api<AcademicYear>(getToken, 'PUT', `/academic-years/${enc(id)}/terms`, { terms })

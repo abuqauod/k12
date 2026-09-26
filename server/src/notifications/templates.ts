@@ -34,6 +34,7 @@ export const TEMPLATE_TOKENS: Record<TemplateKind, string[]> = {
   report_ready: ['report', 'period', 'rows', 'link', 'schoolName'],
   clinic_visit: ['parentName', 'studentName', 'time', 'complaint', 'outcome', 'treatment', 'schoolName'],
   incident: ['parentName', 'studentName', 'date', 'type', 'description', 'action', 'schoolName'],
+  report_card: ['parentName', 'studentName', 'term', 'link', 'schoolName'],
 }
 
 export const TEMPLATE_KINDS = Object.keys(TEMPLATE_TOKENS) as TemplateKind[]
@@ -174,6 +175,15 @@ export const DEFAULT_TEMPLATES: Record<TemplateKind, TemplateText> = {
       'الإجراء المتخذ: {action}\n\n' +
       'يُرجى التواصل مع المدرسة لمناقشتها.\n\n{schoolName}',
     smsBodyAr: '{schoolName}: حادثة تخص {studentName} بتاريخ {date} ({type}). يُرجى التواصل مع المدرسة.',
+  },
+  report_card: {
+    enabled: true,
+    subject: 'Report card — {studentName}, {term}',
+    body: 'Dear {parentName},\n\n{studentName}’s report card for {term} is ready in the parent portal:\n{link}\n\n{schoolName}',
+    smsBody: '{schoolName}: {studentName}’s report card for {term} is in the parent portal.',
+    subjectAr: 'الشهادة المدرسية — {studentName}، {term}',
+    bodyAr: 'عزيزي {parentName}،\n\nشهادة {studentName} عن {term} متاحة الآن في بوابة أولياء الأمور:\n{link}\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: شهادة {studentName} عن {term} متاحة في بوابة أولياء الأمور.',
   },
 }
 

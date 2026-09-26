@@ -280,4 +280,13 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('onlinePayments').createIndex({ tenantId: 1, studentId: 1, createdAt: -1 })
   await db.collection('onlinePayments').createIndex({ tenantId: 1, branchId: 1, createdAt: -1 })
   await db.collection('onlinePayments').createIndex({ status: 1, createdAt: 1 })
+
+  // SAMS 11.2: one plan per year and grade; one mark per student,
+  // assessment and subject; the sheets read by class and term.
+  await db.collection('assessmentPlans').createIndex({ tenantId: 1, academicYearId: 1, gradeLevel: 1 }, { unique: true })
+  await db
+    .collection('marks')
+    .createIndex({ tenantId: 1, studentId: 1, academicYearId: 1, assessmentId: 1, subjectCode: 1 }, { unique: true })
+  await db.collection('marks').createIndex({ tenantId: 1, classId: 1, termId: 1, subjectCode: 1 })
+  await db.collection('marks').createIndex({ tenantId: 1, studentId: 1, termId: 1 })
 }

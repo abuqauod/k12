@@ -11,6 +11,7 @@ export const ROUTES: [Method, string, Role][] = [
   ['GET', '/academic-years', 'viewer'],
   ['POST', '/academic-years', 'scheduler'],
   ['POST', `/academic-years/${X}/set-current`, 'scheduler'],
+  ['PUT', `/academic-years/${X}/terms`, 'scheduler'],
   ['GET', '/branches', 'viewer'],
   ['GET', '/classes', 'viewer'],
   ['POST', '/classes', 'admin'],
@@ -314,6 +315,18 @@ export const ROUTES: [Method, string, Role][] = [
   ['PUT', '/settings/payments', 'admin'],
   ['GET', '/finance/online-payments', 'viewer'],
   ['POST', `/finance/online-payments/${X}/check`, 'viewer'],
+  // SAMS 11.2 gradebook: teachers (schedulers) read and enter; admins manage.
+  ['GET', '/grades/settings', 'scheduler'],
+  ['PUT', '/grades/settings', 'admin'],
+  ['GET', `/grades/plans?academicYearId=${X}`, 'scheduler'],
+  ['PUT', '/grades/plans', 'admin'],
+  ['GET', `/grades/sheet?classId=${X}&subjectCode=math&termId=t1`, 'scheduler'],
+  ['PUT', '/grades/sheet', 'scheduler'],
+  ['PUT', '/grades/comments', 'scheduler'],
+  ['GET', `/grades/results?classId=${X}&termId=t1`, 'scheduler'],
+  ['GET', `/grades/report-cards?classId=${X}&termId=t1`, 'scheduler'],
+  ['POST', '/grades/release', 'admin'],
+  ['POST', '/grades/unrelease', 'admin'],
   // A school's own team (memberships.manage).
   ['GET', '/memberships', 'admin'],
   ['GET', '/memberships/roles', 'admin'],
@@ -350,5 +363,7 @@ export const PORTAL_ROUTES: [Method, string][] = [
   ['GET', '/portal/announcements'],
   ['POST', `/portal/children/${X}/pay`],
   ['GET', `/portal/payments/${X}`],
+  ['GET', `/portal/children/${X}/report-cards`],
+  ['GET', `/portal/children/${X}/report-cards/t1`],
 ]
 

@@ -19,6 +19,20 @@ interface Default {
 
 export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
   // Backlog: behaviour incidents — what happened, and what the school did.
+  // SAMS 11.2: subjects a grade is assessed in.
+  subject: {
+    defaults: [
+      { code: 'arabic', label: 'Arabic', labelAr: 'اللغة العربية' },
+      { code: 'english', label: 'English', labelAr: 'اللغة الإنجليزية' },
+      { code: 'math', label: 'Mathematics', labelAr: 'الرياضيات' },
+      { code: 'science', label: 'Science', labelAr: 'العلوم' },
+      { code: 'islamic', label: 'Islamic Education', labelAr: 'التربية الإسلامية' },
+      { code: 'social', label: 'Social Studies', labelAr: 'الدراسات الاجتماعية' },
+      { code: 'computer', label: 'Computer Science', labelAr: 'الحاسوب' },
+      { code: 'art', label: 'Art', labelAr: 'التربية الفنية' },
+      { code: 'pe', label: 'Physical Education', labelAr: 'التربية الرياضية' },
+    ],
+  },
   incidentType: {
     defaults: [
       { code: 'disruption', label: 'Classroom disruption', labelAr: 'إخلال بالنظام الصفي' },

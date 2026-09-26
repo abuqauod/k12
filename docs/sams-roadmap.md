@@ -529,6 +529,34 @@ and parent-set restrictions, statements in the portal.
 - Found on the way: built-in settings entries added in a later release
   never reached a school that had added its own entries; fixed.
 
+**Built — 11.2 gradebook and report cards** (`server/src/grades/`, the
+Grades page):
+- A year's **terms** can now be set after the year exists (Settings →
+  Academic years): inside the year, in order, not overlapping; a term a plan
+  or marks use can't be removed. Before, terms could only be given when
+  creating a year, and nothing in the app did.
+- **Subjects** are a settings list (Arabic, English, Mathematics, …
+  defaults). An **assessment plan** per year and grade picks its subjects
+  and each term's assessments (weight, maximum mark). Changing a plan never
+  loses marks: an assessment or subject with marks stays, and a maximum
+  can't drop below a mark already given.
+- **Grading scale** per school (default A–F, 50 passes) and pass mark.
+- **Mark entry** per class, subject and term (`grades.enter`, in the
+  caller's branches): blank = not taken; scores checked against the
+  maximum; one audit entry per save.
+- **Results**: a term result is the weighted average of the assessments
+  taken, the year result weighs the terms; per-subject grade, pass/fail,
+  average, rank (ties shared) and the class teacher's remark.
+- **Report cards**: one A4 page per student in English or Arabic
+  (attendance for the term, remark, signature line), printed from the
+  Results tab. **Releasing** a class's term emails families (new
+  `report_card` template), shows the card in the portal's new Report cards
+  tab (only their own child), and locks marks and remarks until a
+  coordinator un-releases it.
+- Scopes `grades.read` / `grades.enter` (schedulers and up) and
+  `grades.manage` (admins, registrar); a new **Teacher** role (registers,
+  marks, behaviour notes).
+
 ## Phase 12 — Pilot run
 A realistic school built through the product itself (bulk import, fee
 structures, timetable, a term of attendance, fees, grades, report cards,

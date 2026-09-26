@@ -3151,3 +3151,33 @@ tr.is-muted td {
 .portal-pay__row .field {
   flex: 1 1 160px;
 }
+
+/* SAMS 11.2: gradebook */
+.grades-toolbar {
+  margin-block: 12px;
+}
+.grade-sheet td,
+.grade-sheet th {
+  white-space: nowrap;
+}
+.grade-input {
+  width: 72px;
+  text-align: end;
+}
+.input--bad {
+  border-color: var(--bad);
+  background: var(--bad-soft);
+}
+.text-bad {
+  color: var(--bad);
+}
+.chips-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-block: 6px 12px;
+}
+.plan-term {
+  border-block-start: 1px solid var(--line);
+  padding-block: 10px;
+}

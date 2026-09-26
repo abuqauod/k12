@@ -12,6 +12,8 @@ import {
 } from '../lib/portalApi'
 import { formatMinorUnits } from '../domain/finance'
 import { PaymentResult, PayOnline } from './PayOnline'
+import { portalReportCardPath, portalReportCards } from '../lib/gradesApi'
+import { openApiPage } from '../lib/printPage'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
@@ -19,7 +21,7 @@ import type { TranslationKey } from '../i18n/translations'
 /** One child in the portal: overview and attendance, fees (for a parent
  * responsible for them) and the documents the school shares. */
 
-type Tab = 'overview' | 'finance' | 'documents'
+type Tab = 'overview' | 'finance' | 'reports' | 'documents'
 
 const INSTALLMENT_TONE: Record<string, string> = {
   paid: 'chip--ok',
@@ -52,7 +54,7 @@ export function PortalChildPage() {
   }
   if (!child) return <div className="skeleton" style={{ height: 160 }} />
 
-  const tabs: Tab[] = child.finance ? ['overview', 'finance', 'documents'] : ['overview', 'documents']
+  const tabs: Tab[] = child.finance ? ['overview', 'finance', 'reports', 'documents'] : ['overview', 'reports', 'documents']
   const tab = (tabs.includes(params.get('tab') as Tab) ? params.get('tab') : 'overview') as Tab
   const absences = (child.attendance.counts.absent ?? 0) + (child.attendance.counts.excused ?? 0)
 
@@ -113,6 +115,7 @@ export function PortalChildPage() {
           </section>
         )}
         {tab === 'finance' && <Finance id={id} />}
+        {tab === 'reports' && <ReportCards id={id} />}
         {tab === 'documents' && <Documents id={id} />}
       </div>
     </>
@@ -261,6 +264,38 @@ function Documents({ id }: { id: string }) {
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+/** SAMS 11.2: the report cards the school has released for this child. */
+function ReportCards({ id }: { id: string }) {
+  const { t, lang } = useI18n()
+  const { getAccessToken } = useAuth()
+  const [cards, setCards] = useState<{ termId: string; term: string; releasedAt: string }[] | null>(null)
+  useEffect(() => {
+    void portalReportCards(getAccessToken, id, lang).then((r) => setCards(r.kind === 'ok' ? r.data.cards : []))
+  }, [getAccessToken, id, lang])
+  if (!cards) return <div className="skeleton" style={{ height: 80 }} />
+  return (
+    <section className="card">
+      <h3 className="card__title">{t('portal.reportCards')}</h3>
+      {cards.length === 0 ? (
+        <div className="empty-state">{t('portal.noReportCards')}</div>
+      ) : (
+        <ul className="portal-list">
+          {cards.map((c) => (
+            <li key={c.termId} className="portal-lines__row">
+              <span>
+                <b>{c.term}</b> <small className="card__hint">· {c.releasedAt.slice(0, 10)}</small>
+              </span>
+              <button type="button" className="btn btn--sm" onClick={() => void openApiPage(getAccessToken, portalReportCardPath(id, c.termId, lang))}>
+                {t('portal.openReportCard')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

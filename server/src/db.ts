@@ -1816,6 +1816,8 @@ export const MESSAGE_KINDS = [
   'clinic_visit',
   /** Backlog: a behaviour incident the school decided to tell the family about. */
   'incident',
+  /** SAMS 11.2: a child's report card is out. */
+  'report_card',
 ] as const
 export type MessageKind = (typeof MESSAGE_KINDS)[number]
 
@@ -2283,6 +2285,91 @@ export interface OnlinePaymentDoc extends Document {
   createdBy: string | null
 }
 
+/** SAMS 11.2: a grade band — at or above `min` percent. */
+export interface GradeBand {
+  min: number
+  code: string
+  label: string
+  labelAr: string
+}
+
+/** SAMS 11.2: the school's grading scale (one per tenant, _id = tenantId). */
+export interface GradingSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  bands: GradeBand[]
+  /** Percent needed to pass a subject. */
+  passMark: number
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+/** One assessment in a term, e.g. "Quiz 1", "Final exam". */
+export interface PlanAssessment {
+  id: string
+  name: string
+  nameAr: string | null
+  /** Share of the term result, as a weight (normalised over the term). */
+  weight: number
+  maxScore: number
+}
+
+/** SAMS 11.2: how a grade is assessed in a year — its subjects (codes from
+ * the `subject` settings list) and each term's weighted assessments. */
+export interface AssessmentPlanDoc extends Document {
+  _id: string
+  tenantId: string
+  academicYearId: string
+  gradeLevel: string
+  subjects: string[]
+  terms: { termId: string; weight: number; assessments: PlanAssessment[] }[]
+  createdAt: Date
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+/** SAMS 11.2: one student's score in one assessment of one subject. */
+export interface MarkDoc extends Document {
+  _id: string
+  tenantId: string
+  academicYearId: string
+  termId: string
+  assessmentId: string
+  subjectCode: string
+  studentId: string
+  classId: string
+  branchId: string
+  /** Null = absent / not taken (excluded from the result). */
+  score: number | null
+  enteredBy: string
+  updatedAt: Date
+}
+
+/** SAMS 11.2: a class's report cards for a term, once released to families. */
+export interface ReportReleaseDoc extends Document {
+  /** `${classId}:${termId}` */
+  _id: string
+  tenantId: string
+  classId: string
+  branchId: string
+  academicYearId: string
+  termId: string
+  releasedAt: Date
+  releasedBy: string
+}
+
+/** SAMS 11.2: the class teacher's remark on a student's report card. */
+export interface ReportCommentDoc extends Document {
+  /** `${studentId}:${termId}` */
+  _id: string
+  tenantId: string
+  studentId: string
+  termId: string
+  comment: string
+  updatedBy: string
+  updatedAt: Date
+}
+
 // ---------------------------------------------------------- tenant scoping --
 
 /**
@@ -2449,6 +2536,11 @@ export interface TenantContext {
   incidents: TenantScope<IncidentDoc>
   paymentSettings: TenantScope<PaymentSettingsDoc>
   onlinePayments: TenantScope<OnlinePaymentDoc>
+  gradingSettings: TenantScope<GradingSettingsDoc>
+  assessmentPlans: TenantScope<AssessmentPlanDoc>
+  marks: TenantScope<MarkDoc>
+  reportReleases: TenantScope<ReportReleaseDoc>
+  reportComments: TenantScope<ReportCommentDoc>
 }
 
 /**
@@ -2585,6 +2677,11 @@ export async function withTenant<T>(
         incidents: new TenantScope(db.collection<IncidentDoc>('incidents'), tenantId, session),
         paymentSettings: new TenantScope(db.collection<PaymentSettingsDoc>('paymentSettings'), tenantId, session),
         onlinePayments: new TenantScope(db.collection<OnlinePaymentDoc>('onlinePayments'), tenantId, session),
+        gradingSettings: new TenantScope(db.collection<GradingSettingsDoc>('gradingSettings'), tenantId, session),
+        assessmentPlans: new TenantScope(db.collection<AssessmentPlanDoc>('assessmentPlans'), tenantId, session),
+        marks: new TenantScope(db.collection<MarkDoc>('marks'), tenantId, session),
+        reportReleases: new TenantScope(db.collection<ReportReleaseDoc>('reportReleases'), tenantId, session),
+        reportComments: new TenantScope(db.collection<ReportCommentDoc>('reportComments'), tenantId, session),
       })
     })
     return result as T
