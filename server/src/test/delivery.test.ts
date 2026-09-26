@@ -157,12 +157,20 @@ describe('retrying given-up messages', () => {
     // Branch B's job was left alone by the branch-A admin.
     const b = await withTenant(fx.tenantId, (ctx) => ctx.notificationJobs.findOne({ branchId: fx.branchB, sourceId: 'src' }))
     assert.equal(b!.maxAttempts, 3)
+    // The retry nudged the queue, and with no SMTP in the test run that
+    // extra try fails again: wait for it so the next count is settled.
+    for (let i = 0; i < 100; i++) {
+      const job = await withTenant(fx.tenantId, (ctx) =>
+        ctx.notificationJobs.findOne({ branchId: fx.branchA, sourceId: 'src', lastError: { $ne: 'SMS_REJECTED: 400' } }),
+      )
+      if (job!.status !== 'pending' && job!.status !== 'processing') break
+      await new Promise((r) => setTimeout(r, 20))
+    }
     const all = await call(fx.app, fx.tokens.admin, 'POST', '/communication/log/retry', {})
-    assert.equal((all.body as { requeued: number }).requeued, 2)
-    // Each was given one more try (the queue may already have used it:
-    // there is no SMTP in the test run).
+    assert.equal((all.body as { requeued: number }).requeued, 3)
+    // Each was given one more try than it had used.
     const jobs = await withTenant(fx.tenantId, (ctx) => ctx.notificationJobs.find({ sourceId: 'src' }).toArray())
-    assert.deepEqual(jobs.map((j) => j.maxAttempts), [4, 4, 4])
+    assert.deepEqual(jobs.map((j) => j.maxAttempts).sort(), [4, 4, 5])
     assert.equal((await call(fx.app, fx.tokens.scheduler, 'POST', '/communication/log/retry', {})).error, 'FORBIDDEN')
   })
 })
