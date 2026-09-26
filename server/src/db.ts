@@ -144,6 +144,16 @@ export interface TenantProfile {
   taxNumber: string | null
 }
 
+export interface TenantBilling {
+  currency: 'JOD' | 'USD' | 'SAR' | 'AED'
+  term: 'year' | 'month'
+  /** Students billed for; the invoice uses the greater of this and those enrolled. */
+  students: number
+  /** Where subscription invoices and reminders go; the owners when null. */
+  email: string | null
+  country: string | null
+}
+
 export interface TenantDoc extends Document {
   _id: string
   slug: string
@@ -158,6 +168,16 @@ export interface TenantDoc extends Document {
   validUntil: string | null
   /** Bank transfers are slow; do not lock a school out the morning it lapses. */
   graceDays: number
+  /** SAMS 13.1: modules sold on top of the plan (billing/plans.ts). */
+  addons?: string[]
+  /** SAMS 13.1: limits the vendor set for this school over the plan's. */
+  limits?: { students?: number | null; branches?: number | null; smsPerStudent?: number | null }
+  /** SAMS 13.3: how the school is billed. */
+  billing?: TenantBilling
+  /** SAMS 13.2: how the school came — the vendor opened it, or it signed up. */
+  source?: 'console' | 'signup'
+  /** SAMS 13.3: trial-ending emails already sent. */
+  trialReminders?: string[]
   createdAt: Date
   updatedAt: Date
 }
@@ -2756,6 +2776,63 @@ export async function withTenant<T>(
   }
 }
 
+/**
+ * SAMS 13.3 — the vendor's invoice to a school for its subscription. Vendor
+ * data, not the school's: it lives outside tenant scoping, and a school
+ * reads its own through /subscription only.
+ */
+export interface SubscriptionInvoiceDoc extends Document {
+  _id: string
+  /** SUB-2026-0001: yearly sequence across all schools. */
+  number: string
+  tenantId: string
+  plan: string
+  term: 'year' | 'month'
+  /** The paid-through period this invoice buys (inclusive dates). */
+  periodStart: string
+  periodEnd: string
+  students: number
+  currency: 'JOD' | 'USD' | 'SAR' | 'AED'
+  lines: { label: string; amount: number }[]
+  subtotal: number
+  /** Percent, e.g. 16 for Jordan's GST. */
+  taxRate: number
+  tax: number
+  total: number
+  status: 'open' | 'paid' | 'void'
+  dueDate: string
+  issuedAt: Date
+  paidAt: Date | null
+  paidBy: 'card' | 'transfer' | null
+  /** Bank reference, or the card checkout's id. */
+  reference: string | null
+  /** 'console' (the vendor), 'self' (the school chose a plan), 'renewal' (the sweep). */
+  source: 'console' | 'self' | 'renewal'
+  /** Reminder emails already sent, by key (e.g. 'due-7'). */
+  reminders: string[]
+  createdBy: string | null
+  updatedAt: Date
+}
+
+/** SAMS 13.3 — one card payment attempt on a subscription invoice, through
+ * the vendor's own gateway. */
+export interface SubscriptionCheckoutDoc extends Document {
+  _id: string
+  invoiceId: string
+  tenantId: string
+  amount: number
+  currency: string
+  provider: 'paytabs' | 'hyperpay' | 'test'
+  providerRef: string | null
+  status: 'pending' | 'paid' | 'failed'
+  /** The test gateway's outcome, as picked on its page. */
+  testOutcome?: 'paid' | 'failed'
+  message: string | null
+  createdBy: string
+  createdAt: Date
+  settledAt: Date | null
+}
+
 export interface UnscopedDb {
   tenants: Collection<TenantDoc>
   users: Collection<UserDoc>
@@ -2785,6 +2862,9 @@ export interface UnscopedDb {
   reportSchedules: Collection<ReportScheduleDoc>
   /** SAMS 11.1: payments still waiting on a gateway, across tenants. */
   onlinePayments: Collection<OnlinePaymentDoc>
+  /** SAMS 13.3: the vendor's billing of schools. */
+  subscriptionInvoices: Collection<SubscriptionInvoiceDoc>
+  subscriptionCheckouts: Collection<SubscriptionCheckoutDoc>
   locks: Collection<LockDoc>
 }
 
@@ -2815,6 +2895,8 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     communicationSettings: database.collection<CommunicationSettingsDoc>('communicationSettings'),
     reportSchedules: database.collection<ReportScheduleDoc>('reportSchedules'),
     onlinePayments: database.collection<OnlinePaymentDoc>('onlinePayments'),
+    subscriptionInvoices: database.collection<SubscriptionInvoiceDoc>('subscriptionInvoices'),
+    subscriptionCheckouts: database.collection<SubscriptionCheckoutDoc>('subscriptionCheckouts'),
     locks: database.collection<LockDoc>('locks'),
   })
 }

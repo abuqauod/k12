@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { withTenant, withoutTenant } from '../db.js'
+import { tenantHasModule } from '../billing/usage.js'
 import type { ParentDoc, ParentStudentLinkDoc, StudentDoc, TenantContext } from '../db.js'
 import { callerBranchIds } from '../auth/guard.js'
 import { parentHiddenFromBranches } from '../parents/service.js'
@@ -292,7 +293,10 @@ export function registerPortalRoutes(app: FastifyInstance): void {
       return {
         balance: rows.reduce((s, r) => s + r.balance, 0),
         // SAMS 11.1: whether the family can pay here, and in what currency.
-        onlinePayment: payments.enabled && payments.provider !== null ? { currency: payments.currency } : null,
+        onlinePayment:
+          payments.enabled && payments.provider !== null && (await tenantHasModule(request.auth!.tenantId!, 'onlinePayments'))
+            ? { currency: payments.currency }
+            : null,
         invoices: rows,
         receipts: receipts.map((r) => ({
           id: r._id,

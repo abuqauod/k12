@@ -153,3 +153,57 @@ export async function resetPassword(token: string, password: string): Promise<Ac
     return { kind: 'error', error: describeNetworkError(error) }
   }
 }
+
+// ---------------------------------------------------------- SAMS 13.2/13.5 --
+
+export interface SignupInput {
+  schoolName: string
+  ownerName: string
+  email: string
+  phone?: string
+  country: string
+  students?: number
+  /** The hidden field bots fill in. */
+  website?: string
+}
+
+/** Starts a free trial: the owner then gets an email to set a password. */
+export async function signup(input: SignupInput): Promise<ActionResult & { invite?: string; trialEndsOn?: string }> {
+  if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
+  try {
+    const response = await post('/public/signup', input)
+    const body = (await response.json().catch(() => ({}))) as { error?: string; invite?: string; trialEndsOn?: string }
+    if (response.ok) return { kind: 'ok', invite: body.invite, trialEndsOn: body.trialEndsOn }
+    return { kind: 'error', error: body.error ?? `HTTP_${response.status}` }
+  } catch (error) {
+    return { kind: 'error', error: describeNetworkError(error) }
+  }
+}
+
+export type PlanCurrency = 'JOD' | 'USD' | 'SAR' | 'AED'
+export interface PublicPlan {
+  key: 'essentials' | 'professional' | 'enterprise'
+  modules: string[]
+  limits: { students: number | null; branches: number | null; smsPerStudent: number | null }
+  price: Record<PlanCurrency, { perStudentYear: number; minimumYear: number }>
+}
+export interface PriceList {
+  currencies: PlanCurrency[]
+  monthlyUplift: number
+  trialDays: number
+  modules: string[]
+  plans: PublicPlan[]
+  signupOpen: boolean
+}
+
+/** The public price list. */
+export async function fetchPriceList(): Promise<{ kind: 'ok'; data: PriceList } | { kind: 'error'; error: string }> {
+  if (!baseUrl()) return { kind: 'error', error: 'NOT_CONFIGURED' }
+  try {
+    const response = await fetch(`${baseUrl()}/public/plans`)
+    if (!response.ok) return { kind: 'error', error: `HTTP_${response.status}` }
+    return { kind: 'ok', data: (await response.json()) as PriceList }
+  } catch (error) {
+    return { kind: 'error', error: describeNetworkError(error) }
+  }
+}

@@ -56,7 +56,7 @@ const FIX_IN: Record<CompletenessItem, Tab> = {
 export function StudentProfilePage() {
   const { id = '' } = useParams()
   const { t, lang } = useI18n()
-  const { getAccessToken, can } = useAuth()
+  const { getAccessToken, can , hasModule } = useAuth()
   const { fleet, students, setStudents } = useApp()
   const [searchParams, setSearchParams] = useSearchParams()
   const [student, setStudent] = useState<Student | null>(null)
@@ -190,13 +190,15 @@ export function StudentProfilePage() {
           </div>
         </div>
         <div className="page__actions" style={{ marginInlineStart: 'auto' }}>
-          <button
-            type="button"
-            className="btn btn--sm"
-            onClick={() => void printIdCards(getAccessToken, 'students', { ids: [student.id], layout: 'card', lang })}
-          >
-            {t('idcards.one')}
-          </button>
+          {hasModule('idCards') && (
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => void printIdCards(getAccessToken, 'students', { ids: [student.id], layout: 'card', lang })}
+            >
+              {t('idcards.one')}
+            </button>
+          )}
         </div>
       </header>
 

@@ -1,5 +1,6 @@
 import { reconcilePending } from '../payments/service.js'
 import { withoutTenant } from '../db.js'
+import { runBillingSweep } from '../billing/service.js'
 import { isSessionDay } from '../calendar.js'
 import { withLock } from '../lock.js'
 import { enqueueAbsenceNotifications, processQueue } from './queue.js'
@@ -82,6 +83,8 @@ export async function runDueSweeps(): Promise<void> {
   })
 }
 
+let lastBillingDay: string | null = null
+
 /** One full tick: enqueue what's due, then process the queue. */
 export async function sweepTick(): Promise<void> {
   await runDueSweeps()
@@ -91,6 +94,13 @@ export async function sweepTick(): Promise<void> {
   await runDueSchedules()
   // SAMS 11.1: online payments the family never came back from.
   await reconcilePending(process.env.PUBLIC_API_URL ?? '')
+  // SAMS 13.3: subscription renewals, reminders and trial notices — once a
+  // day per process; the sweep itself is idempotent across instances.
+  const day = new Date().toISOString().slice(0, 10)
+  if (lastBillingDay !== day) {
+    lastBillingDay = day
+    await runBillingSweep(process.env.PUBLIC_API_URL ?? '')
+  }
   await processQueue()
 }
 

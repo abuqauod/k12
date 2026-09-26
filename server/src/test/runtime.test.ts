@@ -34,6 +34,8 @@ describe('preflight', () => {
     CORS_ORIGINS: 'https://school.example.com',
     BACKUP_DIR: '/backups',
     SMTP_HOST: 'smtp.example.com',
+    VENDOR_PAYMENT_PROVIDER: 'paytabs',
+    VENDOR_BANK_DETAILS: 'IBAN JO00 0000',
   }
 
   test('a complete production environment passes', () => {

@@ -34,7 +34,7 @@ const INSTALLMENT_TONE: Record<string, string> = {
 export function PortalChildPage() {
   const { t, lang, n } = useI18n()
   const { id = '' } = useParams()
-  const { getAccessToken } = useAuth()
+  const { getAccessToken, hasModule } = useAuth()
   const [params, setParams] = useSearchParams()
   const [child, setChild] = useState<PortalChildDetail | null>(null)
   const [missing, setMissing] = useState(false)
@@ -55,7 +55,10 @@ export function PortalChildPage() {
   }
   if (!child) return <div className="skeleton" style={{ height: 160 }} />
 
-  const tabs: Tab[] = child.finance ? ['overview', 'finance', 'reports', 'wallet', 'documents'] : ['overview', 'reports', 'wallet', 'documents']
+  // A module outside the school's plan has no tab (SAMS 13.1).
+  const tabs = (['overview', 'finance', 'reports', 'wallet', 'documents'] as Tab[]).filter(
+    (x) => (x !== 'finance' || child.finance) && (x !== 'reports' || hasModule('grades')) && (x !== 'wallet' || hasModule('canteen')),
+  )
   const tab = (tabs.includes(params.get('tab') as Tab) ? params.get('tab') : 'overview') as Tab
   const absences = (child.attendance.counts.absent ?? 0) + (child.attendance.counts.excused ?? 0)
 

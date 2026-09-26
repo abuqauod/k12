@@ -213,6 +213,9 @@ export function LoginPage() {
             <button type="submit" className="btn btn--primary btn--block login__submit" disabled={busy} aria-busy={busy}>
               {busy ? t('login.signingIn') : t('login.submit')}
             </button>
+            <Link to="/signup" className="login__forgot" style={{ textAlign: 'center' }}>
+              {t('login.startTrial')}
+            </Link>
 
             <details className="login__demo">
               <summary>{t('login.demoTitle')}</summary>

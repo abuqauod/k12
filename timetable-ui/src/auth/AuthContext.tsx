@@ -41,6 +41,23 @@ interface AuthValue {
    * False until that answer arrives; the server enforces either way.
    */
   can: (scope: string) => boolean
+  /**
+   * SAMS 13.1: whether the school's plan includes `module` (billing/plans.ts
+   * on the server). True until the answer arrives, so nothing flickers away.
+   */
+  hasModule: (module: string) => boolean
+  /** The school's plan key, and the trial's last day while on trial. */
+  plan: string | null
+  trialEndsOn: string | null
+  /** SAMS 13.3: where the school's subscription stands. */
+  subscription: SubscriptionStanding | null
+}
+
+export interface SubscriptionStanding {
+  state: 'active' | 'grace' | 'readOnly' | 'locked' | 'inactive'
+  validUntil: string | null
+  graceEnds: string | null
+  readOnlyUntil: string | null
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -166,7 +183,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (initial) void getAccessToken()
   }, [initial, getAccessToken])
 
-  const [access, setAccess] = useState<{ roleKey: AccessRoleKey | null; scopes: ReadonlySet<string> } | null>(null)
+  const [access, setAccess] = useState<{
+    roleKey: AccessRoleKey | null
+    scopes: ReadonlySet<string>
+    plan: string | null
+    modules: ReadonlySet<string>
+    trialEndsOn: string | null
+    subscription: SubscriptionStanding | null
+  } | null>(null)
   const [accessFor, setAccessFor] = useState<string | null>(null)
   const userId = user?.id
   const tenantId = tenant?.id
@@ -177,7 +201,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     void fetchMyAccess(getAccessToken).then((result) => {
       if (cancelled) return
-      setAccess(result.kind === 'ok' ? { roleKey: result.data.roleKey, scopes: new Set(result.data.scopes) } : null)
+      setAccess(
+        result.kind === 'ok'
+          ? {
+              roleKey: result.data.roleKey,
+              scopes: new Set(result.data.scopes),
+              plan: result.data.plan ?? null,
+              modules: new Set(result.data.modules ?? []),
+              trialEndsOn: result.data.trialEndsOn ?? null,
+              subscription: result.data.subscription ?? null,
+            }
+          : null,
+      )
       setAccessFor(`${userId}:${tenantId}`)
     })
     return () => {
@@ -187,10 +222,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const can = useCallback((scope: string) => (userId ? (access?.scopes.has(scope) ?? false) : false), [access, userId])
   const roleKey = userId ? (access?.roleKey ?? null) : null
+  const hasModule = useCallback((module: string) => (access ? access.modules.has(module) : true), [access])
+  const plan = access?.plan ?? null
+  const trialEndsOn = access?.trialEndsOn ?? null
+  const subscription = access?.subscription ?? null
 
   const accessReady = !userId || accessFor === `${userId}:${tenantId}`
 
-  const value: AuthValue = { user, tenant, signIn, signOut, getAccessToken, roleKey, accessReady, can }
+  const value: AuthValue = { user, tenant, signIn, signOut, getAccessToken, roleKey, accessReady, can, hasModule, plan, trialEndsOn, subscription }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

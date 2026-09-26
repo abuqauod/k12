@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { withTenant, withoutTenant } from '../db.js'
+import { tenantHasModule } from '../billing/usage.js'
 import { config } from '../config.js'
 import { scoped } from '../records.js'
 
@@ -43,7 +44,8 @@ export function registerOnboardingRoutes(app: FastifyInstance): void {
         { key: 'team', done: members > 1, link: '/settings/team', count: members },
         { key: 'payments', done: Boolean(gateway?.enabled && gateway.provider), link: '/settings/payments' },
       ]
-      return out
+      // Online payments is a module of its own (SAMS 13.1).
+      return (await tenantHasModule(tenantId, 'onlinePayments')) ? out : out.filter((s) => s.key !== 'payments')
     })
     return reply.send({
       steps,

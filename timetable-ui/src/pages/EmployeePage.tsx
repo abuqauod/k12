@@ -45,7 +45,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 export function EmployeePage() {
   const { id = '' } = useParams()
   const { t, lang } = useI18n()
-  const { getAccessToken, can } = useAuth()
+  const { getAccessToken, can, hasModule } = useAuth()
   const { branches } = useApp()
   const departments = useLookup('department')
   const positions = useLookup('position')
@@ -101,14 +101,16 @@ export function EmployeePage() {
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          className="btn btn--sm"
-          style={{ marginInlineStart: 'auto' }}
-          onClick={() => void printIdCards(getAccessToken, 'employees', { ids: [employee.id], layout: 'card', lang })}
-        >
-          {t('idcards.one')}
-        </button>
+        {hasModule('idCards') && (
+          <button
+            type="button"
+            className="btn btn--sm"
+            style={{ marginInlineStart: 'auto' }}
+            onClick={() => void printIdCards(getAccessToken, 'employees', { ids: [employee.id], layout: 'card', lang })}
+          >
+            {t('idcards.one')}
+          </button>
+        )}
         {canEdit && (
           <div className="page__actions">
             {employee.status === 'active' ? (

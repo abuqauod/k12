@@ -123,6 +123,11 @@
   <main>
     <div id="view-list">
       <div class="card">
+        <h2>Revenue</h2>
+        <div id="revenue"><span class="muted">Loading…</span></div>
+      </div>
+
+      <div class="card">
         <h2>Create a school</h2>
         <div id="create-msg"></div>
         <form id="create-form">
@@ -130,6 +135,15 @@
             <label>Slug <input id="c-slug" placeholder="northgate" required pattern="[a-z0-9]+(-[a-z0-9]+)*" /></label>
             <label>Name <input id="c-name" placeholder="Northgate International School" required /></label>
             <label>Seats <input id="c-seats" type="number" value="25" min="1" /></label>
+            <label>Plan
+              <select id="c-plan">
+                <option value="essentials">essentials</option>
+                <option value="professional" selected>professional</option>
+                <option value="enterprise">enterprise</option>
+                <option value="trial">trial</option>
+                <option value="custom">custom (everything)</option>
+              </select>
+            </label>
           </div>
           <div class="row" style="margin-top:10px;">
             <label>Owner email <input id="c-owner-email" type="email" required /></label>
@@ -146,7 +160,7 @@
         <h2>Schools</h2>
         <table>
           <thead>
-            <tr><th>School</th><th>Status</th><th>Plan</th><th>Members</th><th>Valid until</th></tr>
+            <tr><th>School</th><th>Status</th><th>Plan</th><th>Members</th><th>Valid until</th><th>Source</th></tr>
           </thead>
           <tbody id="tenants-body"></tbody>
         </table>
@@ -170,13 +184,57 @@
               <option value="cancelled">cancelled</option>
             </select>
           </label>
-          <label>Plan <input id="d-plan" /></label>
+          <label>Plan
+            <select id="d-plan">
+              <option value="essentials">essentials</option>
+              <option value="professional">professional</option>
+              <option value="enterprise">enterprise</option>
+              <option value="trial">trial</option>
+              <option value="custom">custom (everything)</option>
+            </select>
+          </label>
           <label>Seats <input id="d-seats" type="number" min="1" /></label>
           <label>Valid until <input id="d-valid-until" type="date" /></label>
           <label>Grace days <input id="d-grace-days" type="number" min="0" /></label>
         </div>
         <div class="row" style="margin-top:10px;">
+          <label>Add-on modules (comma-separated) <input id="d-addons" placeholder="canteen, operations" /></label>
+          <label>Student limit <input id="d-limit-students" type="number" min="0" placeholder="plan's" /></label>
+          <label>Campus limit <input id="d-limit-branches" type="number" min="1" placeholder="plan's" /></label>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <label>Billing currency
+            <select id="d-currency"><option>JOD</option><option>USD</option><option>SAR</option><option>AED</option></select>
+          </label>
+          <label>Term
+            <select id="d-term"><option value="year">year</option><option value="month">month</option></select>
+          </label>
+          <label>Billed students <input id="d-billed" type="number" min="0" /></label>
+          <label>Billing email <input id="d-billing-email" type="email" placeholder="owners' when empty" /></label>
+          <label>Country <input id="d-country" maxlength="2" placeholder="JO" /></label>
+        </div>
+        <p class="muted" id="d-usage"></p>
+        <div class="row" style="margin-top:10px;">
           <button class="primary" id="save-tenant-btn">Save</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Subscription invoices</h2>
+        <div id="inv-msg"></div>
+        <table>
+          <thead><tr><th>Number</th><th>Plan / period</th><th>Total</th><th>Status</th><th></th></tr></thead>
+          <tbody id="inv-body"></tbody>
+        </table>
+        <div class="row" style="margin-top:10px;">
+          <label>Plan
+            <select id="n-plan"><option>essentials</option><option selected>professional</option><option>enterprise</option></select>
+          </label>
+          <label>Term <select id="n-term"><option value="year">year</option><option value="month">month</option></select></label>
+          <label>Students <input id="n-students" type="number" min="1" placeholder="billed / enrolled" /></label>
+          <label>Tax % <input id="n-tax" type="number" min="0" max="50" placeholder="by country" /></label>
+          <label>Onboarding fee (major units) <input id="n-onboarding" type="number" min="0" placeholder="0" /></label>
+          <button id="n-create">Issue invoice</button>
         </div>
       </div>
 
@@ -364,6 +422,7 @@
     el('view-login').hidden = true;
     el('view-app').hidden = false;
     loadTenants();
+    loadRevenue();
   }
 
   // --- tenants list ---
@@ -380,7 +439,8 @@
           '<td><span class="badge ' + t.status + '">' + t.status + '</span></td>' +
           '<td>' + escapeHtml(t.plan) + '</td>' +
           '<td>' + t.memberCount + ' / ' + t.seats + '</td>' +
-          '<td>' + (t.validUntil || '—') + '</td>';
+          '<td>' + (t.validUntil || '—') + '</td>' +
+          '<td>' + escapeHtml(t.source || 'console') + '</td>';
         body.appendChild(tr);
       });
     }).catch(function (e) { alert('Failed to load schools: ' + e.message); });
@@ -396,6 +456,7 @@
         slug: el('c-slug').value.trim(),
         name: el('c-name').value.trim(),
         seats: Number(el('c-seats').value) || 25,
+        plan: el('c-plan').value,
         validUntil: el('c-valid-until').value || null,
         ownerEmail: el('c-owner-email').value.trim(),
         ownerName: el('c-owner-name').value.trim() || undefined,
@@ -425,7 +486,20 @@
       el('detail-name').textContent = t.name;
       el('detail-id').textContent = t.id;
       el('d-status').value = t.status;
-      el('d-plan').value = t.plan;
+      el('d-plan').value = ['essentials', 'professional', 'enterprise', 'trial', 'custom'].indexOf(t.plan) >= 0 ? t.plan : 'custom';
+      el('d-addons').value = (t.addons || []).join(', ');
+      el('d-limit-students').value = t.limitOverrides && t.limitOverrides.students != null ? t.limitOverrides.students : '';
+      el('d-limit-branches').value = t.limitOverrides && t.limitOverrides.branches != null ? t.limitOverrides.branches : '';
+      var b = t.billing || {};
+      el('d-currency').value = b.currency || 'JOD';
+      el('d-term').value = b.term || 'year';
+      el('d-billed').value = b.students != null ? b.students : '';
+      el('d-billing-email').value = b.email || '';
+      el('d-country').value = b.country || '';
+      var u = t.usage || {};
+      el('d-usage').textContent = 'Uses: ' + u.students + ' students (limit ' + (t.limits.students == null ? 'none' : t.limits.students) + '), ' +
+        u.branches + ' campuses (limit ' + (t.limits.branches == null ? 'none' : t.limits.branches) + '), ' +
+        u.staff + ' staff, ' + u.smsThisMonth + ' SMS this month. Modules: ' + (t.modules.join(', ') || 'core only') + '.';
       el('d-seats').value = t.seats;
       el('d-valid-until').value = t.validUntil || '';
       el('d-grace-days').value = t.graceDays;
@@ -433,6 +507,7 @@
     }).catch(function (e) { alert('Failed to load school: ' + e.message); });
     loadKeys();
     loadBranches();
+    loadInvoices();
   }
 
   function renderMembers(members) {
@@ -629,16 +704,103 @@
       method: 'PATCH',
       body: JSON.stringify({
         status: el('d-status').value,
-        plan: el('d-plan').value.trim(),
+        plan: el('d-plan').value,
+        addons: el('d-addons').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean),
+        limits: {
+          students: el('d-limit-students').value === '' ? null : Number(el('d-limit-students').value),
+          branches: el('d-limit-branches').value === '' ? null : Number(el('d-limit-branches').value),
+        },
+        billing: {
+          currency: el('d-currency').value,
+          term: el('d-term').value,
+          students: Number(el('d-billed').value) || 0,
+          email: el('d-billing-email').value.trim() || null,
+          country: el('d-country').value.trim().toUpperCase() || null,
+        },
         seats: Number(el('d-seats').value),
         validUntil: el('d-valid-until').value || null,
         graceDays: Number(el('d-grace-days').value),
       }),
     }).then(function () {
       showMsg(msg, 'Saved.', 'success');
-      loadTenants();
+      openTenant(currentTenantId);
     }).catch(function (e) { showMsg(msg, e.message, 'error'); });
   });
+
+  // --- subscription invoices (SAMS 13.3) ---
+  function money(minor, currency) { return (minor / 100).toFixed(2) + ' ' + currency; }
+
+  function loadInvoices() {
+    api('/admin/tenants/' + currentTenantId + '/subscription-invoices').then(function (data) {
+      var body = el('inv-body');
+      body.innerHTML = '';
+      data.invoices.forEach(function (i) {
+        var tr = document.createElement('tr');
+        var status = i.status === 'paid' ? 'paid ' + (i.paidAt || '').slice(0, 10) + ' (' + i.paidBy + (i.reference ? ', ' + i.reference : '') + ')'
+          : i.status === 'open' ? 'open, due ' + i.dueDate : i.status;
+        tr.innerHTML = '<td><code>' + escapeHtml(i.number) + '</code></td>' +
+          '<td>' + escapeHtml(i.plan) + ' · ' + i.periodStart + ' – ' + i.periodEnd + '<br><span class="muted">' + i.students + ' students · ' + escapeHtml(i.source) + '</span></td>' +
+          '<td>' + money(i.total, i.currency) + '</td><td>' + escapeHtml(status) + '</td><td></td>';
+        if (i.status === 'open') {
+          var pay = document.createElement('button');
+          pay.textContent = 'Record transfer';
+          pay.addEventListener('click', function () {
+            var ref = prompt('Bank reference for ' + i.number + ':');
+            if (!ref) return;
+            api('/admin/subscription-invoices/' + i.id + '/pay', { method: 'POST', body: JSON.stringify({ reference: ref }) })
+              .then(function () { showMsg(el('inv-msg'), 'Recorded — the school is paid through ' + i.periodEnd + '.', 'success'); openTenant(currentTenantId); })
+              .catch(function (e) { showMsg(el('inv-msg'), e.message, 'error'); });
+          });
+          var voidBtn = document.createElement('button');
+          voidBtn.className = 'danger';
+          voidBtn.textContent = 'Void';
+          voidBtn.addEventListener('click', function () {
+            if (!confirm('Void ' + i.number + '?')) return;
+            api('/admin/subscription-invoices/' + i.id + '/void', { method: 'POST' })
+              .then(loadInvoices)
+              .catch(function (e) { showMsg(el('inv-msg'), e.message, 'error'); });
+          });
+          tr.lastChild.appendChild(pay);
+          tr.lastChild.appendChild(voidBtn);
+        }
+        body.appendChild(tr);
+      });
+    }).catch(function (e) { showMsg(el('inv-msg'), e.message, 'error'); });
+  }
+
+  el('n-create').addEventListener('click', function () {
+    var body = { plan: el('n-plan').value, term: el('n-term').value };
+    if (el('n-students').value) body.students = Number(el('n-students').value);
+    if (el('n-tax').value !== '') body.taxRate = Number(el('n-tax').value);
+    var fee = Number(el('n-onboarding').value);
+    if (fee > 0) body.extraLines = [{ label: 'Onboarding: data import and staff training', amount: Math.round(fee * 100) }];
+    api('/admin/tenants/' + currentTenantId + '/subscription-invoices', { method: 'POST', body: JSON.stringify(body) })
+      .then(function (inv) { showMsg(el('inv-msg'), 'Issued ' + inv.number + ' for ' + money(inv.total, inv.currency) + ' and emailed to the school.', 'success'); loadInvoices(); })
+      .catch(function (e) { showMsg(el('inv-msg'), e.message, 'error'); });
+  });
+
+  // --- revenue (SAMS 13.4) ---
+  function loadRevenue() {
+    api('/admin/revenue').then(function (r) {
+      function amounts(o) {
+        var parts = Object.keys(o).filter(function (c) { return o[c]; }).map(function (c) { return money(o[c], c); });
+        return parts.length ? parts.join(' · ') : '—';
+      }
+      var plans = Object.keys(r.plans).map(function (k) { return escapeHtml(k) + ': ' + r.plans[k]; }).join(' · ');
+      var conv = r.trials.conversionRate == null ? '—' : Math.round(r.trials.conversionRate * 100) + '%';
+      el('revenue').innerHTML =
+        '<table><tbody>' +
+        '<tr><th>MRR</th><td>' + amounts(r.mrr) + '</td></tr>' +
+        '<tr><th>ARR</th><td>' + amounts(r.arr) + '</td></tr>' +
+        '<tr><th>Collected this month</th><td>' + amounts(r.collectedMonth) + '</td></tr>' +
+        '<tr><th>Collected this year</th><td>' + amounts(r.collectedYear) + '</td></tr>' +
+        '<tr><th>Open invoices</th><td>' + amounts(r.open) + ' (overdue ' + amounts(r.overdue) + ')</td></tr>' +
+        '<tr><th>Active schools by plan</th><td>' + (plans || '—') + '</td></tr>' +
+        '<tr><th>Trials</th><td>' + r.trials.active + ' running, ' + r.trials.endingThisWeek + ' ending this week · ' +
+          r.trials.signups + ' sign-ups, ' + r.trials.converted + ' paying (conversion ' + conv + ')</td></tr>' +
+        '</tbody></table>';
+    }).catch(function (e) { el('revenue').textContent = 'Failed to load: ' + e.message; });
+  }
 
   el('invite-btn').addEventListener('click', function () {
     var msg = el('invite-msg');

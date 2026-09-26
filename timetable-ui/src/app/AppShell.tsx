@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useApp } from '../state/AppContext'
 import { useI18n } from '../i18n/I18nContext'
@@ -7,6 +7,7 @@ import { BrandMark } from '../components/BrandMark'
 import { LanguageToggle } from '../components/LanguageToggle'
 import { GlobalSearch } from '../components/GlobalSearch'
 import { InboxBell } from '../components/InboxBell'
+import { SubscriptionBanner } from '../components/SubscriptionBanner'
 import type { TranslationKey } from '../i18n/translations'
 
 interface NavEntry {
@@ -18,6 +19,8 @@ interface NavEntry {
   /** Shown with any one of these. */
   anyScope?: string[]
   group: 'plan' | 'ops' | 'account'
+  /** SAMS 13.1: hidden when the school's plan doesn't include it. */
+  module?: string
 }
 
 // Day-to-day work sits under "plan"; the rest under "account". Every
@@ -27,20 +30,20 @@ export const NAV: NavEntry[] = [
   { to: '/dashboard', key: 'nav.dashboard', icon: '▤', group: 'plan', scope: 'dashboard.read' },
   { to: '/timetable', key: 'nav.timetable', icon: '▦', group: 'plan', scope: 'datasets.read' },
   { to: '/students', key: 'nav.students', icon: '☺', group: 'plan', scope: 'students.read' },
-  { to: '/admissions', key: 'nav.admissions', icon: '✎', group: 'plan', scope: 'admissions.read' },
+  { to: '/admissions', key: 'nav.admissions', icon: '✎', group: 'plan', scope: 'admissions.read', module: 'admissions' },
   { to: '/parents', key: 'nav.parents', icon: '⚭', group: 'plan', scope: 'parents.read' },
   { to: '/classes', key: 'nav.classes', icon: '▣', group: 'plan', scope: 'classes.read' },
   { to: '/attendance', key: 'nav.attendance', icon: '✓', group: 'plan', scope: 'attendance.read' },
-  { to: '/grades', key: 'nav.grades', icon: '✦', group: 'plan', scope: 'grades.read' },
-  { to: '/behaviour', key: 'nav.behaviour', icon: '⚑', group: 'plan', scope: 'discipline.report' },
-  { to: '/clinic', key: 'nav.clinic', icon: '✚', group: 'plan', scope: 'health.read' },
-  { to: '/hr', key: 'nav.hr', icon: '♙', group: 'ops', scope: 'hr.read' },
-  { to: '/operations', key: 'nav.operations', icon: '⚒', group: 'ops', scope: 'ops.read' },
-  { to: '/canteen', key: 'nav.canteen', icon: '☕', group: 'ops', scope: 'canteen.sell' },
-  { to: '/library', key: 'nav.library', icon: '❏', group: 'ops', scope: 'ops.read' },
-  { to: '/events', key: 'nav.events', icon: '✷', group: 'ops', scope: 'ops.read' },
-  { to: '/fleet', key: 'nav.fleet', icon: '⛟', group: 'ops', scope: 'transport.read' },
-  { to: '/routes', key: 'nav.routes', icon: '⌖', group: 'account', scope: 'transport.read' },
+  { to: '/grades', key: 'nav.grades', icon: '✦', group: 'plan', scope: 'grades.read', module: 'grades' },
+  { to: '/behaviour', key: 'nav.behaviour', icon: '⚑', group: 'plan', scope: 'discipline.report', module: 'wellbeing' },
+  { to: '/clinic', key: 'nav.clinic', icon: '✚', group: 'plan', scope: 'health.read', module: 'wellbeing' },
+  { to: '/hr', key: 'nav.hr', icon: '♙', group: 'ops', scope: 'hr.read', module: 'hr' },
+  { to: '/operations', key: 'nav.operations', icon: '⚒', group: 'ops', scope: 'ops.read', module: 'operations' },
+  { to: '/canteen', key: 'nav.canteen', icon: '☕', group: 'ops', scope: 'canteen.sell', module: 'canteen' },
+  { to: '/library', key: 'nav.library', icon: '❏', group: 'ops', scope: 'ops.read', module: 'library' },
+  { to: '/events', key: 'nav.events', icon: '✷', group: 'ops', scope: 'ops.read', module: 'operations' },
+  { to: '/fleet', key: 'nav.fleet', icon: '⛟', group: 'ops', scope: 'transport.read', module: 'transport' },
+  { to: '/routes', key: 'nav.routes', icon: '⌖', group: 'account', scope: 'transport.read', module: 'transport' },
   { to: '/finance', key: 'nav.finance', icon: '⛃', group: 'account', scope: 'finance.read' },
   { to: '/approvals', key: 'nav.approvals', icon: '⚖', group: 'account' },
   {
@@ -67,7 +70,7 @@ function readCollapsed(): boolean {
 
 export function AppShell() {
   const { t, lang } = useI18n()
-  const { user, signOut, roleKey, can } = useAuth()
+  const { user, signOut, roleKey, can, hasModule } = useAuth()
   const { branches, activeBranchId, setActiveBranchId } = useApp()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -112,7 +115,13 @@ export function AppShell() {
     .slice(0, 2)
     .join('')
 
-  const visible = (e: NavEntry) => (!e.scope || can(e.scope)) && (!e.anyScope || e.anyScope.some(can))
+  // SAMS 13.1: a page of a module the plan lacks, reached by its address.
+  const { pathname } = useLocation()
+  const here = NAV.find((e) => pathname === e.to || pathname.startsWith(`${e.to}/`))
+  const outsidePlan = here?.module && !hasModule(here.module) ? here.module : null
+
+  const visible = (e: NavEntry) =>
+    (!e.scope || can(e.scope)) && (!e.anyScope || e.anyScope.some(can)) && (!e.module || hasModule(e.module))
 
   const renderLink = (entry: NavEntry) => (
     <NavLink
@@ -250,10 +259,30 @@ export function AppShell() {
           )}
           <InboxBell />
         </div>
-        <Outlet />
+        <SubscriptionBanner />
+        {outsidePlan ? <OutsidePlan module={outsidePlan} /> : <Outlet />}
       </div>
 
       {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
+    </div>
+  )
+}
+
+/** Shown instead of a page whose module the school's plan doesn't include. */
+function OutsidePlan({ module }: { module: string }) {
+  const { t } = useI18n()
+  const { can } = useAuth()
+  return (
+    <div className="page">
+      <div className="empty-state">
+        <h2>{t(`plan.module.${module}` as TranslationKey)}</h2>
+        <p>{t('plan.outside')}</p>
+        {can('settings.read') && (
+          <Link to="/settings/subscription" className="btn btn--primary">
+            {t('plan.outsideLink')}
+          </Link>
+        )}
+      </div>
     </div>
   )
 }

@@ -657,6 +657,62 @@ and the console's revenue view · 13.5 Public pricing page and legal
 documents (terms, privacy, data processing) · 13.6 The business model:
 `docs/saas-business-model.md`.
 
+**Built.**
+
+- *13.1 Plans.* Essentials, Professional, Enterprise and a 30-day trial,
+  each a set of modules over the core with limits on students, campuses
+  and SMS (`billing/plans.ts`, the one place prices and modules are set).
+  - Every tenant route passes the plan check, which answers 402
+    `PLAN_EXCLUDES_MODULE`.
+  - Menus, tabs, settings sections, portal tabs and ID-card buttons hide
+    what the plan lacks. A page reached by its address says it is not in
+    the plan.
+  - Sweeps skip excluded modules: scheduled reports, library notices, and
+    transport loading.
+  - Student limits are checked on create, import and admission. Campus
+    limits are checked in the console.
+  - The console sets plan, add-on modules, limit overrides and billing
+    details. `custom` means everything, for agreed deals. Schools opened
+    before plans existed keep everything.
+- *13.2 Trial sign-up.* The public `/signup` page (`POST /public/signup`)
+  gives:
+  - a trial school with a first campus in its country's time zone and its
+    currency;
+  - the owner invited by email, and accepting signs them straight in.
+  - It is rate-limited, has a hidden field for bots, allows one trial per
+    email, notifies sales, and `SIGNUP=off` closes it.
+- *13.3 Subscription billing.* Settings → Subscription shows:
+  - the plan, its standing and usage against limits;
+  - a live quote, where choosing a plan issues an invoice;
+  - card payment through the vendor's own PayTabs or HyperPay account
+    (`VENDOR_*`; a test gateway in development), or bank transfer;
+  - invoices, printable with the vendor's details and bank information.
+  - Paying applies the plan and paid-through date exactly once.
+  - The console issues invoices (with onboarding fees or discounts as
+    extra lines), records transfers and voids invoices.
+  - The daily sweep issues renewal invoices 30 days ahead, reminds about
+    unpaid invoices (7 days before, on the day, 7 days after), and emails
+    trials 7 days and 1 day before they end.
+  - A lapsed school keeps its grace days, then reads and exports its data
+    for 60 days before it is locked. It can always reach the page to pay.
+    A banner in the app says where the school stands.
+- *13.4 Metering and revenue.* Usage per school: enrolled students,
+  campuses, staff, and SMS this month. The console's Revenue card shows:
+  - MRR and ARR per currency;
+  - collections for the month and year;
+  - open and overdue invoices;
+  - schools by plan;
+  - trials, sign-ups and conversion.
+- *13.5* The public `/pricing` page reads `GET /public/plans`. It shows four
+  currencies, yearly or monthly terms and a calculator. Templates for the
+  terms, privacy policy and DPA are in `timetable-ui/public/legal/`, marked
+  for legal review.
+- *13.6* `docs/saas-business-model.md`: the price list, the reasoning, unit
+  economics, go-to-market, tax and legal notes, KPIs and open decisions.
+
+Also fixed: staff landed on Approvals after signing in. The first-page
+redirect ran before the user's permissions had loaded; it now waits.
+
 ---
 
 ## Backlog — extras (built on request)

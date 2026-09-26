@@ -27,6 +27,14 @@ what to check after every deploy. Server details are in
         with the server.
   - [ ] Error reporting (recommended): `ERROR_REPORTING_DSN` from Sentry or
         GlitchTip.
+  - [ ] Selling the service (SAMS 13, see `docs/saas-business-model.md`):
+        `VENDOR_PAYMENT_PROVIDER` and its keys (the vendor's own merchant
+        account, for subscription card payments), `VENDOR_BANK_DETAILS`,
+        `VENDOR_NAME` / `VENDOR_ADDRESS` / `VENDOR_TAX_NUMBER` for invoices,
+        `VENDOR_TAX_RATES`, `SALES_EMAIL` and `SALES_NOTIFY_EMAIL`;
+        `SIGNUP=off` to close self-serve trials.
+- [ ] The legal pages in `timetable-ui/public/legal/` completed (company
+      details, sub-processors) and reviewed by a lawyer.
 - [ ] GitHub secrets for the deploy workflow: `SSH_HOST`, `SSH_USER`,
       `SSH_PRIVATE_KEY`, and `UI_DOCROOT` (where the web server serves the
       school app from).

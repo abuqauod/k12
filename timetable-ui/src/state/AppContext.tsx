@@ -199,7 +199,9 @@ const ACTIVE_BRANCH_KEY = 'timetable.activeBranch'
 
 export function AppProvider({ children }: { children: ReactNode }) {
   // Sync authenticates as the signed-in user — no separate token setting.
-  const { getAccessToken, user: signedIn, roleKey, accessReady, tenant } = useAuth()
+  const { getAccessToken, user: signedIn, roleKey, accessReady, tenant, hasModule } = useAuth()
+  // SAMS 13.1: transport is a module; a plan without it has nothing to load.
+  const transportOn = accessReady && hasModule('transport')
   // Everything loaded here is the staff app's; a parent portal login
   // (SAMS 6.4) loads none of it.
   const user = accessReady && roleKey !== 'parent' ? signedIn : null
@@ -303,7 +305,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const transportSettingsBranchRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!user || !activeBranchId) {
+    if (!user || !activeBranchId || !transportOn) {
       setBuses([])
       setStops([])
       setTransportSettings(DEFAULT_TRANSPORT_SETTINGS)
@@ -335,7 +337,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [user, activeBranchId, getAccessToken])
+  }, [user, activeBranchId, getAccessToken, transportOn])
 
   const studentCounts = useMemo(() => {
     const counts = new Map<string, number>()

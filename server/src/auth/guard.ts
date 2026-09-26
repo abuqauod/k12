@@ -5,6 +5,8 @@ import { verifyAccessToken } from './tokens.js'
 import type { AccessClaims, Role } from './tokens.js'
 import { scopesFor, type PermissionScope } from './scopes.js'
 import type { MembershipDoc } from '../db.js'
+import { config } from '../config.js'
+import { moduleOfRoute, modulesOf, subscriptionState } from '../billing/plans.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -198,15 +200,24 @@ export async function requireActiveSubscription(
     await reply.code(402).send({ error: 'SUBSCRIPTION_INACTIVE', status: tenant.status })
     return
   }
-  if (tenant.validUntil) {
-    const deadline = new Date(tenant.validUntil)
-    deadline.setDate(deadline.getDate() + tenant.graceDays)
-    if (Date.now() > deadline.getTime()) {
-      await reply.code(402).send({
-        error: 'SUBSCRIPTION_EXPIRED',
-        validUntil: tenant.validUntil,
-        graceDays: tenant.graceDays,
-      })
-    }
+  // SAMS 13.3: past its grace days a school may still read and export its
+  // data for READ_ONLY_DAYS; it can't change anything until it renews.
+  const standing = subscriptionState(tenant)
+  const reading = request.method === 'GET' || request.method === 'HEAD'
+  if (standing.state === 'locked' || (standing.state === 'readOnly' && !reading)) {
+    await reply.code(402).send({
+      error: 'SUBSCRIPTION_EXPIRED',
+      validUntil: tenant.validUntil,
+      graceDays: tenant.graceDays,
+      readOnlyUntil: standing.readOnlyUntil,
+    })
+    return
+  }
+  // SAMS 13.1: a module the school's plan doesn't include.
+  const url = request.routeOptions.url ?? ''
+  const pattern = config.routePrefix && url.startsWith(config.routePrefix) ? url.slice(config.routePrefix.length) : url
+  const module = moduleOfRoute(pattern)
+  if (module && !modulesOf(tenant).has(module)) {
+    await reply.code(402).send({ error: 'PLAN_EXCLUDES_MODULE', module, plan: tenant.plan })
   }
 }

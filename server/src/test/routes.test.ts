@@ -29,6 +29,14 @@ const EXEMPT: Record<string, string> = {
   'GET /payments/test/:tenantId/:id': 'public; the test gateway page, off in production',
   'POST /payments/test/:tenantId/:id': 'public; the test gateway page, off in production',
   'GET /documents/file': 'signed, expiring download link (auth.test / documents.test)',
+  'GET /billing/return/:id': 'public; the vendor gateway returns the browser here — settles only on the gateway’s own status answer',
+  'POST /billing/return/:id': 'public; as above (form post)',
+  'POST /billing/callback/:id': 'public; signature-checked where the gateway signs, then a status query',
+  'GET /billing/hyperpay/:id': 'public; the card widget page for a pending subscription checkout',
+  'GET /billing/test/:id': 'public; the test gateway page, off in production',
+  'POST /billing/test/:id': 'public; the test gateway page, off in production',
+  'GET /public/plans': 'public; the price list (plans.test)',
+  'POST /public/signup': 'public; rate-limited trial sign-up, owner proven by the emailed invite (signup.test)',
 }
 
 

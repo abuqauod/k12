@@ -20,10 +20,10 @@ import type { TranslationKey } from '../i18n/translations'
 type StatusFilter = InvoiceStatus | 'ALL'
 
 type Tab = 'invoices' | 'confirmations' | 'online' | 'scholarships' | 'refunds' | 'expenses' | 'reports'
-const TABS: { id: Tab; label: TranslationKey; scope?: string }[] = [
+const TABS: { id: Tab; label: TranslationKey; scope?: string; module?: string }[] = [
   { id: 'invoices', label: 'billing.invoices' },
   { id: 'confirmations', label: 'fin.tab.confirmations' },
-  { id: 'online', label: 'fin.tab.online' },
+  { id: 'online', label: 'fin.tab.online', module: 'onlinePayments' },
   { id: 'scholarships', label: 'fin.scholarships' },
   { id: 'refunds', label: 'fin.refunds' },
   { id: 'expenses', label: 'fin.expenses' },
@@ -33,7 +33,7 @@ const TABS: { id: Tab; label: TranslationKey; scope?: string }[] = [
 export function FinancePage() {
   const { t } = useI18n()
   const { branches, activeBranchId } = useApp()
-  const { getAccessToken, can } = useAuth()
+  const { getAccessToken, can, hasModule } = useAuth()
   const canManageFees = can('finance.feeStructure.manage')
 
   const [years, setYears] = useState<AcademicYear[]>([])
@@ -49,7 +49,7 @@ export function FinancePage() {
   // ?invoice=<id> (from global search) opens that invoice once, then clears.
   const [searchParams, setSearchParams] = useSearchParams()
   // The tab is in the URL (?tab=), like the student profile.
-  const tabs = TABS.filter((x) => !x.scope || can(x.scope))
+  const tabs = TABS.filter((x) => (!x.scope || can(x.scope)) && (!x.module || hasModule(x.module)))
   const requested = searchParams.get('tab') as Tab | null
   const tab: Tab = tabs.some((x) => x.id === requested) ? requested! : 'invoices'
   const selectTab = (next: Tab) =>

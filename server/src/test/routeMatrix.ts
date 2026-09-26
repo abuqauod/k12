@@ -313,6 +313,13 @@ export const ROUTES: [Method, string, Role][] = [
   // SAMS 11.1 online payments.
   ['GET', '/settings/payments', 'viewer'],
   ['PUT', '/settings/payments', 'admin'],
+  // SAMS 13.3: the school's subscription.
+  ['GET', '/subscription', 'viewer'],
+  ['POST', '/subscription/quote', 'viewer'],
+  ['POST', '/subscription/invoices', 'admin'],
+  ['POST', `/subscription/invoices/${X}/pay`, 'admin'],
+  ['GET', `/subscription/invoices/${X}/print`, 'viewer'],
+  ['GET', `/subscription/checkouts/${X}`, 'viewer'],
   ['GET', '/finance/online-payments', 'viewer'],
   ['POST', `/finance/online-payments/${X}/check`, 'viewer'],
   // SAMS 12: the getting-started checklist.
@@ -363,6 +370,11 @@ export const PLATFORM_ROUTES: [Method, string][] = [
   ['POST', '/admin/tenants'],
   ['PATCH', `/admin/tenants/${X}`],
   ['POST', `/admin/tenants/${X}/invite`],
+  ['GET', `/admin/tenants/${X}/subscription-invoices`],
+  ['POST', `/admin/tenants/${X}/subscription-invoices`],
+  ['POST', `/admin/subscription-invoices/${X}/pay`],
+  ['POST', `/admin/subscription-invoices/${X}/void`],
+  ['GET', '/admin/revenue'],
   ['PATCH', `/admin/tenants/${X}/members/${X}`],
   ['DELETE', `/admin/tenants/${X}/members/${X}`],
   ['GET', `/admin/tenants/${X}/api-keys`],
