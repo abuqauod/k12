@@ -18,6 +18,9 @@ export interface StoredDataset {
   /** Bumped on every local edit; the server uses it to detect divergence. */
   revision: number
   problem: Problem
+  /** SAMS 12: the school (tenant id) this work belongs to. A different
+   * school signing in on the same device never sees it. */
+  owner?: string | null
 }
 
 export function loadDataset(): StoredDataset | null {
@@ -32,6 +35,7 @@ export function loadDataset(): StoredDataset | null {
       schema: SCHEMA,
       savedAt: parsed.savedAt ?? new Date().toISOString(),
       revision: parsed.revision ?? 1,
+      owner: parsed.owner ?? null,
       problem: normalizeProblem({
         calendar: { ...DEFAULT_CALENDAR, ...(problem.calendar ?? {}) },
         timeslots: problem.timeslots,
@@ -47,12 +51,13 @@ export function loadDataset(): StoredDataset | null {
   }
 }
 
-export function saveDataset(problem: Problem, revision: number): StoredDataset | null {
+export function saveDataset(problem: Problem, revision: number, owner: string | null = null): StoredDataset | null {
   const record: StoredDataset = {
     schema: SCHEMA,
     savedAt: new Date().toISOString(),
     revision,
     problem,
+    owner,
   }
   try {
     localStorage.setItem(KEY, JSON.stringify(record))
@@ -68,5 +73,16 @@ export function clearDataset(): void {
     localStorage.removeItem(KEY)
   } catch {
     // Nothing to clear.
+  }
+}
+
+/** SAMS 12: on sign-out, nothing of this school's timetable work stays on
+ * the device for the next person who signs in (possibly another school). */
+export function clearLocalWork(): void {
+  try {
+    localStorage.removeItem(KEY)
+    for (const k of Object.keys(localStorage)) if (k.startsWith('timetable.everSynced')) localStorage.removeItem(k)
+  } catch {
+    // Storage unavailable: nothing was kept.
   }
 }

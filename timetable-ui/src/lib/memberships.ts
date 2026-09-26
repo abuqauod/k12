@@ -20,6 +20,8 @@ export const ROLE_KEYS = [
   'operations',
   'reception',
   'nurse',
+  'teacher',
+  'canteen',
 ] as const
 export type RoleKey = (typeof ROLE_KEYS)[number]
 /** A parent portal login (SAMS 6.4): never offered in the role picker. */
@@ -162,7 +164,21 @@ export async function getRoleCatalog(getToken: TokenGetter): Promise<Memberships
 /** The caller's own resolved access (`GET /auth/me`). */
 export async function fetchMyAccess(
   getToken: TokenGetter,
-): Promise<MembershipsResult<{ roleKey: AccessRoleKey | null; scopes: string[] }>> {
+): Promise<
+  MembershipsResult<{
+    roleKey: AccessRoleKey | null
+    scopes: string[]
+    plan: string | null
+    modules: string[]
+    trialEndsOn: string | null
+    subscription: {
+      state: 'active' | 'grace' | 'readOnly' | 'locked' | 'inactive'
+      validUntil: string | null
+      graceEnds: string | null
+      readOnlyUntil: string | null
+    } | null
+  }>
+> {
   try {
     return parse(await call('/auth/me', { method: 'GET' }, getToken))
   } catch {

@@ -1,3 +1,4 @@
+import { actionLabel } from '../lib/auditLabels'
 import { useEffect, useState } from 'react'
 import { exportAuditLog, listAuditLog } from '../lib/auditLog'
 import type { AuditEntry } from '../lib/auditLog'
@@ -11,7 +12,7 @@ import type { TranslationKey } from '../i18n/translations'
 type Tab = 'activity' | 'notifications'
 
 export function LogsPage() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { branches, activeBranchId } = useApp()
   const { getAccessToken } = useAuth()
 
@@ -174,7 +175,7 @@ export function LogsPage() {
                 {(activity ?? []).map((entry) => (
                   <tr key={entry.id}>
                     <td>{new Date(entry.createdAt).toLocaleString()}</td>
-                    <td className="mono">{entry.action}</td>
+                    <td title={entry.action}>{actionLabel(entry.action, lang)}</td>
                     {branches.length > 1 && <td>{entry.branchId ? branchName(entry.branchId) : '—'}</td>}
                     <td className="mono" style={{ fontSize: 12 }}>
                       {[entry.entity, entry.entityId].filter(Boolean).join(' · ')}

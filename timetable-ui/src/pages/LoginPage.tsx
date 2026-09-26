@@ -46,6 +46,7 @@ function errorKey(code: string): TranslationKey {
     case 'NOT_CONFIGURED':
       return 'login.errorNotConfigured'
     case 'TOO_MANY_ATTEMPTS':
+    case 'RATE_LIMITED':
       return 'login.errorTooManyAttempts'
     case 'TIMEOUT':
     case 'OFFLINE':
@@ -71,12 +72,12 @@ export function LoginPage() {
   const [tenants, setTenants] = useState<TenantChoice[] | null>(null)
 
   if (user) {
-    const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+    const from = (location.state as { from?: string } | null)?.from ?? '/'
     return <Navigate to={from} replace />
   }
 
   const goIn = () => {
-    const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+    const from = (location.state as { from?: string } | null)?.from ?? '/'
     navigate(from, { replace: true })
   }
 
@@ -212,6 +213,9 @@ export function LoginPage() {
             <button type="submit" className="btn btn--primary btn--block login__submit" disabled={busy} aria-busy={busy}>
               {busy ? t('login.signingIn') : t('login.submit')}
             </button>
+            <Link to="/signup" className="login__forgot" style={{ textAlign: 'center' }}>
+              {t('login.startTrial')}
+            </Link>
 
             <details className="login__demo">
               <summary>{t('login.demoTitle')}</summary>

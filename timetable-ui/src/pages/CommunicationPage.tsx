@@ -677,6 +677,8 @@ const KINDS = [
   'report_ready',
   'clinic_visit',
   'incident',
+  'report_card',
+  'library_overdue',
 ] as const
 
 function LogTab() {
@@ -1004,6 +1006,7 @@ function SettingsTab() {
     const res = await saveCommunicationSettings(getAccessToken, {
       feeReminders: s.feeReminders,
       documentExpiry: s.documentExpiry,
+      libraryOverdue: s.libraryOverdue,
       portalDocumentCategories: s.portalDocumentCategories,
     })
     if (res.kind !== 'ok') return setError(commError(t, res.error))
@@ -1109,6 +1112,22 @@ function SettingsTab() {
         <button type="button" className="btn btn--sm" onClick={() => void sendDocs()}>
           {t('comm.settings.docsNow')}
         </button>
+      </div>
+
+      <h3 className="card__title">{t('comm.settings.library')}</h3>
+      <label className="field field--inline">
+        <input
+          type="checkbox"
+          checked={s.libraryOverdue.auto}
+          onChange={(e) => setS({ ...s, libraryOverdue: { ...s.libraryOverdue, auto: e.target.checked } })}
+        />
+        <span>{t('comm.settings.libraryAuto')}</span>
+      </label>
+      <div className="inline-form">
+        <label className="field field--inline">
+          <span>{t('comm.settings.repeat')}</span>
+          {num(s.libraryOverdue.repeatDays, (v) => setS({ ...s, libraryOverdue: { ...s.libraryOverdue, repeatDays: Math.max(1, v) } }), 60)}
+        </label>
       </div>
 
       <h3 className="card__title">{t('comm.settings.portalDocs')}</h3>

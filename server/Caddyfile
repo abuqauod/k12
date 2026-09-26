@@ -1,3 +1,6 @@
 {$API_DOMAIN} {
+	# SAMS 10.3: compress JSON and exports — a 3,000-student list is ~3 MB
+	# raw and a tenth of that compressed.
+	encode zstd gzip
 	reverse_proxy api:4000
 }

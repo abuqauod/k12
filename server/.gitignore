@@ -5,3 +5,5 @@ release
 # Downloaded OSM extract + compiled OSRM routing graph (~340MB) — build data,
 # not source. Regenerate locally per the OSRM setup, don't commit it.
 osrm
+# SAMS 8.5 backup archives (docker-compose `backup` service)
+backups

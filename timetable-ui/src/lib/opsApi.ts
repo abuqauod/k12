@@ -218,7 +218,7 @@ export interface Loan {
   renewals: number
   overdue: boolean
   fine: number
-  fineStatus: 'none' | 'due' | 'paid' | 'waived'
+  fineStatus: 'none' | 'due' | 'paid' | 'waived' | 'billed'
 }
 export interface LibrarySettings {
   loanDays: number
@@ -236,8 +236,14 @@ export const listLoans = (g: G, p: { branchId?: string; view?: string; borrowerI
   pick(api<{ loans: Loan[] }>(g, 'GET', `/ops/library/loans${qs(p)}`), 'loans')
 export const lend = (g: G, body: { barcode: string; borrowerType: 'student' | 'employee'; borrowerId: string }) =>
   api<Loan>(g, 'POST', '/ops/library/loans', body)
-export const loanAction = (g: G, id: string, action: 'return' | 'renew' | 'lost' | 'pay' | 'waive', body: Record<string, unknown> = {}) =>
+export const loanAction = (g: G, id: string, action: 'return' | 'renew' | 'lost' | 'pay' | 'waive' | 'bill', body: Record<string, unknown> = {}) =>
   api<Loan>(g, 'POST', `/ops/library/loans/${enc(id)}/${action}`, body)
+/** SAMS 11.3: the borrower on a scanned ID card. */
+export const borrowerByCard = (g: G, card: string) =>
+  api<{ type: 'student' | 'employee'; id: string; name: string; branchId: string; maxLoans: number; loans: Loan[] }>(g, 'GET', `/ops/library/borrower${qs({ card })}`)
+export const returnByBarcode = (g: G, barcode: string) => api<Loan>(g, 'POST', '/ops/library/return-by-barcode', { barcode })
+export const notifyOverdue = (g: G, body: { branchId?: string } = {}) =>
+  api<{ loans: number; families: number }>(g, 'POST', '/ops/library/overdue/notify', body)
 export const librarySettings = (g: G) => api<LibrarySettings>(g, 'GET', '/ops/library/settings')
 export const saveLibrarySettings = (g: G, body: LibrarySettings) => api<LibrarySettings>(g, 'PUT', '/ops/library/settings', body)
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   portalChild,
@@ -11,6 +11,10 @@ import {
   type PortalReceipt,
 } from '../lib/portalApi'
 import { formatMinorUnits } from '../domain/finance'
+import { PaymentResult, PayOnline } from './PayOnline'
+import { PortalWallet } from './PortalWallet'
+import { portalReportCardPath, portalReportCards } from '../lib/gradesApi'
+import { openApiPage } from '../lib/printPage'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
@@ -18,7 +22,7 @@ import type { TranslationKey } from '../i18n/translations'
 /** One child in the portal: overview and attendance, fees (for a parent
  * responsible for them) and the documents the school shares. */
 
-type Tab = 'overview' | 'finance' | 'documents'
+type Tab = 'overview' | 'finance' | 'reports' | 'wallet' | 'documents'
 
 const INSTALLMENT_TONE: Record<string, string> = {
   paid: 'chip--ok',
@@ -30,7 +34,7 @@ const INSTALLMENT_TONE: Record<string, string> = {
 export function PortalChildPage() {
   const { t, lang, n } = useI18n()
   const { id = '' } = useParams()
-  const { getAccessToken } = useAuth()
+  const { getAccessToken, hasModule } = useAuth()
   const [params, setParams] = useSearchParams()
   const [child, setChild] = useState<PortalChildDetail | null>(null)
   const [missing, setMissing] = useState(false)
@@ -51,7 +55,10 @@ export function PortalChildPage() {
   }
   if (!child) return <div className="skeleton" style={{ height: 160 }} />
 
-  const tabs: Tab[] = child.finance ? ['overview', 'finance', 'documents'] : ['overview', 'documents']
+  // A module outside the school's plan has no tab (SAMS 13.1).
+  const tabs = (['overview', 'finance', 'reports', 'wallet', 'documents'] as Tab[]).filter(
+    (x) => (x !== 'finance' || child.finance) && (x !== 'reports' || hasModule('grades')) && (x !== 'wallet' || hasModule('canteen')),
+  )
   const tab = (tabs.includes(params.get('tab') as Tab) ? params.get('tab') : 'overview') as Tab
   const absences = (child.attendance.counts.absent ?? 0) + (child.attendance.counts.excused ?? 0)
 
@@ -112,6 +119,8 @@ export function PortalChildPage() {
           </section>
         )}
         {tab === 'finance' && <Finance id={id} />}
+        {tab === 'reports' && <ReportCards id={id} />}
+        {tab === 'wallet' && <PortalWallet id={id} />}
         {tab === 'documents' && <Documents id={id} />}
       </div>
     </>
@@ -123,21 +132,27 @@ function Finance({ id }: { id: string }) {
   const { getAccessToken } = useAuth()
   const [data, setData] = useState<{
     balance: number
+    onlinePayment: { currency: string } | null
     invoices: PortalInvoice[]
     receipts: PortalReceipt[]
   } | null>(null)
   const [error, setError] = useState(false)
-  useEffect(() => {
+  const load = useCallback(() => {
     void portalFinance(getAccessToken, id).then((r) => (r.kind === 'ok' ? setData(r.data) : setError(true)))
   }, [getAccessToken, id])
+  useEffect(() => {
+    load()
+  }, [load])
   if (error) return <div className="empty-state">{t('portal.financeHidden')}</div>
   if (!data) return <div className="skeleton" style={{ height: 120 }} />
   return (
     <>
+      <PaymentResult onSettled={load} />
       <section className="card portal-balance">
         <small>{t('portal.balance')}</small>
         <b className="mono">{formatMinorUnits(data.balance)}</b>
       </section>
+      {data.onlinePayment && data.balance > 0 && <PayOnline studentId={id} balance={data.balance} currency={data.onlinePayment.currency} />}
       <section className="card">
         <h3 className="card__title">{t('portal.invoices')}</h3>
         {data.invoices.length === 0 ? (
@@ -254,6 +269,38 @@ function Documents({ id }: { id: string }) {
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+/** SAMS 11.2: the report cards the school has released for this child. */
+function ReportCards({ id }: { id: string }) {
+  const { t, lang } = useI18n()
+  const { getAccessToken } = useAuth()
+  const [cards, setCards] = useState<{ termId: string; term: string; releasedAt: string }[] | null>(null)
+  useEffect(() => {
+    void portalReportCards(getAccessToken, id, lang).then((r) => setCards(r.kind === 'ok' ? r.data.cards : []))
+  }, [getAccessToken, id, lang])
+  if (!cards) return <div className="skeleton" style={{ height: 80 }} />
+  return (
+    <section className="card">
+      <h3 className="card__title">{t('portal.reportCards')}</h3>
+      {cards.length === 0 ? (
+        <div className="empty-state">{t('portal.noReportCards')}</div>
+      ) : (
+        <ul className="portal-list">
+          {cards.map((c) => (
+            <li key={c.termId} className="portal-lines__row">
+              <span>
+                <b>{c.term}</b> <small className="card__hint">· {c.releasedAt.slice(0, 10)}</small>
+              </span>
+              <button type="button" className="btn btn--sm" onClick={() => void openApiPage(getAccessToken, portalReportCardPath(id, c.termId, lang))}>
+                {t('portal.openReportCard')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

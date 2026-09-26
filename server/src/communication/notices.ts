@@ -1,5 +1,6 @@
 import type { DocumentDoc, TenantContext } from '../db.js'
 import { withTenant, withoutTenant } from '../db.js'
+import { tenantHasModule } from '../billing/usage.js'
 import { withLock } from '../lock.js'
 import { recordAudit } from '../audit.js'
 import { notifyFamilies, schoolName, type Delivered } from '../notifications/messages.js'
@@ -100,12 +101,69 @@ export async function documentsExpiring(
   return out
 }
 
+/**
+ * SAMS 11.3: families of students with an overdue library book. A loan is
+ * noticed on its first overdue day and then every `repeatDays` days, never
+ * twice in one of those periods (the period is the dedupe key).
+ */
+export async function libraryOverdueNotices(
+  ctx: TenantContext,
+  tenantId: string,
+  params: { asOf: string; repeatDays: number; branchIds?: string[] | null; loanIds?: string[]; trigger: 'auto' | 'manual'; actorId: string | null },
+): Promise<Delivered & { loans: number }> {
+  const loans = await ctx.loans
+    .find({
+      borrowerType: 'student',
+      returnedAt: null,
+      lostAt: null,
+      dueDate: { $lt: params.asOf },
+      ...(params.branchIds ? { branchId: { $in: params.branchIds } } : {}),
+      ...(params.loanIds ? { _id: { $in: params.loanIds } } : {}),
+    })
+    .toArray()
+  const out = { loans: 0, families: 0, inApp: 0, email: 0, sms: 0 }
+  if (loans.length === 0) return out
+  const books = new Map((await ctx.books.find({ _id: { $in: [...new Set(loans.map((l) => l.bookId))] } }).toArray()).map((b) => [b._id, b]))
+  const lib = await ctx.librarySettings.findOne({ _id: tenantId })
+  const perDay = lib?.finePerDay ?? 10
+  const school = await schoolName(tenantId)
+  const daysLate = (due: string) => Math.round((Date.parse(`${params.asOf}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86_400_000)
+  for (const loan of loans) {
+    const late = daysLate(loan.dueDate)
+    const period = Math.floor((late - 1) / Math.max(1, params.repeatDays))
+    const fine = late * perDay
+    const sent = await notifyFamilies(ctx, tenantId, {
+      kind: 'library_overdue',
+      sourceId: loan._id,
+      dedupe: `p${period}`,
+      studentIds: [loan.borrowerId],
+      recipients: 'all',
+      tokens: (student, parent) => ({
+        parentName: parent.fullName,
+        studentName: studentName(student),
+        title: books.get(loan.bookId)?.title ?? '',
+        dueDate: loan.dueDate,
+        fine: `${Math.floor(fine / 100)}.${String(fine % 100).padStart(2, '0')}`,
+        schoolName: school,
+      }),
+      trigger: params.trigger,
+      actorId: params.actorId,
+    })
+    if (sent.inApp + sent.email + sent.sms > 0) out.loans++
+    out.families += sent.families
+    out.inApp += sent.inApp
+    out.email += sent.email
+    out.sms += sent.sms
+  }
+  return out
+}
+
 /** Runs one tenant's automatic notices for `asOf`, once per day. */
 export async function runDailyNotices(tenantId: string, asOf: string): Promise<boolean> {
   return withTenant(tenantId, async (ctx) => {
     const settings = await loadCommunication(ctx, tenantId)
     if (settings.lastRunDate === asOf) return false
-    if (!settings.feeReminders.auto && !settings.documentExpiry.auto) return false
+    if (!settings.feeReminders.auto && !settings.documentExpiry.auto && !settings.libraryOverdue.auto) return false
     const meta: Record<string, unknown> = {}
     if (settings.feeReminders.auto) {
       const rows = await dueReminders(ctx, {
@@ -120,6 +178,14 @@ export async function runDailyNotices(tenantId: string, asOf: string): Promise<b
       meta.documentExpiry = await documentsExpiring(ctx, tenantId, {
         asOf,
         daysBefore: settings.documentExpiry.daysBefore,
+        trigger: 'auto',
+        actorId: null,
+      })
+    }
+    if (settings.libraryOverdue.auto && (await tenantHasModule(tenantId, 'library'))) {
+      meta.libraryOverdue = await libraryOverdueNotices(ctx, tenantId, {
+        asOf,
+        repeatDays: settings.libraryOverdue.repeatDays,
         trigger: 'auto',
         actorId: null,
       })
@@ -146,7 +212,7 @@ export async function runAllDailyNotices(): Promise<void> {
     const asOf = new Date().toISOString().slice(0, 10)
     const tenants = await withoutTenant((db) =>
       db.communicationSettings
-        .find({ lastRunDate: { $ne: asOf }, $or: [{ 'feeReminders.auto': true }, { 'documentExpiry.auto': true }] })
+        .find({ lastRunDate: { $ne: asOf }, $or: [{ 'feeReminders.auto': true }, { 'documentExpiry.auto': true }, { 'libraryOverdue.auto': true }] })
         .toArray(),
     )
     for (const row of tenants) {

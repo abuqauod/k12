@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { listClasses } from '../lib/classesApi'
+import { useEffect, useState } from 'react'
 import type { FeeStructureLineItem } from '../domain/finance'
 import { emptyFeeStructureLine, formatMinorUnits, parseMinorUnits } from '../domain/finance'
 import { createFeeStructure, deactivateFeeStructure, updateFeeStructure } from '../lib/financeApi'
@@ -28,6 +29,14 @@ export function FeeStructureDialog({
   const { branches } = useApp()
 
   const [gradeLevel, setGradeLevel] = useState(structure?.gradeLevel ?? '')
+  // SAMS 12 (pilot): the grade must match the classes' grade exactly, or
+  // "Bill grade" finds nobody — offer the grades that exist.
+  const [grades, setGrades] = useState<string[]>([])
+  useEffect(() => {
+    void listClasses(getAccessToken, { branchId }).then(
+      (r) => r.kind === 'ok' && setGrades([...new Set(r.data.filter((c) => c.active && c.academicYearId === academicYearId).map((c) => c.gradeLevel))].sort()),
+    )
+  }, [getAccessToken, branchId, academicYearId])
   const [name, setName] = useState(structure?.name ?? '')
   const [lines, setLines] = useState<FeeStructureLineItem[]>(structure?.lineItems ?? [emptyFeeStructureLine()])
   const [saving, setSaving] = useState(false)
@@ -81,7 +90,21 @@ export function FeeStructureDialog({
           <div className="break-card__row" style={{ gap: 8, flexWrap: 'wrap' }}>
             <label className="field" style={{ minWidth: 160 }}>
               <span>{t('billing.feeStructure.gradeLevel')}</span>
-              <input className="input" value={gradeLevel} disabled={Boolean(structure)} onChange={(e) => setGradeLevel(e.target.value)} />
+              <input
+                className="input"
+                list="fee-grade-options"
+                value={gradeLevel}
+                disabled={Boolean(structure)}
+                onChange={(e) => setGradeLevel(e.target.value)}
+              />
+              <datalist id="fee-grade-options">
+                {grades.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+              {!structure && gradeLevel.trim() && grades.length > 0 && !grades.includes(gradeLevel.trim()) && (
+                <small className="text-bad">{t('billing.feeStructure.noSuchGrade')}</small>
+              )}
             </label>
             <label className="field" style={{ minWidth: 200 }}>
               <span>{t('billing.feeStructure.name')}</span>

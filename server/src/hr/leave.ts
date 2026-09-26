@@ -346,7 +346,9 @@ export function registerLeaveRoutes(app: FastifyInstance): void {
   // Self-service: the caller's own record, balances and requests.
   app.get('/hr/me', signedIn, async (request, reply) => {
     const me = await ownEmployee(request)
-    if (!me) return reply.code(404).send({ error: 'NO_EMPLOYEE_RECORD' })
+    // Most members (an owner, a parent-facing clerk) have no employee record:
+    // that is an answer, not an error (a 404 filled every browser console).
+    if (!me) return reply.send({ employee: null })
     const year = Number((request.query as { year?: string }).year ?? new Date().getUTCFullYear())
     return reply.send({ employee: employeeResponse(me), ...(await leaveOverview(request.auth!.tenantId!, me, year)) })
   })

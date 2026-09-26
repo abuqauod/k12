@@ -144,6 +144,16 @@ export interface TenantProfile {
   taxNumber: string | null
 }
 
+export interface TenantBilling {
+  currency: 'JOD' | 'USD' | 'SAR' | 'AED'
+  term: 'year' | 'month'
+  /** Students billed for; the invoice uses the greater of this and those enrolled. */
+  students: number
+  /** Where subscription invoices and reminders go; the owners when null. */
+  email: string | null
+  country: string | null
+}
+
 export interface TenantDoc extends Document {
   _id: string
   slug: string
@@ -158,6 +168,16 @@ export interface TenantDoc extends Document {
   validUntil: string | null
   /** Bank transfers are slow; do not lock a school out the morning it lapses. */
   graceDays: number
+  /** SAMS 13.1: modules sold on top of the plan (billing/plans.ts). */
+  addons?: string[]
+  /** SAMS 13.1: limits the vendor set for this school over the plan's. */
+  limits?: { students?: number | null; branches?: number | null; smsPerStudent?: number | null }
+  /** SAMS 13.3: how the school is billed. */
+  billing?: TenantBilling
+  /** SAMS 13.2: how the school came — the vendor opened it, or it signed up. */
+  source?: 'console' | 'signup'
+  /** SAMS 13.3: trial-ending emails already sent. */
+  trialReminders?: string[]
   createdAt: Date
   updatedAt: Date
 }
@@ -1615,7 +1635,8 @@ export interface BookCopyDoc extends Document {
   updatedAt: Date
 }
 
-export type FineStatus = 'none' | 'due' | 'paid' | 'waived'
+/** `billed`: added to the student's invoice (SAMS 11.3). */
+export type FineStatus = 'none' | 'due' | 'paid' | 'waived' | 'billed'
 
 export interface LoanDoc extends Document {
   _id: string
@@ -1816,6 +1837,10 @@ export const MESSAGE_KINDS = [
   'clinic_visit',
   /** Backlog: a behaviour incident the school decided to tell the family about. */
   'incident',
+  /** SAMS 11.2: a child's report card is out. */
+  'report_card',
+  /** SAMS 11.3: a library book is overdue. */
+  'library_overdue',
 ] as const
 export type MessageKind = (typeof MESSAGE_KINDS)[number]
 
@@ -2001,6 +2026,8 @@ export interface CommunicationSettingsDoc extends Document {
     repeatDays: number
   }
   documentExpiry: { auto: boolean; daysBefore: number }
+  /** SAMS 11.3: overdue library books, told to families every `repeatDays`. */
+  libraryOverdue?: { auto: boolean; repeatDays: number }
   /** `documentCategory` codes parents may see in the portal (verified only). */
   portalDocumentCategories: string[]
   /** UTC date the daily run last happened. */
@@ -2226,6 +2253,203 @@ export interface LockDoc extends Document {
   expiresAt: Date
 }
 
+/** SAMS 11.1: which card gateway a school takes online payments through. */
+export type PaymentProviderKey = 'paytabs' | 'hyperpay' | 'test'
+
+/** SAMS 11.1: a school's online payment setup (one per tenant, _id =
+ * tenantId). Secrets are stored encrypted (payments/secrets.ts) and never
+ * returned by the API. */
+export interface PaymentSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  enabled: boolean
+  provider: PaymentProviderKey | null
+  /** ISO 4217, e.g. JOD, SAR, AED, USD. Amounts stay in hundredths. */
+  currency: string
+  /** Public identifiers: PayTabs profile id and region, HyperPay entity id
+   * and mode. */
+  settings: Record<string, string>
+  /** Encrypted: the PayTabs server key, the HyperPay access token. */
+  secrets: Record<string, string>
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+export type OnlinePaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled'
+
+/** SAMS 11.1: one attempt by a family to pay online. Becomes a normal
+ * payment (with receipt) when the gateway confirms it. */
+export interface OnlinePaymentDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  studentId: string
+  /** SAMS 11.4: what the money is for; absent = fees. */
+  purpose?: 'fees' | 'wallet'
+  parentId: string | null
+  /** Minor units. */
+  amount: number
+  currency: string
+  provider: PaymentProviderKey
+  /** The gateway's id for the checkout (PayTabs tran_ref, HyperPay checkout id). */
+  providerRef: string | null
+  /** The gateway's id for the captured payment, where it differs (HyperPay). */
+  providerPaymentId: string | null
+  status: OnlinePaymentStatus
+  message: string | null
+  /** Set when settled: the payment batch it became. */
+  paymentBatchId: string | null
+  receiptId: string | null
+  /** Paid more than was outstanding by settlement time (left as credit). */
+  overpaid: number
+  /** Refunded through the gateway, minor units. */
+  refunded: number
+  /** Test provider only: the outcome picked on the fake checkout page. */
+  testOutcome?: 'paid' | 'failed' | null
+  createdAt: Date
+  updatedAt: Date
+  settledAt: Date | null
+  createdBy: string | null
+}
+
+/** SAMS 11.2: a grade band — at or above `min` percent. */
+export interface GradeBand {
+  min: number
+  code: string
+  label: string
+  labelAr: string
+}
+
+/** SAMS 11.2: the school's grading scale (one per tenant, _id = tenantId). */
+export interface GradingSettingsDoc extends Document {
+  _id: string
+  tenantId: string
+  bands: GradeBand[]
+  /** Percent needed to pass a subject. */
+  passMark: number
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+/** One assessment in a term, e.g. "Quiz 1", "Final exam". */
+export interface PlanAssessment {
+  id: string
+  name: string
+  nameAr: string | null
+  /** Share of the term result, as a weight (normalised over the term). */
+  weight: number
+  maxScore: number
+}
+
+/** SAMS 11.2: how a grade is assessed in a year — its subjects (codes from
+ * the `subject` settings list) and each term's weighted assessments. */
+export interface AssessmentPlanDoc extends Document {
+  _id: string
+  tenantId: string
+  academicYearId: string
+  gradeLevel: string
+  subjects: string[]
+  terms: { termId: string; weight: number; assessments: PlanAssessment[] }[]
+  createdAt: Date
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+/** SAMS 11.2: one student's score in one assessment of one subject. */
+export interface MarkDoc extends Document {
+  _id: string
+  tenantId: string
+  academicYearId: string
+  termId: string
+  assessmentId: string
+  subjectCode: string
+  studentId: string
+  classId: string
+  branchId: string
+  /** Null = absent / not taken (excluded from the result). */
+  score: number | null
+  enteredBy: string
+  updatedAt: Date
+}
+
+/** SAMS 11.2: a class's report cards for a term, once released to families. */
+export interface ReportReleaseDoc extends Document {
+  /** `${classId}:${termId}` */
+  _id: string
+  tenantId: string
+  classId: string
+  branchId: string
+  academicYearId: string
+  termId: string
+  releasedAt: Date
+  releasedBy: string
+}
+
+/** SAMS 11.2: the class teacher's remark on a student's report card. */
+export interface ReportCommentDoc extends Document {
+  /** `${studentId}:${termId}` */
+  _id: string
+  tenantId: string
+  studentId: string
+  termId: string
+  comment: string
+  updatedBy: string
+  updatedAt: Date
+}
+
+/** SAMS 11.4: a student's prepaid canteen balance (_id = studentId). */
+export interface WalletAccountDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  branchId: string
+  /** Minor units. */
+  balance: number
+  /** Parent-set: most the child may spend in a day; null = no limit. */
+  dailyLimit: number | null
+  /** Parent-set: `canteenCategory` codes the child may not buy. */
+  blockedCategories: string[]
+  active: boolean
+  updatedAt: Date
+}
+
+export type WalletTxType = 'topup' | 'purchase' | 'refund' | 'adjust'
+
+export interface WalletTransactionDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  branchId: string
+  type: WalletTxType
+  /** Signed, minor units: + in, − out. */
+  amount: number
+  balanceAfter: number
+  /** Top-ups: how the money came in (a `paymentMethod` code or `online`). */
+  method: string | null
+  items: { productId: string; name: string; qty: number; price: number; categoryCode: string | null }[]
+  reference: string | null
+  onlinePaymentId: string | null
+  /** The purchase a refund reverses. */
+  reverses: string | null
+  voided: boolean
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface CanteenProductDoc extends Document {
+  _id: string
+  tenantId: string
+  branchId: string
+  name: string
+  nameAr: string | null
+  /** Minor units. */
+  price: number
+  categoryCode: string | null
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
 // ---------------------------------------------------------- tenant scoping --
 
 /**
@@ -2284,6 +2508,22 @@ export class TenantScope<T extends Document> {
 
   countDocuments(filter: Filter<T> = {} as Filter<T>) {
     return this.col.countDocuments(this.scope(filter), { session: this.session })
+  }
+
+  /**
+   * Scoped aggregation (SAMS 10.3), for reports that count over many rows:
+   * the tenant `$match` always runs first, and the stages that read other
+   * collections (`$lookup`, `$unionWith`, `$graphLookup`) or write
+   * (`$out`, `$merge`) are refused, so the pipeline can only reshape this
+   * tenant's rows of this one collection.
+   */
+  aggregate<R extends Document>(match: Filter<T>, pipeline: Document[] = []) {
+    const refused = ['$lookup', '$unionWith', '$graphLookup', '$out', '$merge']
+    for (const stage of pipeline) {
+      const op = Object.keys(stage)[0]
+      if (op && refused.includes(op)) throw new Error(`aggregate: ${op} is not allowed in a tenant-scoped pipeline`)
+    }
+    return this.col.aggregate<R>([{ $match: this.scope(match) }, ...pipeline], { session: this.session })
   }
 
   /**
@@ -2374,6 +2614,16 @@ export interface TenantContext {
   studentHealth: TenantScope<StudentHealthDoc>
   clinicVisits: TenantScope<ClinicVisitDoc>
   incidents: TenantScope<IncidentDoc>
+  paymentSettings: TenantScope<PaymentSettingsDoc>
+  onlinePayments: TenantScope<OnlinePaymentDoc>
+  gradingSettings: TenantScope<GradingSettingsDoc>
+  assessmentPlans: TenantScope<AssessmentPlanDoc>
+  marks: TenantScope<MarkDoc>
+  reportReleases: TenantScope<ReportReleaseDoc>
+  reportComments: TenantScope<ReportCommentDoc>
+  walletAccounts: TenantScope<WalletAccountDoc>
+  walletTransactions: TenantScope<WalletTransactionDoc>
+  canteenProducts: TenantScope<CanteenProductDoc>
 }
 
 /**
@@ -2508,12 +2758,79 @@ export async function withTenant<T>(
         studentHealth: new TenantScope(db.collection<StudentHealthDoc>('studentHealth'), tenantId, session),
         clinicVisits: new TenantScope(db.collection<ClinicVisitDoc>('clinicVisits'), tenantId, session),
         incidents: new TenantScope(db.collection<IncidentDoc>('incidents'), tenantId, session),
+        paymentSettings: new TenantScope(db.collection<PaymentSettingsDoc>('paymentSettings'), tenantId, session),
+        onlinePayments: new TenantScope(db.collection<OnlinePaymentDoc>('onlinePayments'), tenantId, session),
+        gradingSettings: new TenantScope(db.collection<GradingSettingsDoc>('gradingSettings'), tenantId, session),
+        assessmentPlans: new TenantScope(db.collection<AssessmentPlanDoc>('assessmentPlans'), tenantId, session),
+        marks: new TenantScope(db.collection<MarkDoc>('marks'), tenantId, session),
+        reportReleases: new TenantScope(db.collection<ReportReleaseDoc>('reportReleases'), tenantId, session),
+        reportComments: new TenantScope(db.collection<ReportCommentDoc>('reportComments'), tenantId, session),
+        walletAccounts: new TenantScope(db.collection<WalletAccountDoc>('walletAccounts'), tenantId, session),
+        walletTransactions: new TenantScope(db.collection<WalletTransactionDoc>('walletTransactions'), tenantId, session),
+        canteenProducts: new TenantScope(db.collection<CanteenProductDoc>('canteenProducts'), tenantId, session),
       })
     })
     return result as T
   } finally {
     await session.endSession()
   }
+}
+
+/**
+ * SAMS 13.3 — the vendor's invoice to a school for its subscription. Vendor
+ * data, not the school's: it lives outside tenant scoping, and a school
+ * reads its own through /subscription only.
+ */
+export interface SubscriptionInvoiceDoc extends Document {
+  _id: string
+  /** SUB-2026-0001: yearly sequence across all schools. */
+  number: string
+  tenantId: string
+  plan: string
+  term: 'year' | 'month'
+  /** The paid-through period this invoice buys (inclusive dates). */
+  periodStart: string
+  periodEnd: string
+  students: number
+  currency: 'JOD' | 'USD' | 'SAR' | 'AED'
+  lines: { label: string; amount: number }[]
+  subtotal: number
+  /** Percent, e.g. 16 for Jordan's GST. */
+  taxRate: number
+  tax: number
+  total: number
+  status: 'open' | 'paid' | 'void'
+  dueDate: string
+  issuedAt: Date
+  paidAt: Date | null
+  paidBy: 'card' | 'transfer' | null
+  /** Bank reference, or the card checkout's id. */
+  reference: string | null
+  /** 'console' (the vendor), 'self' (the school chose a plan), 'renewal' (the sweep). */
+  source: 'console' | 'self' | 'renewal'
+  /** Reminder emails already sent, by key (e.g. 'due-7'). */
+  reminders: string[]
+  createdBy: string | null
+  updatedAt: Date
+}
+
+/** SAMS 13.3 — one card payment attempt on a subscription invoice, through
+ * the vendor's own gateway. */
+export interface SubscriptionCheckoutDoc extends Document {
+  _id: string
+  invoiceId: string
+  tenantId: string
+  amount: number
+  currency: string
+  provider: 'paytabs' | 'hyperpay' | 'test'
+  providerRef: string | null
+  status: 'pending' | 'paid' | 'failed'
+  /** The test gateway's outcome, as picked on its page. */
+  testOutcome?: 'paid' | 'failed'
+  message: string | null
+  createdBy: string
+  createdAt: Date
+  settledAt: Date | null
 }
 
 export interface UnscopedDb {
@@ -2543,6 +2860,11 @@ export interface UnscopedDb {
   communicationSettings: Collection<CommunicationSettingsDoc>
   /** SAMS 7.4: which schedules, across tenants, are due. */
   reportSchedules: Collection<ReportScheduleDoc>
+  /** SAMS 11.1: payments still waiting on a gateway, across tenants. */
+  onlinePayments: Collection<OnlinePaymentDoc>
+  /** SAMS 13.3: the vendor's billing of schools. */
+  subscriptionInvoices: Collection<SubscriptionInvoiceDoc>
+  subscriptionCheckouts: Collection<SubscriptionCheckoutDoc>
   locks: Collection<LockDoc>
 }
 
@@ -2572,6 +2894,9 @@ export async function withoutTenant<T>(fn: (db: UnscopedDb) => Promise<T>): Prom
     notificationAttempts: database.collection<NotificationAttemptDoc>('notificationAttempts'),
     communicationSettings: database.collection<CommunicationSettingsDoc>('communicationSettings'),
     reportSchedules: database.collection<ReportScheduleDoc>('reportSchedules'),
+    onlinePayments: database.collection<OnlinePaymentDoc>('onlinePayments'),
+    subscriptionInvoices: database.collection<SubscriptionInvoiceDoc>('subscriptionInvoices'),
+    subscriptionCheckouts: database.collection<SubscriptionCheckoutDoc>('subscriptionCheckouts'),
     locks: database.collection<LockDoc>('locks'),
   })
 }

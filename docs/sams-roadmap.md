@@ -3,7 +3,9 @@
 **Product direction**: an administration-first system (registrar, finance, HR,
 front office, operations). **Not an LMS** — no courses, lesson content,
 learning paths, or teaching tools. Academic references (year, grade, class,
-enrollment) exist only where administration needs them.
+enrollment) exist only where administration needs them. Phase 11 adds a
+gradebook and report cards on request: marks and printed results, which
+administration issues, not teaching tools.
 
 This document is the phased build plan. It supersedes the "Recommended build
 order" in [`sms-gap-analysis.md`](sms-gap-analysis.md), which remains the
@@ -11,8 +13,9 @@ per-area status reference.
 
 ## Where we are
 
-**Phases 1–7 are shipped and on `main`. The optional backlog (and real
-email/SMS delivery) is built on `claude/sams-8`.**
+**Phases 1–7 and the backlog extras are shipped and on `main`. Phases 8–12
+(production, security, polish, pilot, new modules) and Phase 13 (the SaaS
+offer) are planned below.**
 
 | Phase | Slices | PRs |
 |---|---|---|
@@ -24,7 +27,7 @@ email/SMS delivery) is built on `claude/sams-8`.**
 | 5 — Operations | 5.1–5.6 | #62 |
 | 6 — Communication & portals | 6.1–6.4 | #64 |
 | 7 — Reporting | 7.1–7.4 | #65–#67 |
-| Backlog — extras | numbering, health/clinic, discipline, bulk import, ID cards; email/SMS delivery | `claude/sams-8` (not yet merged) |
+| Backlog — extras | numbering, health/clinic, discipline, bulk import, ID cards; email/SMS delivery | #68 |
 
 ## Definition of done (every slice)
 
@@ -385,6 +388,333 @@ Excel, PDF and print output · 7.4 Scheduled report exports.
 
 ---
 
+---
+
+## Phase 8 — Production readiness
+8.1 Boot checks: refuse to start in production with missing or default
+secrets, and report which optional channels (email, SMS, payments) are off ·
+8.2 `/health` (alive) and `/ready` (database reachable) for the proxy and
+monitors; graceful shutdown that finishes requests and stops the workers ·
+8.3 Request ids in every log line and error response; optional error
+reporting to a Sentry-compatible DSN · 8.4 Rate limits on sign-in, password
+reset and public endpoints; security headers · 8.5 Backups: a scheduled
+`mongodump` with retention, optional copy to S3-compatible storage, a
+restore script and a documented restore drill · 8.6 Deployment checklist
+and a fixed deploy workflow (the UI docroot is still a placeholder).
+
+**Built**:
+- 8.1 `server/src/runtime/preflight.ts`: a production start exits on a
+  missing, default or short `JWT_SECRET` or the default MongoDB password,
+  warns on local `APP_URL`/`CORS_ORIGINS` and missing backups, and logs
+  which channels (email, SMS, error reporting) are on.
+- 8.2 `/live` (process), `/health` and `/ready` (database; 503 while
+  shutting down, with uptime and release). SIGTERM stops the sweeper,
+  drains requests and exits within `SHUTDOWN_GRACE_MS`. The compose API
+  restarts on failure and has a health check.
+- 8.3 A request id on every request (the proxy's `X-Request-Id` kept when
+  sane) in logs and the `x-request-id` header. Unexpected errors answer
+  `{ error: "INTERNAL", requestId }` — never the message — and go to a
+  Sentry-compatible DSN when set (no SDK; no bodies or headers sent).
+  Malformed JSON is now a 400, not a 500.
+- 8.4 Per-IP limits on sign-in, reset, invites and refresh (429
+  `RATE_LIMITED`) on top of the per-account lockout; `nosniff`,
+  `SAMEORIGIN`, referrer policy, HSTS in production. The app no longer
+  signs a user out when a token refresh fails for a network or server
+  reason — only when the server rejects the session.
+- 8.5 `scripts/backup.sh` / `restore.sh` and a daily `backup` service:
+  gzipped `mongodump`, retention, optional S3-compatible copy; restore
+  needs `RESTORE_CONFIRM=yes`, or rehearses into another database.
+  Rehearsed on the dev database (52k documents, 63 collections).
+- 8.6 [`docs/deployment-checklist.md`](deployment-checklist.md); CI now also
+  lints and builds the school app; the deploy's docroot comes from the
+  `UI_DOCROOT` secret and a deploy fails unless the new API answers
+  `/ready`.
+
+## Phase 9 — Security and permissions review
+9.1 A route inventory test: every registered route must appear in the
+permission matrix, so a new route cannot ship without its scope and branch
+rows · 9.2 Cross-tenant and cross-branch sweep over every read, list,
+export, search and file download · 9.3 Parent portal exposure: only the
+parent's own children, only released data · 9.4 Sensitive data (health,
+discipline, salaries): who sees it, what the audit log and exports carry ·
+9.5 Fix everything found; findings and fixes listed here.
+
+**Built**:
+- 9.1 `test/routes.test.ts` lists every route the server registers and
+  fails when one has no row in the permission matrix
+  (`test/routeMatrix.ts`) and no stated exemption. **Found**: 14 routes
+  had no row (student delete, school profile, dashboard, lookups, the
+  inbox, approvals), and the school team routes (`/memberships`) and the
+  platform console API (`/admin/*`) had no permission tests at all. All
+  now have rows; the console API is checked to refuse every school rank,
+  owner included.
+- 9.2 `test/isolation-sweep.test.ts` makes records in branch B (student,
+  family, invoice, payment, receipt, employee, clinic visit, incident,
+  asset, maintenance, application, health profile), each carrying a
+  marker, then calls every read route — each record id put into every
+  route parameter, list routes with branch/student filters, all 16
+  reports and their CSV exports, search — about 750 requests per caller.
+  An admin confined to branch A and the owner of another school receive
+  no marker and no id. **Found**: nothing; a parent with no linked child
+  is visible to every branch, which is the documented rule.
+- 9.3 The same sweep as a parent portal login of another family (which
+  does see its own): nothing.
+- 9.4 Sensitive data swept per role: medical details not marked as alerts
+  reach only the nurse (and admins); salaries only HR (and admins);
+  incidents only their reporter and `discipline.manage`. Checked that the
+  sweep does find each for the role meant to see it. File links and
+  sessions are separate tokens; uploads are typed by content, served
+  `nosniff`.
+- Found and fixed along the way (Phase 8): malformed JSON answered 500;
+  an error could return Fastify's own message to the client.
+
+## Phase 10 — Polish
+10.1 Arabic/RTL pass over every screen added since Phase 5 · 10.2 Phone
+layouts for the pages staff use on the move (attendance, clinic, behaviour,
+gate, portal) · 10.3 Large schools: a 3,000-student demo tenant, timings for
+the heavy lists and reports, indexes and paging where they are slow.
+
+**Built**:
+- 10.1 Every page checked in Arabic at desktop and phone width (a browser
+  script flags page overflow, anything wider than the screen, raw
+  translation keys, and errors). All right-to-left, nothing overflowing.
+  **Found**: audit actions showed as codes (`invoice.installments.set`) on
+  the dashboard, the student's Activity tab and the audit log; they now
+  read "Invoice › Installments · Set" / «فاتورة › أقساط · تعيين»
+  (`lib/auditLabels.ts`, the code kept as a tooltip). `/hr/me` answered
+  404 for everyone without an employee record, filling the console; it
+  now answers `{ employee: null }`.
+- 10.2 Phone layouts: no page scrolls sideways; wide tables scroll inside
+  their card.
+- 10.3 `server/src/perf.ts` builds a school through the real routes (3,000
+  students, 1,500 families, 3,000 invoices, 40 days × 96 classes of
+  attendance = 120,000 marks) and times 25 heavy reads. Before → after:
+  attendance by class 1.8 s → 0.49 s and by student 1.75 s → 0.82 s (the
+  counting moved into MongoDB via a new tenant-scoped `aggregate`, which
+  refuses `$lookup`/`$unionWith`/`$out`/`$merge`; it had also been
+  copying each group's array on every mark). Everything else is under
+  0.4 s; the full student and invoice lists are ~3 MB of JSON, so Caddy
+  now compresses responses (`encode zstd gzip`).
+
+## Phase 11 — New modules
+11.1 **Online fee payment**: a payment-provider interface with PayTabs and
+HyperPay first (hosted payment page, signed callbacks, reconciliation into
+the Phase 3 receipts, refunds through the provider); parents pay open
+invoices from the portal · 11.2 **Gradebook and report cards**: subjects
+per grade, terms and assessments with weights, marks entry per class,
+grading scales, report cards printed and released to the portal ·
+11.3 **Library**: catalogue with copies, loans and returns by barcode (the
+ID cards'), limits, overdue notices and fines into billing · 11.4
+**Canteen / student wallet**: a prepaid balance per student, top-up at the
+office or online (11.1), sales at the canteen by card scan, daily limits
+and parent-set restrictions, statements in the portal.
+
+**Built — 11.1 online fee payment** (`server/src/payments/`):
+- One provider interface; **PayTabs** (hosted page, signed callbacks,
+  query, refund; regions Jordan/UAE/Saudi/Egypt/Oman/global) and
+  **HyperPay** (COPYandPAY widget on a page this API serves, status,
+  refund), plus a **test gateway** (a Pay/Decline page; off in production).
+- Each school's own merchant keys (Settings → Online payments), stored
+  AES-256-GCM encrypted, never returned or audited; currency per school.
+- A family pays all or part of what is owed from the portal. A payment is
+  settled **only on the gateway's answer to a status query** (the callback
+  and the browser's return merely prompt it; the sweep checks the rest every
+  few minutes, gives up after two days), exactly once, and only if amount
+  and currency match. It then goes through the normal `recordPayments`:
+  oldest due first, receipt, "payment received" email. Paid while the
+  office also took cash: the rest stays as credit and is flagged.
+- The office's Finance → Online payments list (per branch) with "check
+  now". An approved refund paid out with method "online" is sent back to
+  the card through the gateway first.
+- Found on the way: built-in settings entries added in a later release
+  never reached a school that had added its own entries; fixed.
+
+**Built — 11.2 gradebook and report cards** (`server/src/grades/`, the
+Grades page):
+- A year's **terms** can now be set after the year exists (Settings →
+  Academic years): inside the year, in order, not overlapping; a term a plan
+  or marks use can't be removed. Before, terms could only be given when
+  creating a year, and nothing in the app did.
+- **Subjects** are a settings list (Arabic, English, Mathematics, …
+  defaults). An **assessment plan** per year and grade picks its subjects
+  and each term's assessments (weight, maximum mark). Changing a plan never
+  loses marks: an assessment or subject with marks stays, and a maximum
+  can't drop below a mark already given.
+- **Grading scale** per school (default A–F, 50 passes) and pass mark.
+- **Mark entry** per class, subject and term (`grades.enter`, in the
+  caller's branches): blank = not taken; scores checked against the
+  maximum; one audit entry per save.
+- **Results**: a term result is the weighted average of the assessments
+  taken, the year result weighs the terms; per-subject grade, pass/fail,
+  average, rank (ties shared) and the class teacher's remark.
+- **Report cards**: one A4 page per student in English or Arabic
+  (attendance for the term, remark, signature line), printed from the
+  Results tab. **Releasing** a class's term emails families (new
+  `report_card` template), shows the card in the portal's new Report cards
+  tab (only their own child), and locks marks and remarks until a
+  coordinator un-releases it.
+- Scopes `grades.read` / `grades.enter` (schedulers and up) and
+  `grades.manage` (admins, registrar); a new **Teacher** role (registers,
+  marks, behaviour notes).
+
+**Built — 11.3 library** (on top of 5.5, which already had books, copies,
+loans, renewals, limits and fines):
+- The desk takes the **ID card**: scanning a student or staff number (the
+  card's barcode) finds the borrower with their loans and fines; scanning a
+  copy **returns** it without looking the borrower up first.
+- A student's fine can be **added to their invoice** for the year (a
+  `Library fine — <title>` line, once per loan); the loan then counts as
+  settled at the library (`billed`) and no longer blocks borrowing.
+- **Overdue notices** to families (new `library_overdue` template): from
+  the Loans → Overdue list, or daily when switched on in Communication →
+  Automatic notices; each loan at most once per `repeatDays`.
+
+**Built — 11.4 canteen and student wallet** (`server/src/canteen/`, the
+Canteen page, the portal's Canteen tab):
+- A prepaid **wallet** per student; every change is a transaction with the
+  balance after it. A debit only succeeds if the money is there at that
+  moment (a conditional update), so two tills can't spend the same money —
+  tested with three sales at once.
+- **Products** per branch, in `canteenCategory` groups (settings list).
+- The **till** (new Canteen role, `canteen.sell` only): scan the ID card,
+  tap products, charge. It sees the student's name, number, balance and
+  what is left today — nothing else of the record. Refused when the balance
+  is short, over the family's **daily limit**, or a **category the family
+  blocked**.
+- **Top-ups** at the office (`canteen.manage`, any payment method) or
+  **online by the family** through the school's gateway (11.1; a wallet
+  top-up never touches the fees). Same-day refund of a sale.
+- The family sees the balance and statement, tops up, and sets the limits
+  in the portal; the office sees the day's takings per product.
+
+## Phase 12 — Pilot run
+A realistic school built through the product itself (bulk import, fee
+structures, timetable, a term of attendance, fees, grades, report cards,
+notices) as an automated end-to-end scenario; every rough edge found is
+fixed and listed here.
+
+**Built.** A new school, "Al-Nour Academy", was opened in the vendor
+console and taken through a term by its owner, a teacher and a parent in
+the browser: school profile, a year with two terms, six classes, three fee
+structures, 18 students with their families from a spreadsheet, a whole
+grade billed, attendance, an assessment plan, marks, results released to
+families, every family invited to the portal, a parent reading the report
+card and paying part of an invoice through the test gateway, the payment
+showing in Finance → Online payments, and the emails that went out.
+
+Found and fixed on the way:
+
+- *A new school had no campus*, so nothing could be created until the vendor
+  added one by hand. A school opened in the console now starts with "Main
+  campus" (or the name given).
+- *The demo timetable leaked between schools* on one device: work saved in
+  the browser was restored for whoever signed in next. Local work now
+  belongs to its school and is cleared on sign-out; a school without a
+  timetable starts from an empty one.
+- *No way to know where to start.* A getting-started checklist on the
+  dashboard (profile, year, classes, fees, students, invoices, team,
+  payments), driven by the school's own data (`GET /onboarding`).
+- *Billing a grade meant one invoice per student.* Finance → Bill grade
+  invoices every student of a grade or class from its fee structure, with a
+  preview; students already billed are skipped.
+- *Classes made before a year existed belonged to no year* and vanished from
+  year-scoped pages; the bulk path ignored the year given. Classes without a
+  year now join the current one.
+- *Two years with the same name or overlapping dates* could be created and
+  confused every year picker; now refused (`YEAR_NAME_TAKEN`,
+  `YEARS_OVERLAP`, `DATES_OUT_OF_ORDER`).
+- *A fee structure for a grade that no class uses* matched no students.
+  The grade field suggests the grades the school has and warns otherwise.
+- *Menu items a role cannot open* were shown and led to "not allowed";
+  every item now carries its scope, and sign-in lands on the first page the
+  user may see (a parent lands on the portal).
+- *Families were invited to the portal one by one.* Parents → Invite all to
+  the portal (preview, then one email each; the caller's campuses only).
+  An invite that could not be emailed is reported as such, not counted as
+  sent.
+- *A new parent set a password, then had to type their email again.*
+  Accepting an invite now signs them straight in.
+- *Imported families could not see or pay their bills*: the importer linked
+  each guardian without financial responsibility, so the portal showed no
+  Fees tab, the wallet could not be topped up and fee reminders fell back
+  to the primary contact. The guardian a row names is now the fee contact
+  when an admin imports; the same holds for the primary guardian of an
+  admitted application.
+
+Noted, not changed: family emails (receipts, report cards) leave with the
+delivery sweep, every five minutes by default (`ABSENCE_SWEEP_INTERVAL_MS`).
+
+## Phase 13 — SaaS offer
+13.1 Plans and feature gating: each tenant's plan enables modules and sets
+limits (students, branches, SMS credits); the UI hides what the plan does
+not include and the API refuses it · 13.2 Self-serve trial sign-up next to
+the sales-led path in the console, with an onboarding checklist · 13.3
+Subscription billing: price list per currency (JOD, USD, SAR, AED), annual
+and monthly terms, invoices to the school, card payment through the 11.1
+providers or bank transfer recorded in the console, dunning into the
+existing grace/suspension · 13.4 Usage metering (active students, SMS sent)
+and the console's revenue view · 13.5 Public pricing page and legal
+documents (terms, privacy, data processing) · 13.6 The business model:
+`docs/saas-business-model.md`.
+
+**Built.**
+
+- *13.1 Plans.* Essentials, Professional, Enterprise and a 30-day trial,
+  each a set of modules over the core with limits on students, campuses
+  and SMS (`billing/plans.ts`, the one place prices and modules are set).
+  - Every tenant route passes the plan check, which answers 402
+    `PLAN_EXCLUDES_MODULE`.
+  - Menus, tabs, settings sections, portal tabs and ID-card buttons hide
+    what the plan lacks. A page reached by its address says it is not in
+    the plan.
+  - Sweeps skip excluded modules: scheduled reports, library notices, and
+    transport loading.
+  - Student limits are checked on create, import and admission. Campus
+    limits are checked in the console.
+  - The console sets plan, add-on modules, limit overrides and billing
+    details. `custom` means everything, for agreed deals. Schools opened
+    before plans existed keep everything.
+- *13.2 Trial sign-up.* The public `/signup` page (`POST /public/signup`)
+  gives:
+  - a trial school with a first campus in its country's time zone and its
+    currency;
+  - the owner invited by email, and accepting signs them straight in.
+  - It is rate-limited, has a hidden field for bots, allows one trial per
+    email, notifies sales, and `SIGNUP=off` closes it.
+- *13.3 Subscription billing.* Settings → Subscription shows:
+  - the plan, its standing and usage against limits;
+  - a live quote, where choosing a plan issues an invoice;
+  - card payment through the vendor's own PayTabs or HyperPay account
+    (`VENDOR_*`; a test gateway in development), or bank transfer;
+  - invoices, printable with the vendor's details and bank information.
+  - Paying applies the plan and paid-through date exactly once.
+  - The console issues invoices (with onboarding fees or discounts as
+    extra lines), records transfers and voids invoices.
+  - The daily sweep issues renewal invoices 30 days ahead, reminds about
+    unpaid invoices (7 days before, on the day, 7 days after), and emails
+    trials 7 days and 1 day before they end.
+  - A lapsed school keeps its grace days, then reads and exports its data
+    for 60 days before it is locked. It can always reach the page to pay.
+    A banner in the app says where the school stands.
+- *13.4 Metering and revenue.* Usage per school: enrolled students,
+  campuses, staff, and SMS this month. The console's Revenue card shows:
+  - MRR and ARR per currency;
+  - collections for the month and year;
+  - open and overdue invoices;
+  - schools by plan;
+  - trials, sign-ups and conversion.
+- *13.5* The public `/pricing` page reads `GET /public/plans`. It shows four
+  currencies, yearly or monthly terms and a calculator. Templates for the
+  terms, privacy policy and DPA are in `timetable-ui/public/legal/`, marked
+  for legal review.
+- *13.6* `docs/saas-business-model.md`: the price list, the reasoning, unit
+  economics, go-to-market, tax and legal notes, KPIs and open decisions.
+
+Also fixed: staff landed on Approvals after signing in. The first-page
+redirect ran before the user's permissions had loaded; it now waits.
+
+---
+
 ## Backlog — extras (built on request)
 
 - **Email and SMS delivery.** SMS through Twilio or any HTTP SMS gateway
@@ -426,3 +756,6 @@ Excel, PDF and print output · 7.4 Scheduled report exports.
 | Close Phase 1 before Phase 2? | **Yes** — 1.7–1.12 first. |
 | Phase order | **Spec order**; fee reminders may be pulled forward into Phase 3 using the existing queue. |
 | Extras not in the spec (health/clinic, discipline, configurable numbering, bulk import, ID cards) | **Built on request** (see Backlog — extras). |
+| Payment providers | **PayTabs and HyperPay first**, behind one provider interface so others (eFAWATEERcom, Stripe) plug in later. |
+| First markets | **Jordan, the Gulf and wider MENA together**: prices in JOD, USD, SAR and AED; Arabic and English. |
+| Gradebook | **Built on request** (Phase 11.2): marks and report cards only, no lesson content. |

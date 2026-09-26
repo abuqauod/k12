@@ -21,7 +21,7 @@ export function MyLeaveCard() {
 
   const load = useCallback(async () => {
     const res = await myHr(getAccessToken)
-    setData(res.kind === 'ok' ? res.data : null)
+    setData(res.kind === 'ok' && res.data.employee ? (res.data as LeaveOverview & { employee: Employee }) : null)
   }, [getAccessToken])
   useEffect(() => {
     void load()

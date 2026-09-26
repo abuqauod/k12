@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
+import { studentLimitRefusal } from '../billing/usage.js'
 import { nextNumber } from '../numbering.js'
 import { withTenant } from '../db.js'
 import { readReason, setAuditReason } from '../requestContext.js'
@@ -307,6 +308,9 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     if (targetClass && !(await callerCanUseBranch(request, targetClass.branchId))) {
       return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
     }
+    // SAMS 13.1: the students the school's plan allows.
+    const overLimit = await studentLimitRefusal(tenantId)
+    if (overLimit) return reply.code(402).send(overLimit)
 
     const now = new Date()
     try {

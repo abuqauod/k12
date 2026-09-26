@@ -26,6 +26,12 @@ const createYearBody = z.object({
   terms: z.array(termSchema).max(12).default([]),
 })
 
+/** SAMS 11.2: a year's terms, edited after the year exists. A kept term
+ * sends its `id`; a new one has none. */
+const termsBody = z
+  .object({ terms: z.array(termSchema.extend({ id: z.string().min(1).optional() })).max(12) })
+  .strict()
+
 function toResponse(doc: AcademicYearDoc) {
   return {
     id: doc._id,
@@ -53,7 +59,16 @@ export function registerAcademicYearRoutes(app: FastifyInstance): void {
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
 
     const tenantId = request.auth!.tenantId!
+    if (parsed.data.endDate <= parsed.data.startDate) return reply.code(400).send({ error: 'DATES_OUT_OF_ORDER' })
     const _id = randomUUID()
+    const clash = await withTenant(tenantId, async (ctx) => {
+      // SAMS 12 (pilot): two years of one name, or overlapping, made every
+      // year picker ambiguous and split attendance and fees between them.
+      if (await ctx.academicYears.findOne({ name: parsed.data.name.trim() })) return 'YEAR_NAME_TAKEN'
+      if (await ctx.academicYears.findOne({ startDate: { $lte: parsed.data.endDate }, endDate: { $gte: parsed.data.startDate } })) return 'YEARS_OVERLAP'
+      return null
+    })
+    if (clash) return reply.code(409).send({ error: clash })
     await withTenant(tenantId, async (ctx) => {
       const terms = parsed.data.terms.map((t) => ({ id: randomUUID(), ...t }))
       // The first year a tenant ever creates becomes current by default —
@@ -77,6 +92,46 @@ export function registerAcademicYearRoutes(app: FastifyInstance): void {
       })
     })
     return reply.code(201).send({ id: _id })
+  })
+
+  /** SAMS 11.2: sets a year's terms — inside the year, in order, not
+   * overlapping. A term an assessment plan or marks use can't be removed. */
+  app.put('/academic-years/:id/terms', writeGuard, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = termsBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const tenantId = request.auth!.tenantId!
+    const out = await withTenant(tenantId, async (ctx) => {
+      const year = await ctx.academicYears.findOne({ _id: id })
+      if (!year) return { error: 'NOT_FOUND', status: 404 }
+      const terms = parsed.data.terms.map((t) => ({ id: t.id ?? randomUUID(), name: t.name, startDate: t.startDate, endDate: t.endDate }))
+      const known = new Set(year.terms.map((t) => t.id))
+      if (terms.some((t) => parsed.data.terms.find((x) => x.id === t.id) && !known.has(t.id))) return { error: 'UNKNOWN_TERM', status: 400 }
+      const sorted = [...terms].sort((a, b) => a.startDate.localeCompare(b.startDate))
+      for (const [i, t] of sorted.entries()) {
+        if (t.endDate < t.startDate) return { error: 'TERM_ENDS_BEFORE_START', status: 400 }
+        if (t.startDate < year.startDate || t.endDate > year.endDate) return { error: 'TERM_OUTSIDE_YEAR', status: 400 }
+        if (i > 0 && t.startDate <= sorted[i - 1]!.endDate) return { error: 'TERMS_OVERLAP', status: 400 }
+      }
+      const removed = year.terms.filter((t) => !terms.some((x) => x.id === t.id)).map((t) => t.id)
+      if (removed.length > 0) {
+        const inPlan = await ctx.assessmentPlans.countDocuments({ academicYearId: id, 'terms.termId': { $in: removed } })
+        const withMarks = await ctx.marks.countDocuments({ academicYearId: id, termId: { $in: removed } })
+        if (inPlan + withMarks > 0) return { error: 'TERM_IN_USE', status: 409 }
+      }
+      const updated = await ctx.academicYears.findOneAndUpdate({ _id: id }, { $set: { terms: sorted } }, { returnDocument: 'after' })
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'academicYear.terms.set',
+        entity: 'academicYear',
+        entityId: id,
+        before: { terms: year.terms },
+        after: { terms: sorted },
+      })
+      return { year: updated! }
+    })
+    if ('error' in out) return reply.code(out.status as number).send({ error: out.error })
+    return reply.send(toResponse(out.year))
   })
 
   /** Makes this the one current year, unsetting the flag on every other. */

@@ -34,6 +34,8 @@ export const TEMPLATE_TOKENS: Record<TemplateKind, string[]> = {
   report_ready: ['report', 'period', 'rows', 'link', 'schoolName'],
   clinic_visit: ['parentName', 'studentName', 'time', 'complaint', 'outcome', 'treatment', 'schoolName'],
   incident: ['parentName', 'studentName', 'date', 'type', 'description', 'action', 'schoolName'],
+  report_card: ['parentName', 'studentName', 'term', 'link', 'schoolName'],
+  library_overdue: ['parentName', 'studentName', 'title', 'dueDate', 'fine', 'schoolName'],
 }
 
 export const TEMPLATE_KINDS = Object.keys(TEMPLATE_TOKENS) as TemplateKind[]
@@ -174,6 +176,28 @@ export const DEFAULT_TEMPLATES: Record<TemplateKind, TemplateText> = {
       'الإجراء المتخذ: {action}\n\n' +
       'يُرجى التواصل مع المدرسة لمناقشتها.\n\n{schoolName}',
     smsBodyAr: '{schoolName}: حادثة تخص {studentName} بتاريخ {date} ({type}). يُرجى التواصل مع المدرسة.',
+  },
+  report_card: {
+    enabled: true,
+    subject: 'Report card — {studentName}, {term}',
+    body: 'Dear {parentName},\n\n{studentName}’s report card for {term} is ready in the parent portal:\n{link}\n\n{schoolName}',
+    smsBody: '{schoolName}: {studentName}’s report card for {term} is in the parent portal.',
+    subjectAr: 'الشهادة المدرسية — {studentName}، {term}',
+    bodyAr: 'عزيزي {parentName}،\n\nشهادة {studentName} عن {term} متاحة الآن في بوابة أولياء الأمور:\n{link}\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: شهادة {studentName} عن {term} متاحة في بوابة أولياء الأمور.',
+  },
+  library_overdue: {
+    enabled: true,
+    subject: 'Library book overdue — {studentName}',
+    body:
+      'Dear {parentName},\n\n{studentName} has a library book that was due back on {dueDate}: “{title}”.\n' +
+      'The late fine so far is {fine}. Please help {studentName} return it soon.\n\n{schoolName}',
+    smsBody: '{schoolName}: {studentName}’s library book “{title}” was due on {dueDate}. Please return it.',
+    subjectAr: 'كتاب مكتبة متأخر — {studentName}',
+    bodyAr:
+      'عزيزي {parentName}،\n\nلدى {studentName} كتاب من المكتبة كان موعد إرجاعه {dueDate}: «{title}».\n' +
+      'غرامة التأخير حتى الآن {fine}. يُرجى مساعدته على إرجاعه قريبًا.\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: كتاب المكتبة «{title}» لدى {studentName} كان موعد إرجاعه {dueDate}. يُرجى إرجاعه.',
   },
 }
 

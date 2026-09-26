@@ -17,6 +17,8 @@ export type MessageKind =
   | 'report_ready'
   | 'clinic_visit'
   | 'incident'
+  | 'report_card'
+  | 'library_overdue'
 
 // ---------------------------------------------------------------- inbox --
 
@@ -111,6 +113,8 @@ export const resetTemplate = (getToken: TokenGetter, kind: string) =>
 export interface CommunicationSettings {
   feeReminders: { auto: boolean; daysBefore: number; repeatDays: number }
   documentExpiry: { auto: boolean; daysBefore: number }
+  /** SAMS 11.3 */
+  libraryOverdue: { auto: boolean; repeatDays: number }
   portalDocumentCategories: string[]
   lastRunDate: string | null
 }

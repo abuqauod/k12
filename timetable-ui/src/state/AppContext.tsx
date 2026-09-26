@@ -185,22 +185,36 @@ function markEverSynced(schoolId: string): void {
  * auto-replacing local state is provably safe.
  */
 function isPristineProblem(problem: Problem): boolean {
-  return JSON.stringify(problem) === JSON.stringify(normalizeProblem(sampleProblem()))
+  const json = JSON.stringify(problem)
+  return json === JSON.stringify(normalizeProblem(sampleProblem())) || json === JSON.stringify(normalizeProblem(emptyProblem()))
+}
+
+/** SAMS 12: what a school with no timetable yet starts from — the sample's
+ * week structure, none of its classes, teachers or rooms. */
+function emptyProblem(): Problem {
+  return { ...sampleProblem(), rooms: [], lessons: [], unavailability: [] }
 }
 
 const ACTIVE_BRANCH_KEY = 'timetable.activeBranch'
 
 export function AppProvider({ children }: { children: ReactNode }) {
   // Sync authenticates as the signed-in user — no separate token setting.
-  const { getAccessToken, user: signedIn, roleKey, accessReady } = useAuth()
+  const { getAccessToken, user: signedIn, roleKey, accessReady, tenant, hasModule } = useAuth()
+  // SAMS 13.1: transport is a module; a plan without it has nothing to load.
+  const transportOn = accessReady && hasModule('transport')
   // Everything loaded here is the staff app's; a parent portal login
   // (SAMS 6.4) loads none of it.
   const user = accessReady && roleKey !== 'parent' ? signedIn : null
 
   // Restore the saved dataset; only fall back to the sample on a fresh install.
-  const restored = useRef(loadDataset()).current
+  // Another school's saved work is not restored at all (SAMS 12).
+  const restored = useRef(
+    ((d) => (d && d.owner && tenant && d.owner !== tenant.id ? null : d))(loadDataset()),
+  ).current
   const [problem, setProblemState] = useState<Problem>(() => restored?.problem ?? sampleProblem())
   const [revision, setRevision] = useState(restored?.revision ?? 1)
+  // SAMS 12: whose timetable work is on this device.
+  const ownerRef = useRef<string | null>(restored?.owner ?? null)
   const [savedAt, setSavedAt] = useState<string | null>(restored?.savedAt ?? null)
 
   const [budget, setBudget] = useState(5000)
@@ -291,7 +305,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const transportSettingsBranchRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!user || !activeBranchId) {
+    if (!user || !activeBranchId || !transportOn) {
       setBuses([])
       setStops([])
       setTransportSettings(DEFAULT_TRANSPORT_SETTINGS)
@@ -323,7 +337,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [user, activeBranchId, getAccessToken])
+  }, [user, activeBranchId, getAccessToken, transportOn])
 
   const studentCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -470,7 +484,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (firstRender.current) return
     const timer = setTimeout(() => {
-      const record = saveDataset(problem, revision + 1)
+      const record = saveDataset(problem, revision + 1, tenant?.id ?? ownerRef.current)
       if (record) {
         setRevision(record.revision)
         setSavedAt(record.savedAt)
@@ -630,6 +644,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * would permanently suppress the first-ever attempt for a newly-entered
    * school once the very first schoolId's attempt had already run.
    */
+  // SAMS 12: another school's work never shows here — a different school
+  // signing in starts from a clean slate and loads its own timetable.
+  useEffect(() => {
+    if (!tenant) return
+    if (ownerRef.current && ownerRef.current !== tenant.id) {
+      setProblemState(sampleProblem())
+      setRevision(1)
+      try {
+        localStorage.removeItem(everSyncedKey(syncSettings.schoolId))
+      } catch {
+        // Best effort.
+      }
+      problemAutoPulled.current.clear()
+    }
+    ownerRef.current = tenant.id
+  }, [tenant, syncSettings.schoolId])
+
   const problemAutoPulled = useRef<Set<string>>(new Set())
   useEffect(() => {
     if (!user || !isConfigured(syncSettings)) return
@@ -643,6 +674,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setProblemState(result.problem)
         setRevision(result.revision ?? 1)
         markEverSynced(syncSettings.schoolId)
+      } else if (result.kind === 'empty') {
+        // A school with no timetable yet sees an empty one, not the demo.
+        setProblemState(emptyProblem())
       }
     })()
   }, [user, syncSettings, getAccessToken, problem])

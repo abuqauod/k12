@@ -41,6 +41,8 @@ import {
   RolesSection,
 } from '../components/SettingsSections'
 import type { TenantProfile } from '../lib/tenantApi'
+import { SubscriptionSection } from '../components/settings/SubscriptionSection'
+import { PaymentsSection } from '../components/settings/PaymentsSection'
 import { NumberingSection } from '../components/settings/NumberingSection'
 import { ImportSection } from '../components/settings/ImportSection'
 
@@ -68,7 +70,11 @@ type SettingsSection =
   | 'notification-templates'
   | 'numbering'
   | 'import'
+  | 'payments'
+  | 'subscription'
   | 'incident-types'
+  | 'subjects'
+  | 'canteen-categories'
   | 'discipline-actions'
   | 'roles'
   | 'team'
@@ -81,6 +87,8 @@ interface SectionDef {
   key: TranslationKey
   /** Scope that shows the section; the API enforces the same. */
   scope?: string
+  /** SAMS 13.1: shown only when the plan includes it. */
+  module?: string
   /** Shown with any one of these. */
   anyScope?: string[]
 }
@@ -92,11 +100,13 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
     key: 'settings.group.school',
     sections: [
       { id: 'organization', key: 'settings.tab.organization', scope: 'settings.read' },
+      { id: 'subscription', key: 'settings.section.subscription', scope: 'settings.read' },
       { id: 'branches', key: 'branches.title', scope: 'notifications.manage' },
       { id: 'academic-years', key: 'settings.section.academicYears', scope: 'academicYears.read' },
       { id: 'grades-classes', key: 'settings.section.gradesClasses', scope: 'classes.read' },
       { id: 'numbering', key: 'settings.section.numbering', scope: 'settings.read' },
       { id: 'import', key: 'settings.section.import', anyScope: ['students.create', 'hr.employee.update'] },
+      { id: 'payments', key: 'settings.section.payments', scope: 'settings.read', module: 'onlinePayments' },
       { id: 'payment-methods', key: 'settings.section.paymentMethods', scope: 'settings.read' },
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
@@ -110,6 +120,8 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'room-types', key: 'settings.section.roomTypes', scope: 'settings.read' },
       { id: 'book-categories', key: 'settings.section.bookCategories', scope: 'settings.read' },
       { id: 'event-types', key: 'settings.section.eventTypes', scope: 'settings.read' },
+      { id: 'subjects', key: 'settings.section.subjects', scope: 'settings.read' },
+      { id: 'canteen-categories', key: 'settings.section.canteenCategories', scope: 'settings.read' },
       { id: 'incident-types', key: 'settings.section.incidentTypes', scope: 'settings.read' },
       { id: 'discipline-actions', key: 'settings.section.disciplineActions', scope: 'settings.read' },
       { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
@@ -134,13 +146,15 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
 
 export function SettingsPage() {
   const { t } = useI18n()
-  const { can } = useAuth()
+  const { can, hasModule } = useAuth()
   const navigate = useNavigate()
   const { section } = useParams<{ section?: string }>()
 
   const groups = SECTION_GROUPS.map((group) => ({
     ...group,
-    sections: group.sections.filter((s) => (!s.scope || can(s.scope)) && (!s.anyScope || s.anyScope.some(can))),
+    sections: group.sections.filter(
+      (s) => (!s.scope || can(s.scope)) && (!s.anyScope || s.anyScope.some(can)) && (!s.module || hasModule(s.module)),
+    ),
   })).filter((group) => group.sections.length > 0)
   const allowed = groups.flatMap((group) => group.sections)
   // Unknown or not-permitted sections fall back to the first allowed one.
@@ -200,6 +214,8 @@ export function SettingsPage() {
           {active?.id === 'grades-classes' && <GradesClassesSection />}
           {active?.id === 'numbering' && <NumberingSection />}
           {active?.id === 'import' && <ImportSection />}
+          {active?.id === 'payments' && <PaymentsSection />}
+          {active?.id === 'subscription' && <SubscriptionSection />}
           {active?.id === 'payment-methods' && (
             <LookupSection
               kind="paymentMethod"
@@ -250,6 +266,10 @@ export function SettingsPage() {
           {active?.id === 'book-categories' && <LookupSection kind="bookCategory" title={t('settings.section.bookCategories')} hint={t('settings.bookCategories.hint')} />}
           {active?.id === 'event-types' && <LookupSection kind="eventType" title={t('settings.section.eventTypes')} hint={t('settings.eventTypes.hint')} />}
           {active?.id === 'notification-templates' && <NotificationTemplatesSection />}
+          {active?.id === 'canteen-categories' && (
+            <LookupSection kind="canteenCategory" title={t('settings.section.canteenCategories')} hint={t('settings.canteenCategories.hint')} />
+          )}
+          {active?.id === 'subjects' && <LookupSection kind="subject" title={t('settings.section.subjects')} hint={t('settings.subjects.hint')} />}
           {active?.id === 'incident-types' && (
             <LookupSection kind="incidentType" title={t('settings.section.incidentTypes')} hint={t('settings.incidentTypes.hint')} />
           )}

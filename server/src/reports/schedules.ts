@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { withoutTenant, withTenant } from '../db.js'
+import { tenantHasModule } from '../billing/usage.js'
 import type { ReportFrequency, ReportRunDoc, ReportScheduleDoc } from '../db.js'
 import { config } from '../config.js'
 import { withLock } from '../lock.js'
@@ -235,6 +236,8 @@ export async function runDueSchedules(today = new Date().toISOString().slice(0, 
   await withLock('report-schedules', 15 * 60_000, async () => {
     const due = await withoutTenant((db) => db.reportSchedules.find({ active: true, nextRunDate: { $lte: today } }).toArray())
     for (const schedule of due) {
+      // Kept, not run, while the school's plan lacks scheduled reports.
+      if (!(await tenantHasModule(schedule.tenantId, 'scheduledReports'))) continue
       try {
         await runSchedule(schedule, today, 'scheduled')
       } catch (error) {

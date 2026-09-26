@@ -1,10 +1,13 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { NAV } from './app/AppShell'
 import type { ReactNode } from 'react'
 import { AppShell } from './app/AppShell'
 import { useAuth } from './auth/AuthContext'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
+import { SignupPage } from './pages/SignupPage'
+import { PricingPage } from './pages/PricingPage'
 import { SetPasswordPage } from './pages/SetPasswordPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TimetablePage } from './pages/TimetablePage'
@@ -29,6 +32,8 @@ import { ApprovalsPage } from './pages/ApprovalsPage'
 import { CommunicationPage } from './pages/CommunicationPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { ClinicPage } from './pages/ClinicPage'
+import { GradesPage } from './pages/GradesPage'
+import { CanteenPage } from './pages/CanteenPage'
 import { BehaviourPage } from './pages/BehaviourPage'
 import { PortalShell } from './portal/PortalShell'
 import { PortalHome } from './portal/PortalHome'
@@ -53,7 +58,7 @@ function StaffOnly({ children }: { children: ReactNode }) {
 
 function ParentOnly({ children }: { children: ReactNode }) {
   const { roleKey } = useAuth()
-  return roleKey === 'parent' ? <>{children}</> : <Navigate to="/dashboard" replace />
+  return roleKey === 'parent' ? <>{children}</> : <Navigate to="/" replace />
 }
 
 export default function App() {
@@ -61,6 +66,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
       <Route path="/accept-invite" element={<SetPasswordPage mode="invite" />} />
       <Route path="/reset-password" element={<SetPasswordPage mode="reset" />} />
       <Route
@@ -101,6 +108,8 @@ export default function App() {
         <Route path="/communication" element={<CommunicationPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/clinic" element={<ClinicPage />} />
+        <Route path="/grades" element={<GradesPage />} />
+        <Route path="/canteen" element={<CanteenPage />} />
         <Route path="/behaviour" element={<BehaviourPage />} />
         <Route path="/hr" element={<HrPage />} />
         <Route path="/hr/employees/:id" element={<EmployeePage />} />
@@ -111,7 +120,25 @@ export default function App() {
         <Route path="/fleet" element={<FleetPage />} />
         <Route path="/settings/:section?" element={<SettingsPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Waits for the caller's scopes: before they arrive every menu item
+          looks off-limits and the first one without a scope would win. */}
+      <Route
+        path="*"
+        element={
+          <RequireAuth>
+            <Landing />
+          </RequireAuth>
+        }
+      />
     </Routes>
   )
+}
+
+/** SAMS 12: where a signed-in member starts — the first page their role can
+ * open (a till operator has no dashboard). */
+function Landing() {
+  const { can, roleKey, hasModule } = useAuth()
+  if (roleKey === 'parent') return <Navigate to="/portal" replace />
+  const first = NAV.find((e) => (!e.scope || can(e.scope)) && (!e.anyScope || e.anyScope.some(can)) && (!e.module || hasModule(e.module)))
+  return <Navigate to={first?.to ?? '/settings'} replace />
 }

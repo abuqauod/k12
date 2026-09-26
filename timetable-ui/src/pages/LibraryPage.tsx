@@ -4,6 +4,9 @@ import {
   addCopy,
   createBook,
   lend,
+  borrowerByCard,
+  returnByBarcode,
+  notifyOverdue,
   librarySettings,
   listBooks,
   listLoans,
@@ -80,7 +83,27 @@ function DeskTab() {
   const [barcode, setBarcode] = useState('')
   const [loans, setLoans] = useState<Loan[]>([])
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [card, setCard] = useState('')
+  const [returning, setReturning] = useState('')
   const canLend = can('ops.library.manage')
+
+  // SAMS 11.3: the ID card's barcode is the student or staff number.
+  const findCard = async () => {
+    if (!card.trim()) return
+    const res = await borrowerByCard(getAccessToken, card.trim())
+    if (res.kind !== 'ok') return setMsg({ ok: false, text: opsError(t, res.error) })
+    setBorrower({ type: res.data.type, id: res.data.id, label: res.data.name })
+    setCard('')
+    setMsg(null)
+  }
+  const doReturn = async () => {
+    if (!returning.trim()) return
+    const res = await returnByBarcode(getAccessToken, returning.trim())
+    if (res.kind !== 'ok') return setMsg({ ok: false, text: opsError(t, res.error) })
+    setMsg({ ok: true, text: res.data.fine > 0 ? t('lib.returnedFine', { fine: formatMinorUnits(res.data.fine) }) : t('lib.done.return') })
+    setReturning('')
+    await loadBorrower()
+  }
 
   const loadBorrower = useCallback(async () => {
     if (!borrower) return setLoans([])
@@ -99,7 +122,7 @@ function DeskTab() {
     setBarcode('')
     await loadBorrower()
   }
-  const act = async (id: string, action: 'return' | 'renew' | 'lost' | 'pay') => {
+  const act = async (id: string, action: 'return' | 'renew' | 'lost' | 'pay' | 'bill') => {
     const res = await loanAction(getAccessToken, id, action)
     if (res.kind !== 'ok') return setMsg({ ok: false, text: opsError(t, res.error) })
     setMsg({
@@ -116,6 +139,20 @@ function DeskTab() {
     <div className="card-row">
       <section className="card">
         <h2 className="card__title">{t('lib.desk.borrower')}</h2>
+        <div className="inline-form" style={{ marginBottom: 8 }}>
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            placeholder={t('lib.desk.scanCard')}
+            aria-label={t('lib.desk.scanCard')}
+            value={card}
+            onChange={(e) => setCard(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void findCard()}
+          />
+          <button type="button" className="btn" onClick={() => void findCard()}>
+            {t('lib.desk.find')}
+          </button>
+        </div>
         {borrower ? (
           <div className="stat-row">
             <b>{borrower.label}</b>
@@ -139,6 +176,22 @@ function DeskTab() {
             />
             <button type="button" className="btn btn--primary" onClick={() => void doLend()}>
               {t('lib.desk.lend')}
+            </button>
+          </div>
+        )}
+        {canLend && (
+          <div className="inline-form" style={{ marginTop: 12 }}>
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              placeholder={t('lib.desk.scanReturn')}
+              aria-label={t('lib.desk.scanReturn')}
+              value={returning}
+              onChange={(e) => setReturning(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void doReturn()}
+            />
+            <button type="button" className="btn" onClick={() => void doReturn()}>
+              {t('lib.return')}
             </button>
           </div>
         )}
@@ -172,9 +225,16 @@ function DeskTab() {
                       </button>
                     </>
                   ) : (
-                    <button type="button" className="btn btn--sm" onClick={() => void act(l.id, 'pay')}>
-                      {t('lib.pay')}
-                    </button>
+                    <>
+                      <button type="button" className="btn btn--sm" onClick={() => void act(l.id, 'pay')}>
+                        {t('lib.pay')}
+                      </button>
+                      {l.borrowerType === 'student' && (
+                        <button type="button" className="btn btn--sm btn--ghost" onClick={() => void act(l.id, 'bill')}>
+                          {t('lib.bill')}
+                        </button>
+                      )}
+                    </>
                   )}
                 </span>
               )}
@@ -372,10 +432,16 @@ function LoansTab() {
   useEffect(() => {
     void load()
   }, [load])
-  const act = async (id: string, action: 'return' | 'pay') => {
+  const [told, setTold] = useState<string | null>(null)
+  const act = async (id: string, action: 'return' | 'pay' | 'bill') => {
     const res = await loanAction(getAccessToken, id, action)
     if (res.kind !== 'ok') return setError(opsError(t, res.error))
     await load()
+  }
+  const tell = async () => {
+    const res = await notifyOverdue(getAccessToken, { branchId: activeBranchId ?? undefined })
+    if (res.kind !== 'ok') return setError(opsError(t, res.error))
+    setTold(t('lib.overdueTold', { loans: res.data.loans, families: res.data.families }))
   }
 
   return (
@@ -388,7 +454,13 @@ function LoansTab() {
             </button>
           ))}
         </div>
+        {view === 'overdue' && can('ops.library.manage') && (rows?.length ?? 0) > 0 && (
+          <button type="button" className="btn btn--sm" onClick={() => void tell()}>
+            {t('lib.tellFamilies')}
+          </button>
+        )}
       </div>
+      {told && <p className="notice">{told}</p>}
       {error && <p className="login__error">{error}</p>}
       {rows === null ? (
         <div className="skeleton" style={{ height: 100 }} />
@@ -435,6 +507,11 @@ function LoansTab() {
                             <button type="button" className="btn btn--sm" onClick={() => void act(l.id, 'pay')}>
                               {t('lib.pay')}
                             </button>
+                            {l.borrowerType === 'student' && (
+                              <button type="button" className="btn btn--sm btn--ghost" onClick={() => void act(l.id, 'bill')}>
+                                {t('lib.bill')}
+                              </button>
+                            )}
                             <button type="button" className="btn btn--sm btn--ghost" onClick={() => setWaiving(l.id)}>
                               {t('lib.waive')}
                             </button>

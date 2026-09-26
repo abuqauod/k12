@@ -89,6 +89,8 @@ describe('student import', () => {
     assert.deepEqual([out.parentsCreated, out.parentsLinked], [1, 1])
     const links = await withTenant(fx.tenantId, (ctx) => ctx.parentStudentLinks.find({ studentId: { $in: out.created.map((c) => c.id) } }).toArray())
     assert.equal(new Set(links.map((l) => l.parentId)).size, 1)
+    // The guardian an admin imports is the family's fee contact (pilot: no one saw the bills).
+    assert.ok(links.every((l) => l.financialResponsibility))
     const enrolled = await withTenant(fx.tenantId, (ctx) => ctx.enrollments.countDocuments({ studentId: { $in: out.created.map((c) => c.id) }, status: 'active' }))
     assert.equal(enrolled, 2)
     const audit = await withTenant(fx.tenantId, (ctx) => ctx.auditLog.findOne({ action: 'import.commit' }))

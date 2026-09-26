@@ -103,6 +103,15 @@ const generateInvoiceBody = z.object({
   notes: z.string().max(2000).nullable().default(null),
 })
 
+const bulkInvoiceBody = z
+  .object({
+    feeStructureId: z.string().min(1),
+    classId: z.string().min(1).optional(),
+    dueDate: z.string().date().nullable().default(null),
+    preview: z.boolean().default(false),
+  })
+  .strict()
+
 const discountBody = z
   .object({ type: z.enum(['amount', 'percent']), value: z.number().int().min(0) })
   .nullable()
@@ -503,6 +512,60 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
     )
     if (!result.ok) return reply.code(ERROR_STATUS[result.error] ?? 400).send({ error: result.error })
     return reply.code(201).send(invoiceResponse(result.invoice))
+  })
+
+  /**
+   * SAMS 12 — found in the pilot: invoices could only be made one student at
+   * a time. Bills every enrolled student of the structure's grade (or one
+   * class of it) in its branch and year, skipping anyone already billed from
+   * this structure. `preview` counts without writing.
+   */
+  app.post('/finance/invoices/bulk', scoped('finance.invoice.create'), async (request, reply) => {
+    const parsed = bulkInvoiceBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const b = parsed.data
+    const tenantId = request.auth!.tenantId!
+    const plan = await withTenant(tenantId, async (ctx) => {
+      const structure = await ctx.feeStructures.findOne({ _id: b.feeStructureId, active: true })
+      if (!structure) return null
+      const classes = await ctx.classes
+        .find({ branchId: structure.branchId, gradeLevel: structure.gradeLevel, active: true, ...(b.classId ? { _id: b.classId } : {}) })
+        .toArray()
+      const students = await ctx.students
+        .find({ status: 'enrolled', branchId: structure.branchId, classId: { $in: classes.map((c) => c._id) } })
+        .toArray()
+      const billed = new Set(
+        (await ctx.invoices.find({ feeStructureId: structure._id, status: { $ne: 'void' }, studentId: { $in: students.map((s) => s._id) } }).toArray()).map((i) => i.studentId),
+      )
+      return { structure, toBill: students.filter((s) => !billed.has(s._id)), already: billed.size }
+    })
+    if (!plan) return reply.code(404).send({ error: 'UNKNOWN_FEE_STRUCTURE' })
+    if (!(await callerCanUseBranch(request, plan.structure.branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    if (b.preview) return reply.send({ toBill: plan.toBill.length, alreadyBilled: plan.already, created: 0, failed: [] })
+
+    let created = 0
+    const failed: { studentId: string; error: string }[] = []
+    // One invoice per transaction: a student who can't be billed (not
+    // enrolled for this year) doesn't stop the rest.
+    for (const s of plan.toBill) {
+      const res = await withTenant(tenantId, (ctx) =>
+        generateInvoice(ctx, tenantId, { studentId: s._id, feeStructureId: b.feeStructureId, dueDate: b.dueDate, notes: null, actorId: request.auth!.sub }),
+      )
+      if (res.ok) created++
+      else failed.push({ studentId: s._id, error: res.error })
+    }
+    await withTenant(tenantId, (ctx) =>
+      recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'invoice.bulk',
+        entity: 'feeStructure',
+        entityId: b.feeStructureId,
+        branchId: plan.structure.branchId,
+        before: null,
+        after: { classId: b.classId ?? null, created, failed: failed.length, alreadyBilled: plan.already },
+      }),
+    )
+    return reply.send({ toBill: plan.toBill.length, alreadyBilled: plan.already, created, failed })
   })
 
   async function requireInvoiceBranchAccess(request: Parameters<typeof callerCanUseBranch>[0], invoiceId: string, tenantId: string) {

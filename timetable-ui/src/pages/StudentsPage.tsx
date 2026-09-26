@@ -36,7 +36,7 @@ function toPayload(student: Student): NewStudent {
 export function StudentsPage() {
   const { t, n, lang } = useI18n()
   const { students, setStudents, fleet, activeBranchId } = useApp()
-  const { getAccessToken, can } = useAuth()
+  const { getAccessToken, can, hasModule } = useAuth()
   const canDelete = can('students.delete')
   const [deleting, setDeleting] = useState<Student | null>(null)
   const [query, setQuery] = useState('')
@@ -44,6 +44,8 @@ export function StudentsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [pendingSaves, setPendingSaves] = useState(0)
+  // SAMS 13.1: the plan's student limit, when a new row was refused for it.
+  const [limitNotice, setLimitNotice] = useState<string | null>(null)
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -133,6 +135,8 @@ export function StudentsPage() {
         const result = await createStudent(getAccessToken, toPayload(row))
         if (result.kind === 'ok') {
           setStudents(latestStudents.current.map((s) => (s.id === id ? { ...s, id: result.data.id } : s)))
+        } else if (result.error === 'PLAN_LIMIT_STUDENTS') {
+          setLimitNotice(t('plan.limit.students'))
         }
       } else {
         await updateStudent(getAccessToken, id, changes)
@@ -239,15 +243,17 @@ export function StudentsPage() {
         </div>
         <div className="page__actions">
           {pendingSaves > 0 && <span className="card__hint">{t('students.saving')}</span>}
-          <button
-            type="button"
-            className="btn"
-            disabled={!activeBranchId}
-            title={activeBranchId ? undefined : t('idcards.pickBranch')}
-            onClick={() => void printIdCards(getAccessToken, 'students', { branchId: activeBranchId, layout: 'sheet', lang })}
-          >
-            {t('idcards.print')}
-          </button>
+          {hasModule('idCards') && (
+            <button
+              type="button"
+              className="btn"
+              disabled={!activeBranchId}
+              title={activeBranchId ? undefined : t('idcards.pickBranch')}
+              onClick={() => void printIdCards(getAccessToken, 'students', { branchId: activeBranchId, layout: 'sheet', lang })}
+            >
+              {t('idcards.print')}
+            </button>
+          )}
           {can('enrollments.assign') && (
             <button type="button" className="btn" onClick={() => navigate('/students/year-end')}>
               {t('yearEnd.title')}
@@ -258,6 +264,11 @@ export function StudentsPage() {
           </button>
         </div>
       </header>
+      {limitNotice && (
+        <p className="notice notice--warn" role="alert">
+          {limitNotice}
+        </p>
+      )}
 
       {loading && <p className="card__hint">{t('students.syncing')}</p>}
       {loadError && <p className="card__hint" style={{ color: 'var(--bad)' }}>{t('students.syncError')}</p>}

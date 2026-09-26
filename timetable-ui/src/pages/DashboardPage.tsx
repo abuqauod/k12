@@ -1,3 +1,5 @@
+import { actionLabel } from '../lib/auditLabels'
+import { GettingStarted } from '../components/GettingStarted'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -217,6 +219,8 @@ export function DashboardPage() {
         )}
       </header>
 
+      <GettingStarted />
+
       {/* ------------------------------------------------ school overview */}
       <section aria-labelledby="dash-overview">
         <div className="section-head">
@@ -397,8 +401,9 @@ export function DashboardPage() {
               {activity.map((entry) => (
                 <li key={entry.id}>
                   <span className="activity__dot" aria-hidden="true" />
-                  <span className="activity__action mono">{entry.action}</span>
-                  {entry.entity && <span className="chip">{entry.entity}</span>}
+                  <span className="activity__action" title={entry.action}>
+                    {actionLabel(entry.action, lang)}
+                  </span>
                   <time className="activity__time" dateTime={entry.createdAt}>
                     {relativeTime(entry.createdAt, lang)}
                   </time>
