@@ -11,8 +11,8 @@ per-area status reference.
 
 ## Where we are
 
-**Phases 1–6 are shipped and on `main`. Phase 7 (Reporting) is built on
-`claude/sams-7-reporting`.**
+**Phases 1–7 are shipped and on `main`. The optional backlog (and real
+email/SMS delivery) is built on `claude/sams-8`.**
 
 | Phase | Slices | PRs |
 |---|---|---|
@@ -23,7 +23,8 @@ per-area status reference.
 | 4 — HR & staff | 4.1–4.6 | #62 |
 | 5 — Operations | 5.1–5.6 | #62 |
 | 6 — Communication & portals | 6.1–6.4 | #64 |
-| 7 — Reporting | 7.1–7.4 | `claude/sams-7-reporting` (not yet merged) |
+| 7 — Reporting | 7.1–7.4 | #65–#67 |
+| Backlog — extras | numbering, health/clinic, discipline, bulk import, ID cards; email/SMS delivery | `claude/sams-8` (not yet merged) |
 
 ## Definition of done (every slice)
 
@@ -384,6 +385,39 @@ Excel, PDF and print output · 7.4 Scheduled report exports.
 
 ---
 
+## Backlog — extras (built on request)
+
+- **Email and SMS delivery.** SMS through Twilio or any HTTP SMS gateway
+  (`SMS_PROVIDER`), local numbers turned international with
+  `SMS_DEFAULT_COUNTRY_CODE`; SMTP without a login for relays; a plain-text
+  part and clickable links. Communication → Automatic notices shows whether
+  each channel is set up and sends a test; the delivery log can retry every
+  message that failed (e.g. before a provider was set up). The credentials
+  themselves are the operator's to set (see `server/.env.example`).
+- **Configurable numbering.** Students, applications, invoices, receipts,
+  refunds, expenses, employees, assets, maintenance requests and incidents:
+  prefix, separator, digits, optional year (count restarts yearly), next
+  number forward-only; numbers already used are skipped. Student numbers
+  may be left blank and are then given.
+- **Health and clinic.** A health profile per student (blood type,
+  allergies with severity, conditions, medication, doctor); items marked
+  as alerts show on the student record to all staff who can see the
+  student, the rest needs `health.read`. Clinic visit log; a child sent
+  home, referred or taken to emergency is reported to the family. New
+  Nurse role; Clinic page; Clinic visits report.
+- **Discipline.** Incidents about one or more students (`INC-` numbers),
+  types and actions as settings lists. `discipline.report` (teachers,
+  reception, nurse) logs and follows their own; `discipline.manage`
+  (admins, registrar) sees all, records actions (warning … suspension),
+  tells families and closes. Behaviour page, student tab, report.
+- **Bulk import.** Students (with a parent per row) and staff from CSV:
+  template, a preview that checks every row, and a commit that creates each
+  valid row through the normal create routes as the caller; siblings share
+  one parent found by phone or email. Settings → Import data.
+- **ID cards.** Student and staff cards (photo, names in both languages,
+  number as a Code 128 barcode, class or position, valid until), ten to an
+  A4 sheet or one per card-printer page.
+
 ## Decisions (defaults applied until changed)
 
 | Question | Default |
@@ -391,4 +425,4 @@ Excel, PDF and print output · 7.4 Scheduled report exports.
 | Tenant = organization or single school? | **Tenant = organization; branch = school/campus.** A separate school level is added only when a customer runs several schools with their own branches. |
 | Close Phase 1 before Phase 2? | **Yes** — 1.7–1.12 first. |
 | Phase order | **Spec order**; fee reminders may be pulled forward into Phase 3 using the existing queue. |
-| Extras not in the spec (health/clinic, discipline, configurable numbering, bulk import, ID cards) | **Optional backlog**, scheduled only on request. |
+| Extras not in the spec (health/clinic, discipline, configurable numbering, bulk import, ID cards) | **Built on request** (see Backlog — extras). |

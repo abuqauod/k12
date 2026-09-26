@@ -11,6 +11,7 @@ import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { printIdCards } from '../lib/idCards'
 
 type ModeFilter = TransportMode | 'ALL' | 'ISSUES' | 'INCOMPLETE'
 
@@ -33,7 +34,7 @@ function toPayload(student: Student): NewStudent {
 }
 
 export function StudentsPage() {
-  const { t, n } = useI18n()
+  const { t, n, lang } = useI18n()
   const { students, setStudents, fleet, activeBranchId } = useApp()
   const { getAccessToken, can } = useAuth()
   const canDelete = can('students.delete')
@@ -238,6 +239,15 @@ export function StudentsPage() {
         </div>
         <div className="page__actions">
           {pendingSaves > 0 && <span className="card__hint">{t('students.saving')}</span>}
+          <button
+            type="button"
+            className="btn"
+            disabled={!activeBranchId}
+            title={activeBranchId ? undefined : t('idcards.pickBranch')}
+            onClick={() => void printIdCards(getAccessToken, 'students', { branchId: activeBranchId, layout: 'sheet', lang })}
+          >
+            {t('idcards.print')}
+          </button>
           {can('enrollments.assign') && (
             <button type="button" className="btn" onClick={() => navigate('/students/year-end')}>
               {t('yearEnd.title')}

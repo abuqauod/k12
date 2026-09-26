@@ -36,6 +36,7 @@ import { registerReportRoutes } from './reports/routes.js'
 import { registerHealthRoutes } from './health/routes.js'
 import { registerDisciplineRoutes } from './discipline/routes.js'
 import { registerImportRoutes } from './imports/routes.js'
+import { registerIdCardRoutes } from './idcards/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 
 export function buildServer() {
@@ -150,6 +151,7 @@ export function buildServer() {
       registerHealthRoutes(instance)
       registerDisciplineRoutes(instance)
       registerImportRoutes(instance)
+      registerIdCardRoutes(instance)
     },
     { prefix: config.routePrefix },
   )

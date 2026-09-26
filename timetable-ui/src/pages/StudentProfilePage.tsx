@@ -17,6 +17,7 @@ import { FinanceTab } from '../components/student/FinanceTab'
 import { ActivityTab } from '../components/student/ActivityTab'
 import { BehaviourTab } from '../components/student/BehaviourTab'
 import { HealthAlertsBanner, HealthTab } from '../components/wellbeing/Health'
+import { printIdCards } from '../lib/idCards'
 
 type Tab = 'profile' | 'family' | 'enrollment' | 'finance' | 'health' | 'behaviour' | 'documents' | 'activity'
 
@@ -187,6 +188,15 @@ export function StudentProfilePage() {
                 <span className="chip chip--warn">{t('profile.incomplete', { n: String(missing.length) })}</span>
               ))}
           </div>
+        </div>
+        <div className="page__actions" style={{ marginInlineStart: 'auto' }}>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => void printIdCards(getAccessToken, 'students', { ids: [student.id], layout: 'card', lang })}
+          >
+            {t('idcards.one')}
+          </button>
         </div>
       </header>
 

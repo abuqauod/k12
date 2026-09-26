@@ -251,6 +251,8 @@ const ROUTES: [Method, string, Role][] = [
   // Backlog: health (admins only among the ranks), discipline.
   ['GET', `/students/${X}/alerts`, 'viewer'],
   ['GET', '/imports/students/template', 'scheduler'],
+  ['GET', '/id-cards/students', 'viewer'],
+  ['GET', '/id-cards/employees', 'admin'],
   ['POST', '/imports/students/preview', 'scheduler'],
   ['POST', '/imports/students/commit', 'scheduler'],
   ['GET', '/imports/employees/template', 'admin'],
