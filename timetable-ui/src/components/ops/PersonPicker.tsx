@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { globalSearch } from '../../lib/searchApi'
 import { listEmployees } from '../../lib/hrApi'
+import { listStudents } from '../../lib/studentsApi'
 import { useAuth } from '../../auth/AuthContext'
 import { useI18n } from '../../i18n/I18nContext'
 
@@ -18,10 +19,13 @@ export function PersonPicker({
   onPick,
   types = ['student'],
   branchId,
+  gradeLevels,
 }: {
   onPick: (p: PickedPerson) => void
   types?: ('student' | 'employee')[]
   branchId?: string
+  /** Offer only enrolled students in these grades (an event for Grade 4). */
+  gradeLevels?: string[]
 }) {
   const { t } = useI18n()
   const { getAccessToken, can } = useAuth()
@@ -38,7 +42,24 @@ export function PersonPicker({
     }
     let live = true
     const timer = setTimeout(() => {
-      if (type === 'student') {
+      if (type === 'student' && gradeLevels && gradeLevels.length > 0) {
+        void listStudents(getAccessToken, { branchId, search: needle, status: 'enrolled' }).then(
+          (res) =>
+            live &&
+            setResults(
+              res.kind === 'ok'
+                ? res.data
+                    .filter((s) => gradeLevels.some((g) => s.studentGroup === g || s.studentGroup.startsWith(`${g} `)))
+                    .slice(0, 10)
+                    .map((s) => ({
+                      type: 'student',
+                      id: s.id,
+                      label: `${s.givenName} ${s.familyName} · ${s.studentNumber} · ${s.studentGroup}`,
+                    }))
+                : [],
+            ),
+        )
+      } else if (type === 'student') {
         void globalSearch(getAccessToken, { q: needle, branchId }).then(
           (res) =>
             live &&
@@ -64,7 +85,7 @@ export function PersonPicker({
       live = false
       clearTimeout(timer)
     }
-  }, [q, type, getAccessToken, branchId])
+  }, [q, type, getAccessToken, branchId, gradeLevels])
 
   return (
     <div className="person-picker">

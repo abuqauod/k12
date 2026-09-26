@@ -306,6 +306,7 @@ export function EventPage() {
           {canManage && event.status === 'open' && (
             <PersonPicker
               branchId={event.branchId}
+              gradeLevels={event.gradeLevels}
               onPick={(p) =>
                 void registerForEvent(getAccessToken, id, p.id).then((r) =>
                   done(r, r.kind === 'ok' ? t(r.data.status === 'waitlisted' ? 'ev.waitlistedMsg' : 'ev.registeredMsg') : undefined),
