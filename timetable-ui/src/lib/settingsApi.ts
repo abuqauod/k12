@@ -4,6 +4,8 @@ import { authorizedFetch, type TokenGetter } from './http'
 /** Client for settings lists (SAMS 1.11, server/src/settings). */
 
 export type LookupKind =
+  | 'subject'
+  | 'canteenCategory'
   | 'paymentMethod'
   | 'documentCategory'
   | 'admissionSource'
@@ -17,6 +19,8 @@ export type LookupKind =
   | 'roomType'
   | 'bookCategory'
   | 'eventType'
+  | 'incidentType'
+  | 'disciplineAction'
 
 export interface LookupItem {
   code: string

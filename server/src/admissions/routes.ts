@@ -82,7 +82,8 @@ const listQuery = z.object({
 
 const convertBody = z.object({
   classId: z.string().min(1),
-  studentNumber: z.string().trim().min(1).max(50),
+  /** Blank = the next number in the school's student-number format. */
+  studentNumber: z.string().trim().max(50).optional().transform((v) => v || null),
   startDate: z.string().date(),
 })
 

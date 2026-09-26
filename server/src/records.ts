@@ -59,6 +59,8 @@ export const ERROR_STATUS: Record<string, number> = {
   UNKNOWN_DISCOUNT_TYPE: 404,
   UNKNOWN_VENDOR: 404,
   UNKNOWN_PAYMENT: 404,
+  UNKNOWN_CARD: 404,
+  UNKNOWN_PRODUCT: 400,
   BRANCH_FORBIDDEN: 403,
   FORBIDDEN: 403,
   SELF_DECISION: 403,
@@ -97,15 +99,4 @@ export const todayIso = () => new Date().toISOString().slice(0, 10)
 export function money(minor: number): string {
   const abs = Math.abs(minor)
   return `${minor < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
-}
-
-/** A sequential, human-facing number per tenant (INV-000001, EMP-000001…),
- * from the shared `financeCounters` collection. */
-export async function nextNumber(ctx: TenantContext, tenantId: string, kind: string, prefix: string): Promise<string> {
-  const updated = await ctx.financeCounters.findOneAndUpdate(
-    { _id: `${tenantId}:${kind}` },
-    { $inc: { seq: 1 } },
-    { upsert: true, returnDocument: 'after' },
-  )
-  return `${prefix}-${String(updated!.seq).padStart(6, '0')}`
 }

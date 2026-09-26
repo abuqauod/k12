@@ -9,8 +9,8 @@ import { recordAudit } from '../audit.js'
 import { registerApprovalType } from '../approvals/registry.js'
 import { cancelPendingFor, insertRequest } from '../approvals/service.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
-import { nextSequence } from './service.js'
 import { branchFilter, FinanceAbort, isFailure, money, scoped, sendFailure, transact } from './common.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * SAMS 3.5: what the school spends. An expense is recorded against a
@@ -239,12 +239,11 @@ export function registerExpenseRoutes(app: FastifyInstance): void {
       if (parsed.data.vendorId && !(await ctx.vendors.findOne({ _id: parsed.data.vendorId, active: true }))) {
         throw new FinanceAbort('UNKNOWN_VENDOR')
       }
-      const seq = await nextSequence(ctx, tenantId, 'expenseNumber')
       const now = new Date()
       const doc: ExpenseDoc = {
         _id: randomUUID(),
         tenantId,
-        expenseNumber: `EXP-${String(seq).padStart(6, '0')}`,
+        expenseNumber: await nextNumber(ctx, tenantId, 'expenseNumber'),
         ...parsed.data,
         status: 'pending',
         requestedBy: request.auth!.sub,

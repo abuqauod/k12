@@ -5,6 +5,7 @@ import type { CommunicationSettingsDoc, TenantContext } from '../db.js'
 export const DEFAULT_COMMUNICATION_SETTINGS = {
   feeReminders: { auto: false, daysBefore: 3, repeatDays: 7 },
   documentExpiry: { auto: false, daysBefore: 30 },
+  libraryOverdue: { auto: false, repeatDays: 7 },
   portalDocumentCategories: ['birth_certificate', 'photo', 'previous_report'],
 }
 
@@ -15,6 +16,7 @@ export function effectiveCommunication(doc: CommunicationSettingsDoc | null): Ef
   return {
     feeReminders: { ...d.feeReminders, ...(doc?.feeReminders ?? {}) },
     documentExpiry: { ...d.documentExpiry, ...(doc?.documentExpiry ?? {}) },
+    libraryOverdue: { ...d.libraryOverdue, ...(doc?.libraryOverdue ?? {}) },
     portalDocumentCategories: doc?.portalDocumentCategories ?? [...d.portalDocumentCategories],
     lastRunDate: doc?.lastRunDate ?? null,
   }

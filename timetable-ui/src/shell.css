@@ -3060,3 +3060,173 @@ tr.is-muted td {
     min-width: 0;
   }
 }
+
+/* Backlog: health alerts on the student record, and behaviour incidents. */
+.health-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: var(--text-sm);
+}
+
+.incident__head {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.incident__body {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0 10px;
+}
+
+.incident__body p {
+  margin: 0;
+}
+
+.incident__students {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.incident__students li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.bidi {
+  unicode-bidi: plaintext;
+  white-space: pre-wrap;
+}
+
+.chip__x {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  font: inherit;
+  line-height: 1;
+}
+
+.import-list {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+  display: grid;
+  gap: 2px;
+}
+
+.settings-content > * {
+  min-width: 0;
+}
+
+.import-problems {
+  min-width: 220px;
+}
+
+/* SAMS 11.1: paying fees online from the portal */
+.portal-pay__row {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.portal-pay__row .field {
+  flex: 1 1 160px;
+}
+
+/* SAMS 11.2: gradebook */
+.grades-toolbar {
+  margin-block: 12px;
+}
+.grade-sheet td,
+.grade-sheet th {
+  white-space: nowrap;
+}
+.grade-input {
+  width: 72px;
+  text-align: end;
+}
+.input--bad {
+  border-color: var(--bad);
+  background: var(--bad-soft);
+}
+.text-bad {
+  color: var(--bad);
+}
+.chips-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-block: 6px 12px;
+}
+.plan-term {
+  border-block-start: 1px solid var(--line);
+  padding-block: 10px;
+}
+
+/* SAMS 11.4: the canteen till */
+.till-who {
+  margin-block: 10px;
+}
+.till-who__balance {
+  font-size: 26px;
+  font-weight: 700;
+}
+.till-basket {
+  margin-block: 10px;
+  border-block-start: 1px solid var(--line);
+}
+.till-total {
+  border-block-start: 1px solid var(--line);
+  padding-block-start: 6px;
+}
+.till-charge {
+  width: 100%;
+  padding-block: 12px;
+  font-size: 16px;
+}
+.till-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-block: 6px 12px;
+}
+.till-product {
+  display: grid;
+  gap: 4px;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.till-product:hover {
+  border-color: var(--accent);
+}
+.row--muted td {
+  opacity: 0.55;
+}
+.text-ok {
+  color: var(--ok);
+}

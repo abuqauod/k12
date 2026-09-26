@@ -28,6 +28,8 @@ export type PermissionScope =
   | 'audit.read'
   | 'branches.manage'
   | 'branches.read'
+  | 'canteen.manage'
+  | 'canteen.sell'
   | 'classes.read'
   | 'classes.write'
   | 'dashboard.read'
@@ -40,6 +42,8 @@ export type PermissionScope =
   | 'enrollments.read'
   | 'enrollments.transfer'
   | 'enrollments.withdraw'
+  | 'discipline.manage'
+  | 'discipline.report'
   | 'finance.discount.approve'
   | 'finance.expense.approve'
   | 'finance.expense.create'
@@ -57,6 +61,11 @@ export type PermissionScope =
   | 'finance.refund.request'
   | 'finance.scholarship.approve'
   | 'finance.scholarship.request'
+  | 'grades.enter'
+  | 'grades.manage'
+  | 'grades.read'
+  | 'health.read'
+  | 'health.write'
   | 'hr.attendance.write'
   | 'hr.employee.update'
   | 'hr.leave.approve'
@@ -119,6 +128,11 @@ const SCHEDULER_SCOPES: readonly PermissionScope[] = [
   'admissions.read',
   'attendance.write',
   'datasets.write',
+  // Backlog: any teacher can log a behaviour incident.
+  'discipline.report',
+  // SAMS 11.2: teachers read and enter marks.
+  'grades.enter',
+  'grades.read',
   'finance.expense.create',
   'finance.invoice.create',
   'finance.invoice.lineItems',
@@ -149,7 +163,13 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'audit.read',
   'branches.manage',
   'classes.write',
+  'discipline.manage',
   'documents.delete',
+  // SAMS 11.2: assessment plans, the grading scale, releasing report cards.
+  'grades.manage',
+  // SAMS 11.4: products, office top-ups and corrections; and selling.
+  'canteen.manage',
+  'canteen.sell',
   'documents.upload',
   'documents.verify',
   'enrollments.assign',
@@ -165,6 +185,8 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'finance.refund.approve',
   'finance.reminders',
   'finance.scholarship.approve',
+  'health.read',
+  'health.write',
   'hr.attendance.write',
   'hr.employee.update',
   'hr.leave.approve',
@@ -201,6 +223,8 @@ export const ROLE_SCOPES: Record<Role, ReadonlySet<PermissionScope>> = {
 // ------------------------------------------------------------- presets --
 
 export const ROLE_KEYS = [
+  'teacher',
+  'canteen',
   'school_admin',
   'branch_admin',
   'registrar',
@@ -208,6 +232,7 @@ export const ROLE_KEYS = [
   'hr',
   'operations',
   'reception',
+  'nurse',
 ] as const
 /** The parent portal's login (SAMS 6.4). Not in `ROLE_KEYS`: it can't be
  * picked in Team settings, only given by enabling a parent's portal. */
@@ -249,6 +274,10 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'ops.maintenance.report',
     'ops.read',
     'reports.schedule',
+    'discipline.manage',
+    'discipline.report',
+    'grades.manage',
+    'grades.read',
     'academicYears.write',
     'admissions.manage',
     'admissions.read',
@@ -314,6 +343,7 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
   ]),
   reception: preset('viewer', [
     ...OFFICE_READ,
+    'discipline.report',
     'portal.manage',
     'ops.maintenance.report',
     'ops.read',
@@ -323,6 +353,19 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'parents.write',
     'students.create',
   ]),
+  // SAMS 11.2: a teacher — registers, marks, behaviour notes, their branch.
+  teacher: preset('scheduler', [
+    ...OFFICE_READ,
+    'attendance.write',
+    'discipline.report',
+    'grades.enter',
+    'grades.read',
+    'ops.maintenance.report',
+  ]),
+  // SAMS 11.4: the canteen till — sells to students' wallets, nothing else.
+  canteen: preset('viewer', ['canteen.sell']),
+  // Backlog: the school nurse — health records and the clinic log.
+  nurse: preset('viewer', [...OFFICE_READ, 'health.read', 'health.write', 'ops.maintenance.report', 'discipline.report']),
   // A parent sees only the portal, and there only their own children.
   parent: preset('viewer', ['portal.parent']),
 }

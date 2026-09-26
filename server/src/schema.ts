@@ -267,4 +267,31 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('reportSchedules').createIndex({ tenantId: 1, ownerId: 1 })
   await db.collection('reportRuns').createIndex({ tenantId: 1, scheduleId: 1, createdAt: -1 })
   await db.collection('reportRuns').createIndex({ tenantId: 1, recipients: 1, createdAt: -1 })
+
+  // Backlog: clinic visits by day and by student; incidents by number,
+  // student and branch/date.
+  await db.collection('clinicVisits').createIndex({ tenantId: 1, branchId: 1, visitedAt: -1 })
+  await db.collection('clinicVisits').createIndex({ tenantId: 1, studentId: 1, visitedAt: -1 })
+  await db.collection('incidents').createIndex({ tenantId: 1, incidentNumber: 1 }, { unique: true })
+  await db.collection('incidents').createIndex({ tenantId: 1, studentIds: 1, occurredAt: -1 })
+  await db.collection('incidents').createIndex({ tenantId: 1, branchId: 1, occurredAt: -1 })
+
+  // SAMS 11.1: a family's online payments; the sweep's pending ones.
+  await db.collection('onlinePayments').createIndex({ tenantId: 1, studentId: 1, createdAt: -1 })
+  await db.collection('onlinePayments').createIndex({ tenantId: 1, branchId: 1, createdAt: -1 })
+  await db.collection('onlinePayments').createIndex({ status: 1, createdAt: 1 })
+
+  // SAMS 11.2: one plan per year and grade; one mark per student,
+  // assessment and subject; the sheets read by class and term.
+  await db.collection('assessmentPlans').createIndex({ tenantId: 1, academicYearId: 1, gradeLevel: 1 }, { unique: true })
+  await db
+    .collection('marks')
+    .createIndex({ tenantId: 1, studentId: 1, academicYearId: 1, assessmentId: 1, subjectCode: 1 }, { unique: true })
+  await db.collection('marks').createIndex({ tenantId: 1, classId: 1, termId: 1, subjectCode: 1 })
+  await db.collection('marks').createIndex({ tenantId: 1, studentId: 1, termId: 1 })
+
+  // SAMS 11.4: a wallet's statement, a branch's day of sales.
+  await db.collection('walletTransactions').createIndex({ tenantId: 1, studentId: 1, createdAt: -1 })
+  await db.collection('walletTransactions').createIndex({ tenantId: 1, branchId: 1, createdAt: -1 })
+  await db.collection('canteenProducts').createIndex({ tenantId: 1, branchId: 1, active: 1 })
 }

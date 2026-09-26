@@ -338,8 +338,8 @@ function AssetDetail({ id, rooms, canManage, onChanged }: { id: string; rooms: R
       <div className="stat-row">
         <span>{t('ops.asset.purchased')}</span>
         <span className="mono">
-          {asset.purchaseDate ?? '—'}
-          {asset.purchaseCost !== null && ` · ${formatMinorUnits(asset.purchaseCost)}`}
+          {[asset.purchaseDate, asset.purchaseCost !== null ? formatMinorUnits(asset.purchaseCost) : null].filter(Boolean).join(' · ') ||
+            '—'}
         </span>
       </div>
       <div className="stat-row">
@@ -458,8 +458,7 @@ function AssetDetail({ id, rooms, canManage, onChanged }: { id: string; rooms: R
             {(h.note || h.cost !== null) && (
               <span className="card__hint">
                 {' '}
-                {h.note}
-                {h.cost !== null && ` · ${formatMinorUnits(h.cost)}`}
+                {[h.note, h.cost !== null ? formatMinorUnits(h.cost) : null].filter(Boolean).join(' · ')}
               </span>
             )}
           </li>

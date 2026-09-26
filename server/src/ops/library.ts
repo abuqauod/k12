@@ -9,6 +9,10 @@ import { recordAudit } from '../audit.js'
 import { readReason, setAuditReason } from '../requestContext.js'
 import { Abort, branchFilter, isFailure, scoped, sendFailure, todayIso, transact } from '../records.js'
 import { addDays, checkCode, daysBetween, escapeRegex } from './common.js'
+import { chargeStudents } from '../finance/service.js'
+import { libraryOverdueNotices } from '../communication/notices.js'
+import { loadCommunication } from '../communication/settings.js'
+import { nudgeQueue } from '../notifications/messages.js'
 
 /**
  * SAMS 5.5: the library. A title (book) has physical copies, each with a
@@ -368,5 +372,124 @@ export function registerLibraryRoutes(app: FastifyInstance): void {
   loanAction('waive', async (_ctx, loan) => {
     if (loan.fineStatus !== 'due') throw new Abort('NO_FINE_DUE')
     return { fineStatus: 'waived', fineSettledAt: new Date() }
+  })
+
+  // ------------------------------------------------ SAMS 11.3 desk --
+
+  /** The borrower on an ID card: a student or staff number, as scanned. */
+  app.get('/ops/library/borrower', scoped('ops.read'), async (request, reply) => {
+    const card = String((request.query as { card?: string }).card ?? '').trim()
+    if (!card || card.length > 60) return reply.code(400).send({ error: 'INVALID_QUERY' })
+    const tenantId = request.auth!.tenantId!
+    const allowed = await callerBranchIds(request)
+    const out = await withTenant(tenantId, async (ctx) => {
+      const student = await ctx.students.findOne({ studentNumber: card })
+      const employee = student ? null : await ctx.employees.findOne({ employeeNumber: card })
+      const found = student
+        ? { type: 'student' as const, id: student._id, name: `${student.givenName} ${student.familyName}`.trim(), branchId: student.branchId, active: student.status === 'enrolled' }
+        : employee
+          ? { type: 'employee' as const, id: employee._id, name: `${employee.givenName} ${employee.familyName}`.trim(), branchId: employee.branchId, active: employee.status === 'active' }
+          : null
+      if (!found) return null
+      if (allowed !== null && !allowed.includes(found.branchId)) return 'forbidden' as const
+      const settings = await settingsOf(ctx, tenantId)
+      const loans = await ctx.loans.find({ borrowerId: found.id, $or: [{ returnedAt: null, lostAt: null }, { fineStatus: 'due' }] }).toArray()
+      const titles = new Map((await ctx.books.find({ _id: { $in: loans.map((l) => l.bookId) } }).toArray()).map((b) => [b._id, b.title]))
+      const copies = new Map((await ctx.bookCopies.find({ _id: { $in: loans.map((l) => l.copyId) } }).toArray()).map((c) => [c._id, c.barcode]))
+      const today = todayIso()
+      return {
+        ...found,
+        maxLoans: settings.maxLoans,
+        loans: loans.map((l) => loanResponse(l, { title: titles.get(l.bookId), barcode: copies.get(l.copyId), borrower: found.name }, settings.finePerDay, today)),
+      }
+    })
+    if (out === null) return reply.code(404).send({ error: 'UNKNOWN_CARD' })
+    if (out === 'forbidden') return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    return reply.send(out)
+  })
+
+  /** Return by scanning the copy: finds its open loan. */
+  app.post('/ops/library/return-by-barcode', scoped('ops.library.manage'), async (request, reply) => {
+    const barcode = String((request.body as { barcode?: string } | undefined)?.barcode ?? '').trim()
+    if (!barcode) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const tenantId = request.auth!.tenantId!
+    const loan = await withTenant(tenantId, async (ctx) => {
+      const copy = await ctx.bookCopies.findOne({ barcode })
+      return copy ? ctx.loans.findOne({ copyId: copy._id, returnedAt: null, lostAt: null }) : null
+    })
+    if (!loan) return reply.code(404).send({ error: 'NO_OPEN_LOAN' })
+    const res = await app.inject({
+      method: 'POST',
+      url: `${request.routeOptions.url?.replace('/ops/library/return-by-barcode', '') ?? ''}/ops/library/loans/${loan._id}/return`,
+      headers: { authorization: request.headers.authorization ?? '', 'content-type': 'application/json' },
+      payload: {},
+    })
+    return reply.code(res.statusCode).type('application/json').send(res.body)
+  })
+
+  /** A student's fine onto their invoice for the year (it then counts as
+   * settled at the library; the family pays it with their fees). */
+  app.post('/ops/library/loans/:id/bill', scoped('ops.library.manage'), async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const tenantId = request.auth!.tenantId!
+    const existing = await withTenant(tenantId, (ctx) => ctx.loans.findOne({ _id: id }))
+    if (!existing) return reply.code(404).send({ error: 'NOT_FOUND' })
+    if (!(await callerCanUseBranch(request, existing.branchId))) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    const result = await transact(tenantId, async (ctx) => {
+      const loan = await ctx.loans.findOne({ _id: id })
+      if (!loan || loan.fineStatus !== 'due') throw new Abort('NO_FINE_DUE')
+      if (loan.borrowerType !== 'student') throw new Abort('STUDENTS_ONLY')
+      const student = await ctx.students.findOne({ _id: loan.borrowerId })
+      if (!student?.academicYearId) throw new Abort('NO_INVOICE')
+      const book = await ctx.books.findOne({ _id: loan.bookId })
+      const charged = await chargeStudents(ctx, {
+        academicYearId: student.academicYearId,
+        charges: [{ studentId: student._id, amount: loan.fine }],
+        label: `Library fine — ${book?.title ?? ''}`.trim(),
+        labelAr: `غرامة مكتبة — ${book?.title ?? ''}`.trim(),
+        sourceFeeItemId: `library:${loan._id}`,
+        actorId: request.auth!.sub,
+      })
+      if (charged.noInvoice.length > 0) throw new Abort('NO_INVOICE')
+      const after = (await ctx.loans.findOneAndUpdate(
+        { _id: id, fineStatus: 'due' },
+        { $set: { fineStatus: 'billed', fineSettledAt: new Date(), updatedAt: new Date() } },
+        { returnDocument: 'after' },
+      ))!
+      await recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'loan.bill',
+        entity: 'loan',
+        entityId: id,
+        branchId: loan.branchId,
+        before: { fineStatus: 'due' },
+        after: { fineStatus: 'billed', fine: loan.fine, invoiceId: charged.charged[0]?.invoiceId ?? null },
+      })
+      return { after, invoiceId: charged.charged[0]?.invoiceId ?? null, settings: await settingsOf(ctx, tenantId) }
+    })
+    if (isFailure(result)) return sendFailure(reply, result)
+    return reply.send({ ...loanResponse(result.after, {}, result.settings.finePerDay, todayIso()), invoiceId: result.invoiceId })
+  })
+
+  /** Tells the families of students with overdue books now (the daily run
+   * does it on its own when switched on in Communication). */
+  app.post('/ops/library/overdue/notify', scoped('ops.library.manage'), async (request, reply) => {
+    const body = (request.body ?? {}) as { branchId?: string; loanIds?: string[] }
+    const branches = await branchFilter(request, body.branchId)
+    if (!branches.ok) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    const tenantId = request.auth!.tenantId!
+    const out = await withTenant(tenantId, async (ctx) => {
+      const settings = await loadCommunication(ctx, tenantId)
+      return libraryOverdueNotices(ctx, tenantId, {
+        asOf: todayIso(),
+        repeatDays: settings.libraryOverdue.repeatDays,
+        branchIds: branches.branchIds,
+        loanIds: Array.isArray(body.loanIds) ? body.loanIds.filter((x) => typeof x === 'string').slice(0, 500) : undefined,
+        trigger: 'manual',
+        actorId: request.auth!.sub,
+      })
+    })
+    nudgeQueue()
+    return reply.send(out)
   })
 }

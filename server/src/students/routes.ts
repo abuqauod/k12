@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
 import { z } from 'zod'
+import { nextNumber } from '../numbering.js'
 import { withTenant } from '../db.js'
 import { readReason, setAuditReason } from '../requestContext.js'
 import type { EmergencyContact, StudentDoc, TenantContext } from '../db.js'
@@ -44,7 +45,13 @@ const emergencyContactSchema = z.object({
 })
 
 const studentBody = z.object({
-  studentNumber: z.string().min(1).max(50),
+  /** Blank = the next number in the school's student-number format. */
+  studentNumber: z
+    .string()
+    .trim()
+    .max(50)
+    .optional()
+    .transform((v) => v || undefined),
   givenName: z.string().min(1).max(100),
   familyName: z.string().min(1).max(100),
   givenNameAr: z.string().max(100).nullable().default(null),
@@ -306,8 +313,10 @@ export function registerStudentRoutes(app: FastifyInstance): void {
       const result = await withTenant(tenantId, async (ctx) => {
         const klass = await ctx.classes.findOne({ _id: parsed.data.classId })
         if (!klass) return 'unknown_class' as const
-        const existing = await ctx.students.findOne({ studentNumber: parsed.data.studentNumber })
-        if (existing) return 'number_taken' as const
+        if (parsed.data.studentNumber && (await ctx.students.findOne({ studentNumber: parsed.data.studentNumber }))) {
+          return 'number_taken' as const
+        }
+        const studentNumber = parsed.data.studentNumber ?? (await nextNumber(ctx, tenantId, 'studentNumber'))
         if (!(await admissionSourceOk(ctx, parsed.data.admissionSource))) return 'bad_source' as const
         const academicYearId = await resolveAcademicYearId(ctx, klass.academicYearId)
         if (!academicYearId) return 'no_year' as const
@@ -317,6 +326,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
         await ctx.students.insertOne({
           _id,
           ...rest,
+          studentNumber,
           emergencyContacts: withContactIds(emergencyContacts),
           // Cache of the enrollment created just below.
           branchId: klass.branchId,

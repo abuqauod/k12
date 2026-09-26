@@ -96,6 +96,8 @@ export const portalChild = (getToken: TokenGetter, id: string) => api<PortalChil
 export const portalFinance = (getToken: TokenGetter, id: string) =>
   api<{
     balance: number
+    /** SAMS 11.1: null when the school takes no online payments. */
+    onlinePayment: { currency: string } | null
     invoices: PortalInvoice[]
     receipts: PortalReceipt[]
   }>(getToken, 'GET', `/portal/children/${enc(id)}/finance`)

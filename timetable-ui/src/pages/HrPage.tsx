@@ -26,6 +26,7 @@ import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { printIdCards } from '../lib/idCards'
 
 /**
  * HR & staff (SAMS Phase 4): staff list, leave, staff attendance and the
@@ -43,8 +44,9 @@ const TABS: { id: Tab; label: TranslationKey; scope?: string }[] = [
 const today = () => new Date().toISOString().slice(0, 10)
 
 export function HrPage() {
-  const { t } = useI18n()
-  const { can } = useAuth()
+  const { t, lang } = useI18n()
+  const { can, getAccessToken } = useAuth()
+  const { activeBranchId } = useApp()
   const [params, setParams] = useSearchParams()
   const tabs = TABS.filter((x) => !x.scope || can(x.scope))
   const requested = params.get('tab') as Tab | null
@@ -56,6 +58,15 @@ export function HrPage() {
         <div>
           <h1 className="page__title">{t('nav.hr')}</h1>
           <p className="page__subtitle">{t('hr.subtitle')}</p>
+        </div>
+        <div className="page__actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void printIdCards(getAccessToken, 'employees', { branchId: activeBranchId, layout: 'sheet', lang })}
+          >
+            {t('idcards.printStaff')}
+          </button>
         </div>
       </header>
       <div className="tabs" role="tablist" aria-label={t('nav.hr')}>

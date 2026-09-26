@@ -59,11 +59,18 @@ const pay = (method: string, invoiceId: string) =>
 describe('lookup lists', () => {
   test('defaults seed lazily, once, even under parallel first reads', async () => {
     const [a, b] = await Promise.all([list(fx.tokens.viewer), list(fx.tokens.viewer)])
-    assert.equal(a.items.length, 5)
-    assert.equal(b.items.length, 5)
+    assert.equal(a.items.length, 6)
+    assert.equal(b.items.length, 6)
     const stored = await withTenant(fx.tenantId, (ctx) => ctx.lookups.countDocuments({ kind: 'paymentMethod' }))
-    assert.equal(stored, 5)
+    assert.equal(stored, 6)
     assert.ok((await list(fx.tokens.viewer, 'documentCategory')).items.some((i) => i.code === 'birth_certificate'))
+  })
+
+  test('a built-in added later reaches a school that already has its own entries', async () => {
+    await withTenant(fx.tenantId, (ctx) => ctx.lookups.deleteMany({ kind: 'paymentMethod', code: 'online' }))
+    await call(fx.app, schoolAdmin, 'POST', '/settings/lookups/paymentMethod', { code: 'voucher', label: 'Voucher' })
+    const items = (await list(fx.tokens.viewer)).items
+    assert.ok(items.some((i) => i.code === 'online') && items.some((i) => i.code === 'voucher'))
   })
 
   test('only settings.manage may change a list; a branch admin may not', async () => {

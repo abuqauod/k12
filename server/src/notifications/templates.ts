@@ -32,6 +32,10 @@ export const TEMPLATE_TOKENS: Record<TemplateKind, string[]> = {
   document_expiring: ['parentName', 'studentName', 'document', 'expiresAt', 'schoolName'],
   approval_decided: ['summary', 'outcome'],
   report_ready: ['report', 'period', 'rows', 'link', 'schoolName'],
+  clinic_visit: ['parentName', 'studentName', 'time', 'complaint', 'outcome', 'treatment', 'schoolName'],
+  incident: ['parentName', 'studentName', 'date', 'type', 'description', 'action', 'schoolName'],
+  report_card: ['parentName', 'studentName', 'term', 'link', 'schoolName'],
+  library_overdue: ['parentName', 'studentName', 'title', 'dueDate', 'fine', 'schoolName'],
 }
 
 export const TEMPLATE_KINDS = Object.keys(TEMPLATE_TOKENS) as TemplateKind[]
@@ -136,6 +140,64 @@ export const DEFAULT_TEMPLATES: Record<TemplateKind, TemplateText> = {
     subjectAr: 'التقرير جاهز: {report}',
     bodyAr: 'تقريرك المجدول "{report}" ({period}، {rows} صف) جاهز.\n\nيمكنك تنزيله من هنا: {link}\n\n{schoolName}',
     smsBodyAr: '{schoolName}: التقرير "{report}" جاهز.',
+  },
+  clinic_visit: {
+    enabled: true,
+    subject: 'Clinic visit — {studentName}',
+    body:
+      'Dear {parentName},\n\n' +
+      '{studentName} visited the school clinic at {time} ({complaint}). Outcome: {outcome}.\n' +
+      'Treatment: {treatment}\n\n' +
+      'Please contact the school if you have any questions.\n\n{schoolName}',
+    smsBody: '{schoolName}: {studentName} visited the clinic ({complaint}). Outcome: {outcome}.',
+    subjectAr: 'زيارة العيادة — {studentName}',
+    bodyAr:
+      'عزيزي {parentName}،\n\n' +
+      'راجع {studentName} عيادة المدرسة الساعة {time} ({complaint}). النتيجة: {outcome}.\n' +
+      'الإجراء: {treatment}\n\n' +
+      'يُرجى التواصل مع المدرسة لأي استفسار.\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: راجع {studentName} العيادة ({complaint}). النتيجة: {outcome}.',
+  },
+  incident: {
+    enabled: true,
+    subject: 'Behaviour report — {studentName}',
+    body:
+      'Dear {parentName},\n\n' +
+      'We would like to inform you of an incident involving {studentName} on {date} ({type}).\n\n' +
+      '{description}\n\n' +
+      'Action taken: {action}\n\n' +
+      'Please contact the school to discuss it.\n\n{schoolName}',
+    smsBody: '{schoolName}: an incident involving {studentName} on {date} ({type}). Please contact the school.',
+    subjectAr: 'تقرير سلوكي — {studentName}',
+    bodyAr:
+      'عزيزي {parentName}،\n\n' +
+      'نود إعلامكم بحادثة تخص {studentName} بتاريخ {date} ({type}).\n\n' +
+      '{description}\n\n' +
+      'الإجراء المتخذ: {action}\n\n' +
+      'يُرجى التواصل مع المدرسة لمناقشتها.\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: حادثة تخص {studentName} بتاريخ {date} ({type}). يُرجى التواصل مع المدرسة.',
+  },
+  report_card: {
+    enabled: true,
+    subject: 'Report card — {studentName}, {term}',
+    body: 'Dear {parentName},\n\n{studentName}’s report card for {term} is ready in the parent portal:\n{link}\n\n{schoolName}',
+    smsBody: '{schoolName}: {studentName}’s report card for {term} is in the parent portal.',
+    subjectAr: 'الشهادة المدرسية — {studentName}، {term}',
+    bodyAr: 'عزيزي {parentName}،\n\nشهادة {studentName} عن {term} متاحة الآن في بوابة أولياء الأمور:\n{link}\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: شهادة {studentName} عن {term} متاحة في بوابة أولياء الأمور.',
+  },
+  library_overdue: {
+    enabled: true,
+    subject: 'Library book overdue — {studentName}',
+    body:
+      'Dear {parentName},\n\n{studentName} has a library book that was due back on {dueDate}: “{title}”.\n' +
+      'The late fine so far is {fine}. Please help {studentName} return it soon.\n\n{schoolName}',
+    smsBody: '{schoolName}: {studentName}’s library book “{title}” was due on {dueDate}. Please return it.',
+    subjectAr: 'كتاب مكتبة متأخر — {studentName}',
+    bodyAr:
+      'عزيزي {parentName}،\n\nلدى {studentName} كتاب من المكتبة كان موعد إرجاعه {dueDate}: «{title}».\n' +
+      'غرامة التأخير حتى الآن {fine}. يُرجى مساعدته على إرجاعه قريبًا.\n\n{schoolName}',
+    smsBodyAr: '{schoolName}: كتاب المكتبة «{title}» لدى {studentName} كان موعد إرجاعه {dueDate}. يُرجى إرجاعه.',
   },
 }
 

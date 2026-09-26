@@ -6,8 +6,9 @@ import { withTenant } from '../db.js'
 import type { BuildingDoc, MaintenanceRequestDoc, MaintenanceStatus, RoomDoc, TenantContext } from '../db.js'
 import { callerCanUseBranch, callerHasPermission } from '../auth/guard.js'
 import { recordAudit } from '../audit.js'
-import { Abort, branchFilter, isFailure, nextNumber, scoped, sendFailure, todayIso, transact } from '../records.js'
+import { Abort, branchFilter, isFailure, scoped, sendFailure, todayIso, transact } from '../records.js'
 import { assetEvent, checkCode, recordAccess } from './common.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * SAMS 5.3: buildings and rooms per branch, and maintenance requests.
@@ -233,7 +234,7 @@ export function registerFacilityRoutes(app: FastifyInstance): void {
       const doc: MaintenanceRequestDoc = {
         _id: randomUUID(),
         tenantId,
-        requestNumber: await nextNumber(ctx, tenantId, 'maintenanceNumber', 'MNT'),
+        requestNumber: await nextNumber(ctx, tenantId, 'maintenanceNumber'),
         ...body,
         buildingId,
         status: 'open',

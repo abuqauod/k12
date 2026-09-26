@@ -18,6 +18,56 @@ interface Default {
 }
 
 export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
+  // Backlog: behaviour incidents — what happened, and what the school did.
+  // SAMS 11.4: what the canteen sells, for parents' restrictions.
+  canteenCategory: {
+    defaults: [
+      { code: 'meals', label: 'Meals', labelAr: 'وجبات' },
+      { code: 'snacks', label: 'Snacks', labelAr: 'وجبات خفيفة' },
+      { code: 'drinks', label: 'Drinks', labelAr: 'مشروبات' },
+      { code: 'sweets', label: 'Sweets', labelAr: 'حلويات' },
+      { code: 'stationery', label: 'Stationery', labelAr: 'قرطاسية' },
+    ],
+  },
+  // SAMS 11.2: subjects a grade is assessed in.
+  subject: {
+    defaults: [
+      { code: 'arabic', label: 'Arabic', labelAr: 'اللغة العربية' },
+      { code: 'english', label: 'English', labelAr: 'اللغة الإنجليزية' },
+      { code: 'math', label: 'Mathematics', labelAr: 'الرياضيات' },
+      { code: 'science', label: 'Science', labelAr: 'العلوم' },
+      { code: 'islamic', label: 'Islamic Education', labelAr: 'التربية الإسلامية' },
+      { code: 'social', label: 'Social Studies', labelAr: 'الدراسات الاجتماعية' },
+      { code: 'computer', label: 'Computer Science', labelAr: 'الحاسوب' },
+      { code: 'art', label: 'Art', labelAr: 'التربية الفنية' },
+      { code: 'pe', label: 'Physical Education', labelAr: 'التربية الرياضية' },
+    ],
+  },
+  incidentType: {
+    defaults: [
+      { code: 'disruption', label: 'Classroom disruption', labelAr: 'إخلال بالنظام الصفي' },
+      { code: 'bullying', label: 'Bullying', labelAr: 'تنمّر' },
+      { code: 'fighting', label: 'Fighting', labelAr: 'شجار' },
+      { code: 'disrespect', label: 'Disrespect', labelAr: 'عدم احترام' },
+      { code: 'lateness', label: 'Repeated lateness', labelAr: 'تأخر متكرر' },
+      { code: 'damage', label: 'Damage to property', labelAr: 'إتلاف ممتلكات' },
+      { code: 'cheating', label: 'Cheating', labelAr: 'غش' },
+      { code: 'uniform', label: 'Uniform', labelAr: 'الزي المدرسي' },
+      { code: 'device', label: 'Phone or device misuse', labelAr: 'سوء استخدام الهاتف أو الأجهزة' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  disciplineAction: {
+    defaults: [
+      { code: 'verbal_warning', label: 'Verbal warning', labelAr: 'تنبيه شفهي' },
+      { code: 'written_warning', label: 'Written warning', labelAr: 'إنذار كتابي' },
+      { code: 'parent_meeting', label: 'Parent meeting', labelAr: 'اجتماع مع ولي الأمر' },
+      { code: 'detention', label: 'Detention', labelAr: 'احتجاز بعد الدوام' },
+      { code: 'counselling', label: 'Referred to counsellor', labelAr: 'إحالة إلى المرشد' },
+      { code: 'suspension', label: 'Suspension', labelAr: 'فصل مؤقت' },
+      { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
   paymentMethod: {
     defaults: [
       { code: 'cash', label: 'Cash', labelAr: 'نقدًا' },
@@ -25,6 +75,8 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'card', label: 'Card', labelAr: 'بطاقة' },
       { code: 'cheque', label: 'Cheque', labelAr: 'شيك' },
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
+      // SAMS 11.1: paid by the family through the school's card gateway.
+      { code: 'online', label: 'Online (card)', labelAr: 'دفع إلكتروني (بطاقة)' },
     ],
   },
   admissionSource: {
@@ -171,7 +223,10 @@ export async function ensureDefaults(tenantId: string, kind: string): Promise<vo
   const defaults = LOOKUP_KINDS[kind]?.defaults ?? []
   try {
     await withTenant(tenantId, async (ctx) => {
-      if ((await ctx.lookups.countDocuments({ kind })) >= defaults.length) return
+      // Every built-in present, not just as many rows: a school that added
+      // its own entries still gets a built-in added later (SAMS 11.1 online).
+      const codes = defaults.map((d) => d.code)
+      if ((await ctx.lookups.countDocuments({ kind, code: { $in: codes } })) >= codes.length) return
       const now = new Date()
       for (const [order, d] of defaults.entries()) {
         await ctx.lookups.findOneAndUpdate(

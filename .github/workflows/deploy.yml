@@ -27,8 +27,8 @@ jobs:
           npm ci
           npm run build
 
-      # TODO: confirm the real nginx docroot on the VPS and update this path
-      # (currently a placeholder — this step will fail until it's set).
+      # The web server's docroot for the school app: the UI_DOCROOT secret
+      # when set, else the original path.
       - name: Copy build output to the server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -36,7 +36,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: 'timetable-ui/dist/*'
-          target: '/var/www/heymueen.com'
+          target: ${{ secrets.UI_DOCROOT || '/var/www/heymueen.com' }}
           strip_components: 2
           rm: true
 
@@ -55,6 +55,16 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             cd server
-            docker compose build api
-            docker compose up -d api
+            export APP_RELEASE="$(git rev-parse --short HEAD)"
+            docker compose build api backup
+            docker compose up -d api backup
+            # SAMS 8.6: the deploy fails unless the new API answers /ready
+            # (database reachable) within a minute.
+            for i in $(seq 1 30); do
+              if docker compose exec -T api wget -qO- http://127.0.0.1:4000${ROUTE_PREFIX:-}/ready >/dev/null 2>&1; then
+                echo "API ready ($APP_RELEASE)"; ok=1; break
+              fi
+              sleep 2
+            done
+            [ "${ok:-}" = 1 ] || { docker compose logs --tail=80 api; exit 1; }
             docker image prune -f

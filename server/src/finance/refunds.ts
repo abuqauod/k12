@@ -1,3 +1,4 @@
+import { apiBaseOf, refundOnline } from '../payments/service.js'
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { Filter } from 'mongodb'
@@ -9,8 +10,9 @@ import { recordAudit } from '../audit.js'
 import { registerApprovalType } from '../approvals/registry.js'
 import { cancelPendingFor, insertRequest } from '../approvals/service.js'
 import { activeCodes, ensureDefaults } from '../settings/lookups.js'
-import { COUNTED, nextSequence, refreshStatus } from './service.js'
+import { COUNTED, refreshStatus } from './service.js'
 import { branchFilter, FinanceAbort, isFailure, money, scoped, sendFailure, transact } from './common.js'
+import { nextNumber } from '../numbering.js'
 
 /**
  * SAMS 3.3: refunds — money handed back against an invoice, in three
@@ -170,12 +172,11 @@ export function registerRefundRoutes(app: FastifyInstance): void {
     const allowedBranchIds = await callerBranchIds(request)
 
     const result = await transact(tenantId, async (ctx) => {
-      const seq = await nextSequence(ctx, tenantId, 'refundNumber')
       const now = new Date()
       const doc: RefundDoc = {
         _id: randomUUID(),
         tenantId,
-        refundNumber: `RFD-${String(seq).padStart(6, '0')}`,
+        refundNumber: await nextNumber(ctx, tenantId, 'refundNumber'),
         invoiceId: invoice._id,
         studentId: invoice.studentId,
         branchId: invoice.branchId,
@@ -229,6 +230,16 @@ export function registerRefundRoutes(app: FastifyInstance): void {
     const methods = await withTenant(tenantId, (ctx) => activeCodes(ctx, 'paymentMethod'))
     if (!methods.has(parsed.data.method)) return reply.code(400).send({ error: 'INVALID_PAYMENT_METHOD' })
 
+    // SAMS 11.1: an online refund goes back to the card through the gateway
+    // first; the refund is marked paid only if the gateway accepts it.
+    let reference = parsed.data.reference
+    if (parsed.data.method === 'online') {
+      if (existing.status !== 'approved') return reply.code(409).send({ error: 'NOT_APPROVED' })
+      const sent = await refundOnline(tenantId, existing, apiBaseOf(request))
+      if (!sent.ok) return reply.code(502).send({ error: sent.error })
+      reference = sent.refundRef
+    }
+
     const result = await transact(tenantId, async (ctx) => {
       const refund = await ctx.refunds.findOne({ _id: id })
       if (!refund || refund.status !== 'approved') throw new FinanceAbort('NOT_APPROVED')
@@ -237,7 +248,7 @@ export function registerRefundRoutes(app: FastifyInstance): void {
       const now = new Date()
       const doc = await ctx.refunds.findOneAndUpdate(
         { _id: id, status: 'approved' },
-        { $set: { status: 'paid', paidAt: parsed.data.paidAt, paidBy: request.auth!.sub, method: parsed.data.method, reference: parsed.data.reference, updatedAt: now } },
+        { $set: { status: 'paid', paidAt: parsed.data.paidAt, paidBy: request.auth!.sub, method: parsed.data.method, reference, updatedAt: now } },
         { returnDocument: 'after' },
       )
       if (!doc) throw new FinanceAbort('NOT_APPROVED')

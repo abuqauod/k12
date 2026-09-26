@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
@@ -6,6 +6,7 @@ import type { TranslationKey } from '../i18n/translations'
 import { getTenant, updateTenantProfile } from '../lib/tenantApi'
 import type { ContactProfile } from '../lib/tenantApi'
 import { createAcademicYear, listAcademicYears, setCurrentAcademicYear } from '../lib/academicYearsApi'
+import { TermsEditor } from './settings/TermsEditor'
 import type { AcademicYear } from '../lib/academicYearsApi'
 import { getRoleCatalog } from '../lib/memberships'
 import type { RoleCatalog } from '../lib/memberships'
@@ -124,6 +125,7 @@ export function AcademicYearsSection() {
   const [name, setName] = useState('')
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
+  const [editingTerms, setEditingTerms] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const result = await listAcademicYears(getAccessToken)
@@ -174,15 +176,25 @@ export function AcademicYearsSection() {
                 <th>{t('settings.years.name')}</th>
                 <th>{t('settings.years.start')}</th>
                 <th>{t('settings.years.end')}</th>
+                <th>{t('settings.terms.title')}</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {years.map((year) => (
-                <tr key={year.id}>
+                <Fragment key={year.id}>
+                <tr>
                   <td>{year.name}</td>
                   <td className="mono">{year.startDate}</td>
                   <td className="mono">{year.endDate}</td>
+                  <td>
+                    {(year.terms ?? []).map((x) => x.name).join(' · ') || '—'}{' '}
+                    {canWrite && (
+                      <button type="button" className="link-btn" onClick={() => setEditingTerms(editingTerms === year.id ? null : year.id)}>
+                        {t('settings.terms.edit')}
+                      </button>
+                    )}
+                  </td>
                   <td className="row-actions">
                     {year.current ? (
                       <span className="chip chip--ok">{t('settings.years.current')}</span>
@@ -195,6 +207,21 @@ export function AcademicYearsSection() {
                     )}
                   </td>
                 </tr>
+                {editingTerms === year.id && (
+                  <tr>
+                    <td colSpan={5}>
+                      <TermsEditor
+                        year={year}
+                        onClose={() => setEditingTerms(null)}
+                        onSaved={() => {
+                          setEditingTerms(null)
+                          void load()
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

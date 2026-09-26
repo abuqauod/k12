@@ -28,6 +28,10 @@ import { FleetPage } from './pages/FleetPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 import { CommunicationPage } from './pages/CommunicationPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { ClinicPage } from './pages/ClinicPage'
+import { GradesPage } from './pages/GradesPage'
+import { CanteenPage } from './pages/CanteenPage'
+import { BehaviourPage } from './pages/BehaviourPage'
 import { PortalShell } from './portal/PortalShell'
 import { PortalHome } from './portal/PortalHome'
 import { PortalChildPage } from './portal/PortalChildPage'
@@ -98,6 +102,10 @@ export default function App() {
         <Route path="/approvals" element={<ApprovalsPage />} />
         <Route path="/communication" element={<CommunicationPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/clinic" element={<ClinicPage />} />
+        <Route path="/grades" element={<GradesPage />} />
+        <Route path="/canteen" element={<CanteenPage />} />
+        <Route path="/behaviour" element={<BehaviourPage />} />
         <Route path="/hr" element={<HrPage />} />
         <Route path="/hr/employees/:id" element={<EmployeePage />} />
         <Route path="/operations" element={<OperationsPage />} />

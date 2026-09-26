@@ -1,3 +1,4 @@
+import { actionLabel } from '../../lib/auditLabels'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listAuditLog, type AuditEntry } from '../../lib/auditLog'
@@ -55,7 +56,7 @@ export function ActivityTab({ studentId }: { studentId: string }) {
               <li key={entry.id} className="timeline__item">
                 <span className="timeline__dot" aria-hidden="true" />
                 <span className="timeline__head">
-                  <span className="mono">{entry.action}</span>
+                  <span title={entry.action}>{actionLabel(entry.action, lang)}</span>
                   <time className="docs__meta" dateTime={entry.createdAt}>
                     {when(entry.createdAt)}
                   </time>

@@ -46,6 +46,7 @@ function errorKey(code: string): TranslationKey {
     case 'NOT_CONFIGURED':
       return 'login.errorNotConfigured'
     case 'TOO_MANY_ATTEMPTS':
+    case 'RATE_LIMITED':
       return 'login.errorTooManyAttempts'
     case 'TIMEOUT':
     case 'OFFLINE':

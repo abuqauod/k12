@@ -126,6 +126,10 @@ returns `{"ok":true}`.
 
 ## Deploying with Docker (a VPS with root access — Hostinger VPS included)
 
+> Going live with a real school: follow
+> [`docs/deployment-checklist.md`](../docs/deployment-checklist.md) —
+> secrets, email, backups and the restore drill, monitoring (`/ready`).
+
 Different path from the section above: this one's for when you have real
 SSH + Docker access, not the Node.js Selector. Everything — MongoDB, the
 API, and HTTPS — runs as containers on the one machine, via
@@ -166,7 +170,10 @@ JWT_SECRET=<openssl rand -base64 48>
 API_DOMAIN=api.your-domain.com
 CORS_ORIGINS=https://your-frontend-domain.com
 ```
-Add the `SMTP_*` variables too if you want invite/reset emails working.
+Add the `SMTP_*` variables for invite/reset emails, family notices and
+scheduled report emails, and `SMS_PROVIDER` (Twilio or any HTTP SMS
+gateway) for text messages — see the comments in `.env.example`. Then check
+both from the app: Communication → Automatic notices → Delivery channels.
 
 **5. Bring the whole stack up**:
 ```bash

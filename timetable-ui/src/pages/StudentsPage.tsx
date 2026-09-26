@@ -11,17 +11,18 @@ import { useApp } from '../state/AppContext'
 import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { TranslationKey } from '../i18n/translations'
+import { printIdCards } from '../lib/idCards'
 
 type ModeFilter = TransportMode | 'ALL' | 'ISSUES' | 'INCOMPLETE'
 
 const NEW_PREFIX = 'NEW-'
 
 /** The fields the server needs to create a row and can't default. Until all
- * are filled, a draft row stays local-only rather than round-tripping a 400. */
+ * are filled, a draft row stays local-only rather than round-tripping a 400.
+ * A blank student number is given the school's next one. */
 function readyToCreate(student: Student): boolean {
   return Boolean(
-    student.studentNumber.trim() &&
-      student.givenName.trim() &&
+    student.givenName.trim() &&
       student.familyName.trim() &&
       student.classId,
   )
@@ -33,7 +34,7 @@ function toPayload(student: Student): NewStudent {
 }
 
 export function StudentsPage() {
-  const { t, n } = useI18n()
+  const { t, n, lang } = useI18n()
   const { students, setStudents, fleet, activeBranchId } = useApp()
   const { getAccessToken, can } = useAuth()
   const canDelete = can('students.delete')
@@ -238,6 +239,15 @@ export function StudentsPage() {
         </div>
         <div className="page__actions">
           {pendingSaves > 0 && <span className="card__hint">{t('students.saving')}</span>}
+          <button
+            type="button"
+            className="btn"
+            disabled={!activeBranchId}
+            title={activeBranchId ? undefined : t('idcards.pickBranch')}
+            onClick={() => void printIdCards(getAccessToken, 'students', { branchId: activeBranchId, layout: 'sheet', lang })}
+          >
+            {t('idcards.print')}
+          </button>
           {can('enrollments.assign') && (
             <button type="button" className="btn" onClick={() => navigate('/students/year-end')}>
               {t('yearEnd.title')}
@@ -335,6 +345,8 @@ export function StudentsPage() {
                     <td>
                       <input
                         className="cell-input mono"
+                        placeholder={student.id.startsWith(NEW_PREFIX) ? t('students.number.auto') : undefined}
+                        aria-label={t('students.number')}
                         value={student.studentNumber}
                         onChange={(event) => patch(index, { studentNumber: event.target.value })}
                       />

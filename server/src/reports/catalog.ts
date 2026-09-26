@@ -6,6 +6,7 @@ import { studentReports } from './defs/students.js'
 import { attendanceReports } from './defs/attendance.js'
 import { financeReports } from './defs/finance.js'
 import { hrReports } from './defs/hr.js'
+import { wellbeingReports } from './defs/wellbeing.js'
 
 /**
  * SAMS 7.2: the report catalog. Every report is a definition here: which
@@ -15,7 +16,7 @@ import { hrReports } from './defs/hr.js'
  * scheduled export running as its owner.
  */
 
-export const REPORTS: ReportDefinition[] = [...studentReports, ...attendanceReports, ...financeReports, ...hrReports]
+export const REPORTS: ReportDefinition[] = [...studentReports, ...wellbeingReports, ...attendanceReports, ...financeReports, ...hrReports]
 const BY_KEY = new Map(REPORTS.map((r) => [r.key, r]))
 
 export const findReport = (key: string) => BY_KEY.get(key) ?? null
