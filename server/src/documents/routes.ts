@@ -49,6 +49,8 @@ const OWNER_READ_SCOPE: Record<DocumentOwnerType, PermissionScope> = {
   // SAMS 3.2 / 3.5: scholarship evidence, vendor invoices.
   scholarship: 'finance.read',
   expense: 'finance.read',
+  // SAMS 4.3: staff files are personal data — HR only.
+  employee: 'hr.read',
 }
 
 /** Who may add files to an owner besides `documents.upload` holders: the
@@ -57,6 +59,7 @@ const OWNER_UPLOAD_SCOPE: Partial<Record<DocumentOwnerType, PermissionScope>> = 
   application: 'admissions.manage',
   scholarship: 'finance.scholarship.request',
   expense: 'finance.expense.create',
+  employee: 'hr.employee.update',
 }
 
 /** Owners that are a single branch-scoped record. */
@@ -69,14 +72,16 @@ async function recordBranch(ctx: TenantContext, ownerType: DocumentOwnerType, ow
         ? await ctx.scholarships.findOne(find)
         : ownerType === 'expense'
           ? await ctx.expenses.findOne(find)
-          : ownerType === 'student'
+          : ownerType === 'employee'
+            ? await ctx.employees.findOne(find)
+            : ownerType === 'student'
             ? await ctx.students.findOne(find)
             : null
   return doc ? { branchId: doc.branchId } : null
 }
 
 const ownerQuery = z.object({
-  ownerType: z.enum(['student', 'parent', 'application', 'scholarship', 'expense']),
+  ownerType: z.enum(['student', 'parent', 'application', 'scholarship', 'expense', 'employee']),
   ownerId: z.string().min(1).max(64),
 })
 

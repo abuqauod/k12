@@ -57,7 +57,39 @@ export const LOOKUP_KINDS: Record<string, { defaults: Default[] }> = {
       { code: 'photo', label: 'Photo', labelAr: 'صورة شخصية' },
       // Scholarship evidence, vendor invoices (SAMS 3.2, 3.5).
       { code: 'financial', label: 'Financial document', labelAr: 'مستند مالي' },
+      // Staff files (SAMS 4.3).
+      { code: 'contract', label: 'Signed contract', labelAr: 'عقد موقّع' },
+      { code: 'certificate', label: 'Qualification / certificate', labelAr: 'مؤهل / شهادة' },
+      { code: 'license', label: 'Licence / permit', labelAr: 'رخصة / تصريح' },
       { code: 'other', label: 'Other', labelAr: 'أخرى' },
+    ],
+  },
+  // SAMS Phase 4.
+  department: {
+    defaults: [
+      { code: 'administration', label: 'Administration', labelAr: 'الإدارة' },
+      { code: 'teaching', label: 'Teaching', labelAr: 'الهيئة التدريسية' },
+      { code: 'finance', label: 'Finance', labelAr: 'المالية' },
+      { code: 'operations', label: 'Operations', labelAr: 'العمليات' },
+      { code: 'transport', label: 'Transport', labelAr: 'النقل' },
+    ],
+  },
+  position: {
+    defaults: [
+      { code: 'principal', label: 'Principal', labelAr: 'مدير المدرسة' },
+      { code: 'teacher', label: 'Teacher', labelAr: 'معلم' },
+      { code: 'accountant', label: 'Accountant', labelAr: 'محاسب' },
+      { code: 'registrar', label: 'Registrar', labelAr: 'مسجل' },
+      { code: 'driver', label: 'Driver', labelAr: 'سائق' },
+      { code: 'custodian', label: 'Custodian', labelAr: 'عامل خدمات' },
+    ],
+  },
+  contractType: {
+    defaults: [
+      { code: 'permanent', label: 'Permanent', labelAr: 'دائم' },
+      { code: 'fixed_term', label: 'Fixed term', labelAr: 'محدد المدة' },
+      { code: 'part_time', label: 'Part time', labelAr: 'دوام جزئي' },
+      { code: 'probation', label: 'Probation', labelAr: 'فترة تجربة' },
     ],
   },
   expenseCategory: {

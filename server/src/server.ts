@@ -28,6 +28,7 @@ import { registerApprovalRoutes } from './approvals/routes.js'
 import { registerSettingsRoutes } from './settings/routes.js'
 import { registerDocumentRoutes } from './documents/routes.js'
 import { registerAdmissionRoutes } from './admissions/routes.js'
+import { registerHrRoutes } from './hr/routes.js'
 import { startAbsenceSweeper } from './notifications/sweep.js'
 
 export function buildServer() {
@@ -134,6 +135,7 @@ export function buildServer() {
       registerSettingsRoutes(instance)
       registerDocumentRoutes(instance)
       registerAdmissionRoutes(instance)
+      registerHrRoutes(instance)
     },
     { prefix: config.routePrefix },
   )

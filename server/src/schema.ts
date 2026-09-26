@@ -202,6 +202,22 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('expenses').createIndex({ tenantId: 1, expenseNumber: 1 }, { unique: true })
   await db.collection('expenses').createIndex({ tenantId: 1, branchId: 1, status: 1, expenseDate: -1 })
 
+  // SAMS Phase 4 (HR).
+  await db.collection('employees').createIndex({ tenantId: 1, employeeNumber: 1 }, { unique: true })
+  await db.collection('employees').createIndex({ tenantId: 1, branchId: 1, status: 1, familyName: 1 })
+  await db
+    .collection('employees')
+    .createIndex({ tenantId: 1, userId: 1 }, { unique: true, partialFilterExpression: { userId: { $type: 'string' } } })
+  await db.collection('contracts').createIndex({ tenantId: 1, employeeId: 1, startDate: 1 })
+  await db.collection('contracts').createIndex({ tenantId: 1, branchId: 1, endDate: 1 })
+  await db.collection('employmentEvents').createIndex({ tenantId: 1, employeeId: 1, date: -1, createdAt: -1 })
+  await db.collection('leaveTypes').createIndex({ tenantId: 1, code: 1 }, { unique: true })
+  await db.collection('leaveRequests').createIndex({ tenantId: 1, employeeId: 1, startDate: 1 })
+  await db.collection('leaveRequests').createIndex({ tenantId: 1, branchId: 1, status: 1, startDate: -1 })
+  await db.collection('leaveAdjustments').createIndex({ tenantId: 1, employeeId: 1, year: 1 })
+  await db.collection('staffAttendance').createIndex({ tenantId: 1, employeeId: 1, date: 1 }, { unique: true })
+  await db.collection('staffAttendance').createIndex({ tenantId: 1, branchId: 1, date: 1 })
+
   await db.collection('buses').createIndex({ tenantId: 1, branchId: 1, active: 1 })
   await db.collection('stops').createIndex({ tenantId: 1, branchId: 1, active: 1 })
   // Lets deactivating a bus unpin every stop pointing at it in one indexed

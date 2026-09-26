@@ -55,8 +55,11 @@ export type PermissionScope =
   | 'finance.refund.request'
   | 'finance.scholarship.approve'
   | 'finance.scholarship.request'
+  | 'hr.attendance.write'
   | 'hr.employee.update'
+  | 'hr.leave.approve'
   | 'hr.read'
+  | 'hr.salary.read'
   | 'memberships.manage'
   | 'notifications.manage'
   | 'notifications.run'
@@ -64,6 +67,7 @@ export type PermissionScope =
   | 'parents.read'
   | 'parents.write'
   | 'reports.finance'
+  | 'reports.hr'
   | 'search.read'
   | 'settings.manage'
   | 'settings.read'
@@ -141,12 +145,16 @@ const ADMIN_SCOPES: readonly PermissionScope[] = [
   'finance.payout',
   'finance.refund.approve',
   'finance.scholarship.approve',
+  'hr.attendance.write',
   'hr.employee.update',
+  'hr.leave.approve',
   'hr.read',
+  'hr.salary.read',
   'memberships.manage',
   'notifications.manage',
   'parents.manage',
   'reports.finance',
+  'reports.hr',
   'settings.manage',
   'students.custody',
   'students.delete',
@@ -240,7 +248,15 @@ export const PRESETS: Record<RoleKey, RolePreset> = {
     'finance.scholarship.request',
     'reports.finance',
   ]),
-  hr: preset('viewer', [...OFFICE_READ, 'hr.employee.update', 'hr.read']),
+  hr: preset('viewer', [
+    ...OFFICE_READ,
+    'hr.attendance.write',
+    'hr.employee.update',
+    'hr.leave.approve',
+    'hr.read',
+    'hr.salary.read',
+    'reports.hr',
+  ]),
   operations: preset('scheduler', [
     ...OFFICE_READ,
     'attendance.write',

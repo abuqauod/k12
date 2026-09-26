@@ -792,7 +792,7 @@ export type InvoiceStatus = 'open' | 'partially_paid' | 'paid' | 'void'
 
 /** SAMS 2.1: records a document can be attached to. Staff and applications
  * join this list in later phases. */
-export type DocumentOwnerType = 'student' | 'parent' | 'application' | 'scholarship' | 'expense'
+export type DocumentOwnerType = 'student' | 'parent' | 'application' | 'scholarship' | 'expense' | 'employee'
 export type DocumentVerificationStatus = 'unverified' | 'verified' | 'rejected'
 
 /**
@@ -1225,6 +1225,169 @@ export interface ExpenseDoc extends Document {
   updatedAt: Date
 }
 
+// -------------------------------------------------------------------- hr --
+// SAMS Phase 4. An employee is a person the school employs, kept apart from
+// `MembershipDoc` (a login): many staff never sign in, and a login can be
+// linked to its employee record through `userId`. Departments, positions,
+// and contract types are settings lists (1.11); leave types
+// carry an entitlement, so they have their own collection.
+
+export type EmployeeStatus = 'active' | 'terminated'
+
+export interface EmployeeDoc extends Document {
+  _id: string
+  tenantId: string
+  /** EMP-000001, sequential per tenant. */
+  employeeNumber: string
+  /** The branch the employee works at. */
+  branchId: string
+  givenName: string
+  familyName: string
+  fullNameAr: string | null
+  gender: 'male' | 'female' | null
+  dob: string | null
+  nationality: string | null
+  nationalId: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  /** `department` / `position` lookup codes. */
+  departmentCode: string | null
+  positionCode: string | null
+  hireDate: string
+  status: EmployeeStatus
+  terminationDate: string | null
+  terminationReason: string | null
+  /** Optional link to a login (UserDoc._id) — for self-service leave. */
+  userId: string | null
+  emergencyContactName: string | null
+  emergencyContactPhone: string | null
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+  createdBy: string | null
+}
+
+/** One employment contract. Never edited away: a renewal is a new row and
+ * the old one is closed as `renewed`. At most one contract per employee
+ * covers any given day. */
+export interface ContractDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  /** The employee's branch when the contract was made, for isolation. */
+  branchId: string
+  /** A `contractType` lookup code. */
+  typeCode: string
+  startDate: string
+  /** Null = open-ended. */
+  endDate: string | null
+  /** Monthly, minor units; visible only with `hr.salary.read`. */
+  salary: number | null
+  hoursPerWeek: number | null
+  notes: string | null
+  closedReason: 'renewed' | 'terminated' | 'ended' | null
+  closedAt: Date | null
+  renewedFromId: string | null
+  createdAt: Date
+  createdBy: string | null
+}
+
+export type EmploymentEventType =
+  | 'hire'
+  | 'branch_change'
+  | 'department_change'
+  | 'position_change'
+  | 'contract_start'
+  | 'contract_renew'
+  | 'contract_end'
+  | 'terminate'
+  | 'rehire'
+
+/** Employment history: what changed and when, written with each change. */
+export interface EmploymentEventDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  type: EmploymentEventType
+  /** ISO yyyy-mm-dd the change took effect. */
+  date: string
+  from: string | null
+  to: string | null
+  note: string | null
+  actorId: string | null
+  createdAt: Date
+}
+
+export interface LeaveTypeDoc extends Document {
+  _id: string
+  tenantId: string
+  /** Immutable, unique per tenant; what requests store. */
+  code: string
+  name: string
+  nameAr: string | null
+  /** Working days per calendar year; null = not limited (e.g. unpaid). */
+  daysPerYear: number | null
+  paid: boolean
+  active: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
+export interface LeaveRequestDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  typeCode: string
+  startDate: string
+  endDate: string
+  /** Working days in the range (branch calendar), fixed at request time. */
+  days: number
+  reason: string | null
+  status: LeaveStatus
+  requestedBy: string
+  decidedBy: string | null
+  decidedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** A change to a balance on top of the yearly entitlement (carry-over,
+ * correction). Days may be negative. */
+export interface LeaveAdjustmentDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  typeCode: string
+  year: number
+  days: number
+  reason: string
+  createdAt: Date
+  createdBy: string | null
+}
+
+export type StaffAttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'leave'
+
+export interface StaffAttendanceDoc extends Document {
+  _id: string
+  tenantId: string
+  employeeId: string
+  branchId: string
+  date: string
+  status: StaffAttendanceStatus
+  /** "HH:MM", optional. */
+  checkIn: string | null
+  checkOut: string | null
+  note: string | null
+  recordedBy: string | null
+  updatedAt: Date
+}
+
 // ----------------------------------------------------------- transport --
 // Bus routing — depot/buses/stops/routing-rules for one branch. Previously
 // existed only as an opaque JSON blob synced through the generic
@@ -1550,6 +1713,13 @@ export interface TenantContext {
   refunds: TenantScope<RefundDoc>
   vendors: TenantScope<VendorDoc>
   expenses: TenantScope<ExpenseDoc>
+  employees: TenantScope<EmployeeDoc>
+  contracts: TenantScope<ContractDoc>
+  employmentEvents: TenantScope<EmploymentEventDoc>
+  leaveTypes: TenantScope<LeaveTypeDoc>
+  leaveRequests: TenantScope<LeaveRequestDoc>
+  leaveAdjustments: TenantScope<LeaveAdjustmentDoc>
+  staffAttendance: TenantScope<StaffAttendanceDoc>
   buses: TenantScope<BusDoc>
   stops: TenantScope<StopDoc>
   transportSettings: TenantScope<TransportSettingsDoc>
@@ -1643,6 +1813,13 @@ export async function withTenant<T>(
         refunds: new TenantScope(db.collection<RefundDoc>('refunds'), tenantId, session),
         vendors: new TenantScope(db.collection<VendorDoc>('vendors'), tenantId, session),
         expenses: new TenantScope(db.collection<ExpenseDoc>('expenses'), tenantId, session),
+        employees: new TenantScope(db.collection<EmployeeDoc>('employees'), tenantId, session),
+        contracts: new TenantScope(db.collection<ContractDoc>('contracts'), tenantId, session),
+        employmentEvents: new TenantScope(db.collection<EmploymentEventDoc>('employmentEvents'), tenantId, session),
+        leaveTypes: new TenantScope(db.collection<LeaveTypeDoc>('leaveTypes'), tenantId, session),
+        leaveRequests: new TenantScope(db.collection<LeaveRequestDoc>('leaveRequests'), tenantId, session),
+        leaveAdjustments: new TenantScope(db.collection<LeaveAdjustmentDoc>('leaveAdjustments'), tenantId, session),
+        staffAttendance: new TenantScope(db.collection<StaffAttendanceDoc>('staffAttendance'), tenantId, session),
         buses: new TenantScope(db.collection<BusDoc>('buses'), tenantId, session),
         stops: new TenantScope(db.collection<StopDoc>('stops'), tenantId, session),
         transportSettings: new TenantScope(
