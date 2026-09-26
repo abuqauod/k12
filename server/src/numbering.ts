@@ -25,6 +25,7 @@ export const NUMBER_KINDS = {
   employeeNumber: { prefix: 'EMP', label: { en: 'Employees', ar: 'الموظفون' } },
   assetTag: { prefix: 'AST', label: { en: 'Assets', ar: 'الأصول' } },
   maintenanceNumber: { prefix: 'MNT', label: { en: 'Maintenance requests', ar: 'طلبات الصيانة' } },
+  incidentNumber: { prefix: 'INC', label: { en: 'Behaviour incidents', ar: 'الحوادث السلوكية' } },
 } as const
 
 export type NumberKind = keyof typeof NUMBER_KINDS
@@ -74,6 +75,8 @@ function takenCheck(ctx: TenantContext, kind: NumberKind): (n: string) => Promis
       return by(ctx.assets, 'assetTag')
     case 'maintenanceNumber':
       return by(ctx.maintenanceRequests, 'requestNumber')
+    case 'incidentNumber':
+      return by(ctx.incidents, 'incidentNumber')
   }
 }
 

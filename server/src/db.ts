@@ -1812,6 +1812,10 @@ export const MESSAGE_KINDS = [
   'approval_decided',
   /** SAMS 7.4: a scheduled report export is ready (staff only). */
   'report_ready',
+  /** Backlog: a child went home, was referred or taken to emergency. */
+  'clinic_visit',
+  /** Backlog: a behaviour incident the school decided to tell the family about. */
+  'incident',
 ] as const
 export type MessageKind = (typeof MESSAGE_KINDS)[number]
 
@@ -2001,6 +2005,105 @@ export interface CommunicationSettingsDoc extends Document {
   portalDocumentCategories: string[]
   /** UTC date the daily run last happened. */
   lastRunDate: string | null
+  updatedAt: Date
+}
+
+// --------------------------------------------------------- health/clinic --
+// Backlog: a student's health profile and the clinic's visit log. Medical
+// data: readable only with `health.read`, except the items the nurse marks
+// as an alert (a severe allergy), which every member who can see the
+// student is shown. The audit log records that a profile changed, never
+// what it says.
+
+export type AllergySeverity = 'mild' | 'moderate' | 'severe'
+
+export interface HealthItem {
+  id: string
+  name: string
+  notes: string | null
+  /** Shown to staff who can see the student (the banner), not only nurses. */
+  alert: boolean
+}
+
+export interface StudentHealthDoc extends Document {
+  /** The student's id: one profile per student. */
+  _id: string
+  tenantId: string
+  bloodType: string | null
+  allergies: (HealthItem & { severity: AllergySeverity; reaction: string | null })[]
+  conditions: HealthItem[]
+  medications: { id: string; name: string; dose: string | null; schedule: string | null; atSchool: boolean }[]
+  doctorName: string | null
+  doctorPhone: string | null
+  notes: string | null
+  updatedAt: Date
+  updatedBy: string | null
+}
+
+export type ClinicOutcome = 'returned_to_class' | 'rested' | 'sent_home' | 'referred' | 'emergency'
+
+export interface ClinicVisitDoc extends Document {
+  _id: string
+  tenantId: string
+  studentId: string
+  /** The student's branch at the time. */
+  branchId: string
+  visitedAt: Date
+  complaint: string
+  /** °C, one decimal. */
+  temperature: number | null
+  treatment: string | null
+  medicationGiven: string | null
+  outcome: ClinicOutcome
+  notes: string | null
+  /** When the family was told (a notice was queued), or null. */
+  parentsNotifiedAt: Date | null
+  recordedBy: string
+  createdAt: Date
+}
+
+// ------------------------------------------------------------ discipline --
+// Backlog: behaviour incidents. Anyone with `discipline.report` logs one
+// (and sees their own); `discipline.manage` sees all, decides the action
+// and tells the family.
+
+export type IncidentStatus = 'open' | 'resolved' | 'dismissed'
+export type IncidentSeverity = 'minor' | 'moderate' | 'major'
+
+export interface IncidentAction {
+  id: string
+  /** A `disciplineAction` settings-list code (warning, detention…). */
+  code: string
+  note: string | null
+  /** For an action over days (suspension): from/to. */
+  startDate: string | null
+  endDate: string | null
+  decidedBy: string
+  decidedAt: Date
+}
+
+export interface IncidentDoc extends Document {
+  _id: string
+  tenantId: string
+  /** INC-000001 (configurable numbering). */
+  incidentNumber: string
+  branchId: string
+  /** Everyone involved; each gets their own actions. */
+  studentIds: string[]
+  occurredAt: Date
+  location: string | null
+  /** A `incidentType` settings-list code. */
+  typeCode: string
+  severity: IncidentSeverity
+  description: string
+  witnesses: string | null
+  status: IncidentStatus
+  /** Per student. */
+  actions: (IncidentAction & { studentId: string })[]
+  parentsNotifiedAt: Date | null
+  resolution: string | null
+  reportedBy: string
+  createdAt: Date
   updatedAt: Date
 }
 
@@ -2268,6 +2371,9 @@ export interface TenantContext {
   reportSchedules: TenantScope<ReportScheduleDoc>
   reportRuns: TenantScope<ReportRunDoc>
   numberingSettings: TenantScope<NumberingSettingsDoc>
+  studentHealth: TenantScope<StudentHealthDoc>
+  clinicVisits: TenantScope<ClinicVisitDoc>
+  incidents: TenantScope<IncidentDoc>
 }
 
 /**
@@ -2399,6 +2505,9 @@ export async function withTenant<T>(
         reportSchedules: new TenantScope(db.collection<ReportScheduleDoc>('reportSchedules'), tenantId, session),
         reportRuns: new TenantScope(db.collection<ReportRunDoc>('reportRuns'), tenantId, session),
         numberingSettings: new TenantScope(db.collection<NumberingSettingsDoc>('numberingSettings'), tenantId, session),
+        studentHealth: new TenantScope(db.collection<StudentHealthDoc>('studentHealth'), tenantId, session),
+        clinicVisits: new TenantScope(db.collection<ClinicVisitDoc>('clinicVisits'), tenantId, session),
+        incidents: new TenantScope(db.collection<IncidentDoc>('incidents'), tenantId, session),
       })
     })
     return result as T

@@ -66,6 +66,8 @@ type SettingsSection =
   | 'event-types'
   | 'notification-templates'
   | 'numbering'
+  | 'incident-types'
+  | 'discipline-actions'
   | 'roles'
   | 'team'
   | 'calendar'
@@ -103,6 +105,8 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'room-types', key: 'settings.section.roomTypes', scope: 'settings.read' },
       { id: 'book-categories', key: 'settings.section.bookCategories', scope: 'settings.read' },
       { id: 'event-types', key: 'settings.section.eventTypes', scope: 'settings.read' },
+      { id: 'incident-types', key: 'settings.section.incidentTypes', scope: 'settings.read' },
+      { id: 'discipline-actions', key: 'settings.section.disciplineActions', scope: 'settings.read' },
       { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
     ],
   },
@@ -240,6 +244,12 @@ export function SettingsPage() {
           {active?.id === 'book-categories' && <LookupSection kind="bookCategory" title={t('settings.section.bookCategories')} hint={t('settings.bookCategories.hint')} />}
           {active?.id === 'event-types' && <LookupSection kind="eventType" title={t('settings.section.eventTypes')} hint={t('settings.eventTypes.hint')} />}
           {active?.id === 'notification-templates' && <NotificationTemplatesSection />}
+          {active?.id === 'incident-types' && (
+            <LookupSection kind="incidentType" title={t('settings.section.incidentTypes')} hint={t('settings.incidentTypes.hint')} />
+          )}
+          {active?.id === 'discipline-actions' && (
+            <LookupSection kind="disciplineAction" title={t('settings.section.disciplineActions')} hint={t('settings.disciplineActions.hint')} />
+          )}
           {active?.id === 'team' && <TeamSettingsTab />}
           {active?.id === 'roles' && <RolesSection />}
           {active?.id === 'calendar' && <CalendarSettingsTab />}

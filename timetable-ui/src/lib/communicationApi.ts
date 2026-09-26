@@ -15,6 +15,8 @@ export type MessageKind =
   | 'document_expiring'
   | 'approval_decided'
   | 'report_ready'
+  | 'clinic_visit'
+  | 'incident'
 
 // ---------------------------------------------------------------- inbox --
 

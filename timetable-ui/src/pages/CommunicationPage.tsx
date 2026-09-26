@@ -675,6 +675,8 @@ const KINDS = [
   'document_rejected',
   'document_expiring',
   'report_ready',
+  'clinic_visit',
+  'incident',
 ] as const
 
 function LogTab() {

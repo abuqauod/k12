@@ -267,4 +267,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('reportSchedules').createIndex({ tenantId: 1, ownerId: 1 })
   await db.collection('reportRuns').createIndex({ tenantId: 1, scheduleId: 1, createdAt: -1 })
   await db.collection('reportRuns').createIndex({ tenantId: 1, recipients: 1, createdAt: -1 })
+
+  // Backlog: clinic visits by day and by student; incidents by number,
+  // student and branch/date.
+  await db.collection('clinicVisits').createIndex({ tenantId: 1, branchId: 1, visitedAt: -1 })
+  await db.collection('clinicVisits').createIndex({ tenantId: 1, studentId: 1, visitedAt: -1 })
+  await db.collection('incidents').createIndex({ tenantId: 1, incidentNumber: 1 }, { unique: true })
+  await db.collection('incidents').createIndex({ tenantId: 1, studentIds: 1, occurredAt: -1 })
+  await db.collection('incidents').createIndex({ tenantId: 1, branchId: 1, occurredAt: -1 })
 }

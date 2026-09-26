@@ -15,14 +15,18 @@ import { FamilyTab } from '../components/student/FamilyTab'
 import { EnrollmentTab } from '../components/student/EnrollmentTab'
 import { FinanceTab } from '../components/student/FinanceTab'
 import { ActivityTab } from '../components/student/ActivityTab'
+import { BehaviourTab } from '../components/student/BehaviourTab'
+import { HealthAlertsBanner, HealthTab } from '../components/wellbeing/Health'
 
-type Tab = 'profile' | 'family' | 'enrollment' | 'finance' | 'documents' | 'activity'
+type Tab = 'profile' | 'family' | 'enrollment' | 'finance' | 'health' | 'behaviour' | 'documents' | 'activity'
 
 const TABS: { id: Tab; label: TranslationKey; scope?: string }[] = [
   { id: 'profile', label: 'profile.tab.profile' },
   { id: 'family', label: 'profile.tab.family' },
   { id: 'enrollment', label: 'profile.tab.enrollment', scope: 'enrollments.read' },
   { id: 'finance', label: 'profile.tab.finance', scope: 'finance.read' },
+  { id: 'health', label: 'profile.tab.health', scope: 'health.read' },
+  { id: 'behaviour', label: 'profile.tab.behaviour', scope: 'discipline.report' },
   { id: 'documents', label: 'profile.tab.documents' },
   { id: 'activity', label: 'profile.tab.activity', scope: 'audit.read' },
 ]
@@ -186,6 +190,8 @@ export function StudentProfilePage() {
         </div>
       </header>
 
+      <HealthAlertsBanner studentId={student.id} />
+
       {status === 'enrolled' && missing.length > 0 && (
         <section className="missing" aria-labelledby="missing-title">
           <h2 id="missing-title" className="missing__title">
@@ -225,6 +231,8 @@ export function StudentProfilePage() {
         {tab === 'family' && <FamilyTab key={student.id} student={student} />}
         {tab === 'enrollment' && <EnrollmentTab student={student} classes={classes} onChanged={onChanged} />}
         {tab === 'finance' && <FinanceTab student={student} />}
+        {tab === 'health' && <HealthTab studentId={student.id} />}
+        {tab === 'behaviour' && <BehaviourTab student={student} />}
         {tab === 'documents' && (
           <section className="card profile-card">
             <DocumentsPanel ownerType="student" ownerId={student.id} />
