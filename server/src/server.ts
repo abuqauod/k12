@@ -63,7 +63,6 @@ export function buildServer() {
       const given = req.headers['x-request-id']
       return typeof given === 'string' && /^[\w.:-]{8,128}$/.test(given) ? given : randomUUID()
     },
-    requestIdLogLabel: 'requestId',
   })
 
   // SAMS 8.3/8.4: the request id and security headers on every response.

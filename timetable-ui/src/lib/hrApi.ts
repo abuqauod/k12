@@ -195,7 +195,7 @@ export const employeeLeave = (g: G, id: string, year: number) =>
   api<LeaveOverview>(g, 'GET', `/hr/employees/${enc(id)}/leave${qs({ year })}`)
 export const adjustLeave = (g: G, id: string, body: { typeCode: string; year: number; days: number; reason: string }) =>
   api<{ id: string }>(g, 'POST', `/hr/employees/${enc(id)}/leave-adjustments`, body)
-export const myHr = (g: G, year?: number) => api<LeaveOverview & { employee: Employee }>(g, 'GET', `/hr/me${qs({ year })}`)
+export const myHr = (g: G, year?: number) => api<(LeaveOverview & { employee: Employee }) | { employee: null }>(g, 'GET', `/hr/me${qs({ year })}`)
 export const listLeaveRequests = (g: G, p: { branchId?: string; status?: string; employeeId?: string; from?: string; to?: string } = {}) =>
   pick(api<{ requests: LeaveRequest[] }>(g, 'GET', `/hr/leave-requests${qs(p)}`), 'requests')
 export const requestLeave = (

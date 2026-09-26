@@ -138,3 +138,15 @@ describe('error reporting', () => {
     assert.deepEqual(event.user, { id: 'u1' })
   })
 })
+
+describe('scoped aggregation', () => {
+  test('runs inside the tenant and refuses stages that reach other collections', async () => {
+    const { withTenant } = await import('../db.js')
+    const rows = await withTenant(fx.tenantId, (ctx) => ctx.branches.aggregate<{ _id: null; n: number }>({}, [{ $group: { _id: null, n: { $sum: 1 } } }]).toArray())
+    assert.equal(rows[0]!.n, 2)
+    await assert.rejects(
+      withTenant(fx.tenantId, (ctx) => ctx.branches.aggregate({}, [{ $lookup: { from: 'users', pipeline: [], as: 'u' } }]).toArray()),
+      /not allowed/,
+    )
+  })
+})

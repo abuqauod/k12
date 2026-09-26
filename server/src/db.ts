@@ -2287,6 +2287,22 @@ export class TenantScope<T extends Document> {
   }
 
   /**
+   * Scoped aggregation (SAMS 10.3), for reports that count over many rows:
+   * the tenant `$match` always runs first, and the stages that read other
+   * collections (`$lookup`, `$unionWith`, `$graphLookup`) or write
+   * (`$out`, `$merge`) are refused, so the pipeline can only reshape this
+   * tenant's rows of this one collection.
+   */
+  aggregate<R extends Document>(match: Filter<T>, pipeline: Document[] = []) {
+    const refused = ['$lookup', '$unionWith', '$graphLookup', '$out', '$merge']
+    for (const stage of pipeline) {
+      const op = Object.keys(stage)[0]
+      if (op && refused.includes(op)) throw new Error(`aggregate: ${op} is not allowed in a tenant-scoped pipeline`)
+    }
+    return this.col.aggregate<R>([{ $match: this.scope(match) }, ...pipeline], { session: this.session })
+  }
+
+  /**
    * Scoped delete. Added late and used sparingly — most "removals" here are a
    * status flip, not an erase — but a few things (an empty class, a mis-typed
    * branch) genuinely have no reason to linger. The tenant filter is forced

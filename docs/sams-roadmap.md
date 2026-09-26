@@ -474,6 +474,28 @@ layouts for the pages staff use on the move (attendance, clinic, behaviour,
 gate, portal) · 10.3 Large schools: a 3,000-student demo tenant, timings for
 the heavy lists and reports, indexes and paging where they are slow.
 
+**Built**:
+- 10.1 Every page checked in Arabic at desktop and phone width (a browser
+  script flags page overflow, anything wider than the screen, raw
+  translation keys, and errors). All right-to-left, nothing overflowing.
+  **Found**: audit actions showed as codes (`invoice.installments.set`) on
+  the dashboard, the student's Activity tab and the audit log; they now
+  read "Invoice › Installments · Set" / «فاتورة › أقساط · تعيين»
+  (`lib/auditLabels.ts`, the code kept as a tooltip). `/hr/me` answered
+  404 for everyone without an employee record, filling the console; it
+  now answers `{ employee: null }`.
+- 10.2 Phone layouts: no page scrolls sideways; wide tables scroll inside
+  their card.
+- 10.3 `server/src/perf.ts` builds a school through the real routes (3,000
+  students, 1,500 families, 3,000 invoices, 40 days × 96 classes of
+  attendance = 120,000 marks) and times 25 heavy reads. Before → after:
+  attendance by class 1.8 s → 0.49 s and by student 1.75 s → 0.82 s (the
+  counting moved into MongoDB via a new tenant-scoped `aggregate`, which
+  refuses `$lookup`/`$unionWith`/`$out`/`$merge`; it had also been
+  copying each group's array on every mark). Everything else is under
+  0.4 s; the full student and invoice lists are ~3 MB of JSON, so Caddy
+  now compresses responses (`encode zstd gzip`).
+
 ## Phase 11 — New modules
 11.1 **Online fee payment**: a payment-provider interface with PayTabs and
 HyperPay first (hosted payment page, signed callbacks, reconciliation into

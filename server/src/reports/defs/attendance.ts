@@ -1,4 +1,3 @@
-import type { AttendanceRecordDoc } from '../../db.js'
 import { branchNames, classNames, inBranches, studentLabel, tx } from '../common.js'
 import { sumRows, type Cell, type ReportDefinition, type RunInput } from '../types.js'
 import type { TenantContext } from '../../db.js'
@@ -8,28 +7,62 @@ import { classFilter, TOTAL } from './shared.js'
 
 const COUNTED = ['present', 'late', 'absent', 'excused', 'early_departure'] as const
 
-async function records(ctx: TenantContext, input: RunInput): Promise<AttendanceRecordDoc[]> {
+function recordFilter(input: RunInput, classIds: string[] | null) {
+  return {
+    ...inBranches(input.branchIds),
+    ...(input.filters.academicYearId ? { academicYearId: input.filters.academicYearId } : {}),
+    ...(classIds ? { classId: { $in: classIds } } : {}),
+    date: { $gte: input.from!, $lte: input.to! },
+  }
+}
+
+/** One row per group with a count per status, counted by the database: a
+ * large school has hundreds of thousands of marks in a term (SAMS 10.3). */
+interface Tallied {
+  _id: string
+  present: number
+  late: number
+  absent: number
+  excused: number
+  early_departure: number
+  days: number
+  branchId: string
+  lastClassId: string
+  schoolDays?: string[]
+}
+
+async function tallies(ctx: TenantContext, input: RunInput, by: 'studentId' | 'classId'): Promise<Tallied[]> {
   const classIds = await classFilter(ctx, input)
+  const count = (status: string) => ({ $sum: { $cond: [{ $eq: ['$status', status] }, 1, 0] } })
   return ctx.attendance
-    .find({
-      ...inBranches(input.branchIds),
-      ...(input.filters.academicYearId ? { academicYearId: input.filters.academicYearId } : {}),
-      ...(classIds ? { classId: { $in: classIds } } : {}),
-      date: { $gte: input.from!, $lte: input.to! },
-    })
+    .aggregate<Tallied>(recordFilter(input, classIds), [
+      {
+        $group: {
+          _id: `$${by}`,
+          ...Object.fromEntries(COUNTED.map((s) => [s, count(s)])),
+          days: { $sum: 1 },
+          branchId: { $first: '$branchId' },
+          lastClassId: { $top: { sortBy: { date: -1 }, output: '$classId' } },
+          ...(by === 'classId' ? { schoolDays: { $addToSet: '$date' } } : {}),
+        },
+      },
+    ])
     .toArray()
 }
+
+const tallyOf = (t: Tallied) => ({
+  present: t.present,
+  late: t.late,
+  absent: t.absent,
+  excused: t.excused,
+  early_departure: t.early_departure,
+  days: t.days,
+})
 
 /** Present, late and early departure count as attending. */
 const rate = (row: Record<string, Cell>) => {
   const days = row.days as number
   return days > 0 ? ((row.present as number) + (row.late as number) + (row.early_departure as number)) / days : null
-}
-
-const tally = (list: AttendanceRecordDoc[]) => {
-  const out: Record<string, number> = { present: 0, late: 0, absent: 0, excused: 0, early_departure: 0, days: list.length }
-  for (const r of list) out[r.status] = (out[r.status] ?? 0) + 1
-  return out
 }
 
 const STATUS_COLUMNS = [
@@ -66,20 +99,19 @@ export const attendanceReports: ReportDefinition[] = [
     scopes: ['attendance.read'],
     filters: ['branch', 'year', 'dates', 'grade', 'class'],
     async run(ctx, input) {
-      const list = await records(ctx, input)
-      const byStudent = new Map<string, AttendanceRecordDoc[]>()
-      for (const r of list) byStudent.set(r.studentId, [...(byStudent.get(r.studentId) ?? []), r])
-      const students = new Map((await ctx.students.find({ _id: { $in: [...byStudent.keys()] } }).toArray()).map((s) => [s._id, s]))
+      const groups = await tallies(ctx, input, 'studentId')
+      const students = new Map(
+        (await ctx.students.find({ _id: { $in: groups.map((g) => g._id) } }).toArray()).map((s) => [s._id, s]),
+      )
       const classes = await classNames(ctx)
-      const rows = [...byStudent.entries()]
-        .map(([studentId, marks]) => {
-          const s = students.get(studentId)
-          const last = marks.reduce((a, b) => (a.date > b.date ? a : b))
+      const rows = groups
+        .map((g) => {
+          const s = students.get(g._id)
           const row: Record<string, Cell> = {
             studentNumber: s?.studentNumber ?? '',
             name: s ? studentLabel(s, input.lang) : '',
-            class: classes.get(last.classId)?.label ?? '',
-            ...tally(marks),
+            class: classes.get(g.lastClassId)?.label ?? '',
+            ...tallyOf(g),
           }
           row.rate = rate(row)
           return row
@@ -107,17 +139,15 @@ export const attendanceReports: ReportDefinition[] = [
     scopes: ['attendance.read'],
     filters: ['branch', 'year', 'dates', 'grade', 'class'],
     async run(ctx, input) {
-      const list = await records(ctx, input)
-      const byClass = new Map<string, AttendanceRecordDoc[]>()
-      for (const r of list) byClass.set(r.classId, [...(byClass.get(r.classId) ?? []), r])
+      const groups = await tallies(ctx, input, 'classId')
       const [branch, classes] = await Promise.all([branchNames(ctx), classNames(ctx)])
-      const rows = [...byClass.entries()]
-        .map(([classId, marks]) => {
+      const rows = groups
+        .map((g) => {
           const row: Record<string, Cell> = {
-            branch: branch(marks[0]!.branchId),
-            class: classes.get(classId)?.label ?? '',
-            schoolDays: new Set(marks.map((m) => m.date)).size,
-            ...tally(marks),
+            branch: branch(g.branchId),
+            class: classes.get(g._id)?.label ?? '',
+            schoolDays: g.schoolDays?.length ?? 0,
+            ...tallyOf(g),
           }
           row.rate = rate(row)
           return row
