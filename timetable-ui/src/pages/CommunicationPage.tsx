@@ -4,6 +4,7 @@ import {
   archiveAnnouncement,
   createAnnouncement,
   getAnnouncement,
+  getChannels,
   getCommunicationSettings,
   listAnnouncements,
   listDeliveryLog,
@@ -11,16 +12,19 @@ import {
   previewReminders,
   publishAnnouncement,
   resetTemplate,
+  retryAllFailed,
   retryMessage,
   saveCommunicationSettings,
   saveTemplate,
   sendExpiringDocuments,
   sendFeeReminders,
+  testSend,
   updateAnnouncement,
   type Announcement,
   type AnnouncementInput,
   type AudienceType,
   type Channel,
+  type ChannelStatus,
   type CommunicationSettings,
   type DueRow,
   type LogEntry,
@@ -115,7 +119,12 @@ export function CommunicationPage() {
             {tab === 'reminders' && <RemindersTab />}
             {tab === 'log' && <LogTab />}
             {tab === 'templates' && <TemplatesTab />}
-            {tab === 'settings' && <SettingsTab />}
+            {tab === 'settings' && (
+              <>
+                <DeliveryChannels />
+                <SettingsTab />
+              </>
+            )}
           </div>
         </>
       )}
@@ -690,6 +699,12 @@ function LogTab() {
     void load()
   }, [load])
 
+  const retryAll = async () => {
+    const res = await retryAllFailed(getAccessToken, { kind: kind || undefined })
+    if (res.kind !== 'ok') return setError(commError(t, res.error))
+    setError(null)
+    await load()
+  }
   const retry = async (id: string) => {
     const res = await retryMessage(getAccessToken, id)
     if (res.kind !== 'ok') return setError(commError(t, res.error))
@@ -717,6 +732,11 @@ function LogTab() {
           ))}
         </select>
         <span style={{ flex: 1 }} />
+        {data && data.counts.dead + data.counts.failed > 0 && (
+          <button type="button" className="btn btn--sm" onClick={() => void retryAll()}>
+            {t('comm.log.retryAll', { count: n(data.counts.dead + data.counts.failed) })}
+          </button>
+        )}
         {data && (
           <span className="card__hint">
             {t('comm.log.counts', {
@@ -757,7 +777,7 @@ function LogTab() {
                       {t(`comm.channel.${e.channel}` as TranslationKey)} · {e.to}
                     </small>
                   </td>
-                  <td>{e.subject}</td>
+                  <td dir="auto">{e.subject}</td>
                   <td>
                     <span className={`chip ${STATUS_TONE[e.status]}`}>{t(`comm.job.${e.status}` as TranslationKey)}</span>
                     {e.error && (
@@ -900,6 +920,70 @@ function TemplatesTab() {
 }
 
 // -------------------------------------------------------------- settings --
+
+/** Whether email and SMS are set up on the server, and a test message to
+ * prove it. Credentials live in the server's environment, never here. */
+function DeliveryChannels() {
+  const { t } = useI18n()
+  const { getAccessToken } = useAuth()
+  const [status, setStatus] = useState<ChannelStatus | null>(null)
+  const [channel, setChannel] = useState<Channel>('email')
+  const [to, setTo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null)
+  useEffect(() => {
+    void getChannels(getAccessToken).then((r) => r.kind === 'ok' && setStatus(r.data))
+  }, [getAccessToken])
+  const send = async () => {
+    setBusy(true)
+    setNote(null)
+    const res = await testSend(getAccessToken, channel, to.trim())
+    setBusy(false)
+    if (res.kind === 'ok') return setNote({ text: t('comm.ch.sent'), warn: false })
+    const reason = String(res.details?.reason ?? res.error)
+    const code = reason.split(':')[0]!
+    const key = `comm.ch.error.${code}` as TranslationKey
+    setNote({ text: `${t(key) === key ? t('comm.ch.error.generic') : t(key)} (${reason})`, warn: true })
+  }
+  if (!status) return <div className="skeleton" style={{ height: 80 }} />
+  const row = (label: TranslationKey, ok: boolean, detail: string | null) => (
+    <div className="stat-row">
+      <span>{t(label)}</span>
+      <span>
+        {detail && <span className="mono card__hint">{detail} </span>}
+        <span className={`chip ${ok ? 'chip--ok' : 'chip--warn'}`}>{ok ? t('comm.ch.ready') : t('comm.ch.notSetUp')}</span>
+      </span>
+    </div>
+  )
+  return (
+    <section className="card">
+      <h2 className="card__title">{t('comm.ch.title')}</h2>
+      {row('comm.ch.email', status.email.configured, status.email.from)}
+      {row('comm.ch.sms', status.sms.configured, status.sms.provider && t(`comm.ch.provider.${status.sms.provider}` as TranslationKey))}
+      {(!status.email.configured || !status.sms.configured) && <p className="card__hint">{t('comm.ch.howTo')}</p>}
+      <div className="inline-form">
+        <select className="input input--sm" value={channel} onChange={(e) => setChannel(e.target.value as Channel)} aria-label={t('comm.ch.channel')}>
+          <option value="email">{t('comm.ch.email')}</option>
+          <option value="sms">{t('comm.ch.sms')}</option>
+        </select>
+        <input
+          className="input input--sm"
+          style={{ flex: 1, minWidth: 180 }}
+          type={channel === 'email' ? 'email' : 'tel'}
+          dir="ltr"
+          placeholder={channel === 'email' ? 'name@example.com' : '07XXXXXXXX'}
+          aria-label={t('comm.ch.to')}
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+        />
+        <button type="button" className="btn btn--sm" disabled={busy || to.trim().length < 3} onClick={() => void send()}>
+          {t('comm.ch.test')}
+        </button>
+      </div>
+      {note && <p className={`notice${note.warn ? ' notice--warn' : ''}`}>{note.text}</p>}
+    </section>
+  )
+}
 
 function SettingsTab() {
   const { t, n } = useI18n()

@@ -15,7 +15,10 @@ import {
 import { recordAudit } from '../audit.js'
 import { Abort, branchFilter, isFailure, scoped, sendFailure, todayIso, transact } from '../records.js'
 import { DEFAULT_TEMPLATES, TEMPLATE_KINDS, TEMPLATE_TOKENS, fromDoc, type TemplateKind } from '../notifications/templates.js'
-import { nudgeQueue } from '../notifications/messages.js'
+import { nudgeQueue, schoolName } from '../notifications/messages.js'
+import { deliver, deliveryErrorCode } from '../notifications/channels.js'
+import { emailStatus } from '../email.js'
+import { smsStatus } from '../notifications/sms.js'
 import { audienceError, audienceStudents, deliverAnnouncement } from './announcements.js'
 import { dueReminders, sendReminders } from './reminders.js'
 import { documentsExpiring } from './notices.js'
@@ -83,6 +86,17 @@ const logQuery = z.object({
   branchId: z.string().optional(),
   sourceId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
+})
+
+const testSendBody = z.object({
+  channel: z.enum(['email', 'sms']),
+  to: z.string().trim().min(3).max(200),
+})
+
+const bulkRetryBody = z.object({
+  kind: z.enum(MESSAGE_KINDS).optional(),
+  /** Only jobs that failed with this reason (e.g. EMAIL_NOT_CONFIGURED). */
+  error: z.string().max(200).optional(),
 })
 
 function announcementResponse(a: AnnouncementDoc) {
@@ -560,6 +574,90 @@ export function registerCommunicationRoutes(app: FastifyInstance): void {
       return { rows, counts }
     })
     return reply.send({ entries: rows.map(jobResponse), counts })
+  })
+
+  // ------------------------------------------------ delivery channels --
+
+  /** Whether email and SMS can go out, for the settings page. Addresses
+   * and credentials never leave the server. */
+  app.get('/communication/channels', scoped('notifications.manage'), async (_request, reply) => {
+    return reply.send({ email: emailStatus(), sms: smsStatus() })
+  })
+
+  /** Sends one test message straight away (not through the queue), so an
+   * administrator sees at once whether the provider accepts it. */
+  app.post('/communication/test-send', scoped('notifications.manage'), async (request, reply) => {
+    const parsed = testSendBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const { channel, to } = parsed.data
+    if (channel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return reply.code(400).send({ error: 'INVALID_EMAIL' })
+    const tenantId = request.auth!.tenantId!
+    const school = await schoolName(tenantId)
+    let outcome: { ok: true; providerMessageId: string | null } | { ok: false; error: string }
+    try {
+      const sent = await deliver({
+        channel,
+        to,
+        subject: 'Test message / رسالة تجريبية',
+        body:
+          channel === 'email'
+            ? `This is a test email from ${school || 'your school'}. If you can read it, email delivery works.\n\nهذه رسالة تجريبية. إذا وصلتك فإن إرسال البريد يعمل.`
+            : `Test SMS from ${school || 'your school'}: SMS delivery works. رسالة تجريبية.`,
+      })
+      outcome = { ok: true, providerMessageId: sent.providerMessageId }
+    } catch (error) {
+      outcome = { ok: false, error: deliveryErrorCode(error) }
+    }
+    await withTenant(tenantId, (ctx) =>
+      recordAudit(ctx.auditLog, {
+        actorId: request.auth!.sub,
+        action: 'notification.test',
+        entity: 'tenant',
+        entityId: tenantId,
+        meta: { channel, ok: outcome.ok, ...(outcome.ok ? {} : { error: outcome.error }) },
+      }),
+    )
+    if (!outcome.ok) return reply.code(409).send({ error: 'SEND_FAILED', reason: outcome.error })
+    return reply.send(outcome)
+  })
+
+  /** Queues every given-up message again (in the caller's branches), e.g.
+   * once email is set up after messages died as EMAIL_NOT_CONFIGURED. */
+  app.post('/communication/log/retry', scoped('notifications.manage'), async (request, reply) => {
+    const parsed = bulkRetryBody.safeParse(request.body ?? {})
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    const branches = await branchFilter(request, undefined)
+    if (!branches.ok) return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    const tenantId = request.auth!.tenantId!
+    const filter: Filter<NotificationJobDoc> = { status: { $in: ['dead', 'failed'] } }
+    if (parsed.data.kind === 'absence') filter.kind = { $in: ['absence', null] } as Filter<NotificationJobDoc>['kind']
+    else if (parsed.data.kind) filter.kind = parsed.data.kind
+    if (parsed.data.error) filter.lastError = parsed.data.error
+    if (branches.branchIds) filter.branchId = { $in: branches.branchIds }
+    const requeued = await withTenant(tenantId, async (ctx) => {
+      const jobs = await ctx.notificationJobs.find(filter).limit(2000).toArray()
+      const now = new Date()
+      let n = 0
+      for (const job of jobs) {
+        const after = await ctx.notificationJobs.findOneAndUpdate(
+          { _id: job._id, status: job.status },
+          { $set: { status: 'pending', nextAttemptAt: now, maxAttempts: job.attempts + 1, updatedAt: now } },
+        )
+        if (after) n++
+      }
+      if (n > 0) {
+        await recordAudit(ctx.auditLog, {
+          actorId: request.auth!.sub,
+          action: 'notification.retryAll',
+          entity: 'tenant',
+          entityId: tenantId,
+          meta: { requeued: n, kind: parsed.data.kind ?? null, error: parsed.data.error ?? null },
+        })
+      }
+      return n
+    })
+    if (requeued > 0) nudgeQueue()
+    return reply.send({ requeued })
   })
 
   /** Tries a failed or given-up message again. */
