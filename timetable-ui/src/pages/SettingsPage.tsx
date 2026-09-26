@@ -53,6 +53,7 @@ type SettingsSection =
   | 'document-categories'
   | 'admission-sources'
   | 'withdrawal-reasons'
+  | 'expense-categories'
   | 'notification-templates'
   | 'roles'
   | 'team'
@@ -81,6 +82,7 @@ const SECTION_GROUPS: Array<{ key: TranslationKey; sections: SectionDef[] }> = [
       { id: 'document-categories', key: 'settings.section.documentCategories', scope: 'settings.read' },
       { id: 'admission-sources', key: 'settings.section.admissionSources', scope: 'settings.read' },
       { id: 'withdrawal-reasons', key: 'settings.section.withdrawalReasons', scope: 'settings.read' },
+      { id: 'expense-categories', key: 'settings.section.expenseCategories', scope: 'settings.read' },
       { id: 'notification-templates', key: 'settings.section.notificationTemplates', scope: 'settings.read' },
     ],
   },
@@ -193,6 +195,13 @@ export function SettingsPage() {
               kind="withdrawalReason"
               title={t('settings.section.withdrawalReasons')}
               hint={t('settings.withdrawalReasons.hint')}
+            />
+          )}
+          {active?.id === 'expense-categories' && (
+            <LookupSection
+              kind="expenseCategory"
+              title={t('settings.section.expenseCategories')}
+              hint={t('settings.expenseCategories.hint')}
             />
           )}
           {active?.id === 'notification-templates' && <NotificationTemplatesSection />}

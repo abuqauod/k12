@@ -21,6 +21,7 @@ import {
   transferStudent,
   withdrawStudent,
 } from './service.js'
+import { RolloverAbort, checkRows, commitRows, proposal, startYear } from './rollover.js'
 
 /**
  * Enrollment history and the operations that change it — transfer, withdraw,
@@ -55,6 +56,36 @@ const openBody = z.object({
 })
 
 const activateBody = z.object({ startDate: z.string().date().optional() }).default({})
+
+const yearsQuery = z.object({
+  branchId: z.string().min(1),
+  fromYearId: z.string().min(1),
+  toYearId: z.string().min(1),
+})
+
+const rolloverBody = yearsQuery.extend({
+  rows: z
+    .array(
+      z.object({
+        studentId: z.string().min(1),
+        action: z.enum(['promote', 'hold', 'graduate', 'withdraw']),
+        toClassId: z.string().min(1).nullable().optional(),
+        reasonCode: z.string().max(64).nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(2000),
+  /** First day in the new class; defaults to the new year's start. */
+  startDate: z.string().date().optional(),
+  /** When graduations / withdrawals take effect; defaults to the old year's end. */
+  closeDate: z.string().date().optional(),
+})
+
+const startBody = z.object({
+  branchId: z.string().min(1),
+  toYearId: z.string().min(1),
+  startDate: z.string().date().optional(),
+})
 
 const bulkBody = z.object({
   studentIds: z.array(z.string().min(1)).min(1).max(500),
@@ -265,6 +296,121 @@ export function registerEnrollmentRoutes(app: FastifyInstance): void {
     )
     if (!result.ok) return reply.code(ERROR_STATUS[result.error] ?? 400).send({ error: result.error })
     return reply.send({ enrollment: toResponse(result.enrollment) })
+  })
+
+  // ------------------------------------------------ year end (SAMS 2.6) --
+
+  app.get('/enrollments/rollover', scoped('enrollments.assign'), async (request, reply) => {
+    const parsed = yearsQuery.safeParse(request.query)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_QUERY' })
+    if (!(await callerCanUseBranch(request, parsed.data.branchId))) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
+    const result = await withTenant(request.auth!.tenantId!, (ctx) => proposal(ctx, parsed.data))
+    return reply.send({
+      rows: result.rows,
+      toClasses: result.toClasses.map((c) => ({
+        id: c._id,
+        gradeLevel: c.gradeLevel,
+        name: c.name,
+        label: `${c.gradeLevel} ${c.name}`.trim(),
+      })),
+    })
+  })
+
+  /** Resolves the years and checks every row; shared by preview and commit. */
+  type Prepared =
+    | { status: number; error: string }
+    | {
+        body: z.infer<typeof rolloverBody>
+        checks: Awaited<ReturnType<typeof checkRows>>
+        startDate: string
+        closeDate: string
+      }
+  const prepare = async (request: FastifyRequest): Promise<Prepared> => {
+    const parsed = rolloverBody.safeParse(request.body)
+    if (!parsed.success) return { status: 400, error: 'INVALID_BODY' } as const
+    const body = parsed.data
+    if (body.fromYearId === body.toYearId) return { status: 400, error: 'SAME_YEAR' } as const
+    if (!(await callerCanUseBranch(request, body.branchId))) return { status: 403, error: 'BRANCH_FORBIDDEN' } as const
+    const tenantId = request.auth!.tenantId!
+    await ensureDefaults(tenantId, 'withdrawalReason')
+    return withTenant(tenantId, async (ctx) => {
+      const [from, to] = await Promise.all([
+        ctx.academicYears.findOne({ _id: body.fromYearId }),
+        ctx.academicYears.findOne({ _id: body.toYearId }),
+      ])
+      if (!from || !to) return { status: 404, error: 'UNKNOWN_ACADEMIC_YEAR' } as const
+      const reasonCodes = await activeCodes(ctx, 'withdrawalReason')
+      const checks = await checkRows(ctx, { ...body, reasonCodes })
+      return {
+        body,
+        checks,
+        startDate: body.startDate ?? to.startDate,
+        closeDate: body.closeDate ?? from.endDate,
+      }
+    })
+  }
+
+  const summarize = (rows: { action: string }[]) =>
+    rows.reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.action]: (acc[r.action] ?? 0) + 1 }), {})
+
+  app.post('/enrollments/rollover/preview', scoped('enrollments.assign'), async (request, reply) => {
+    const prepared = await prepare(request)
+    if ('error' in prepared) return reply.code(prepared.status).send({ error: prepared.error })
+    return reply.send({
+      ok: prepared.checks.every((c) => c.ok),
+      rows: prepared.checks,
+      summary: summarize(prepared.body.rows),
+      startDate: prepared.startDate,
+      closeDate: prepared.closeDate,
+    })
+  })
+
+  app.post('/enrollments/rollover/commit', scoped('enrollments.assign'), async (request, reply) => {
+    const prepared = await prepare(request)
+    if ('error' in prepared) return reply.code(prepared.status).send({ error: prepared.error })
+    if (!prepared.checks.every((c) => c.ok)) {
+      return reply.code(409).send({ error: 'ROWS_INVALID', rows: prepared.checks.filter((c) => !c.ok) })
+    }
+    try {
+      const counts = await withTenant(request.auth!.tenantId!, (ctx) =>
+        commitRows(ctx, request.auth!.tenantId!, {
+          ...prepared.body,
+          rows: prepared.body.rows,
+          startDate: prepared.startDate,
+          closeDate: prepared.closeDate,
+          actorId: request.auth!.sub,
+        }),
+      )
+      return reply.send({ ok: true, summary: counts })
+    } catch (error) {
+      if (error instanceof RolloverAbort) {
+        return reply.code(409).send({ error: 'ROWS_INVALID', rows: [{ studentId: error.studentId, ok: false, error: error.code }] })
+      }
+      if (isDuplicateKey(error)) return reply.code(409).send({ error: 'YEAR_TAKEN' })
+      throw error
+    }
+  })
+
+  /** Every planned place in the new year starts; old enrollments complete. */
+  app.post('/enrollments/rollover/start', scoped('enrollments.assign'), async (request, reply) => {
+    const parsed = startBody.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' })
+    if (!(await callerCanUseBranch(request, parsed.data.branchId))) {
+      return reply.code(403).send({ error: 'BRANCH_FORBIDDEN' })
+    }
+    try {
+      const result = await withTenant(request.auth!.tenantId!, (ctx) =>
+        startYear(ctx, { ...parsed.data, actorId: request.auth!.sub }),
+      )
+      return reply.send(result)
+    } catch (error) {
+      if (error instanceof RolloverAbort) {
+        return reply.code(409).send({ error: error.code, studentId: error.studentId })
+      }
+      throw error
+    }
   })
 
   app.post('/enrollments/bulk-assign', scoped('enrollments.assign'), async (request, reply) => {

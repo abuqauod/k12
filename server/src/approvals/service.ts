@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { MongoServerError } from 'mongodb'
 import { withTenant } from '../db.js'
-import type { ApprovalComment, ApprovalRequestDoc, ApprovalStatus } from '../db.js'
+import type { ApprovalComment, ApprovalRequestDoc, ApprovalStatus, TenantContext } from '../db.js'
 import { recordAudit } from '../audit.js'
 import { approvalType } from './registry.js'
 
@@ -29,73 +29,119 @@ class ApprovalAbort extends Error {
 
 const isDuplicateKey = (error: unknown) => error instanceof MongoServerError && error.code === 11000
 
-export async function createRequest(
-  tenantId: string,
-  params: {
-    type: string
-    entityId: string
-    payload: unknown
-    comment: string | null
-    actorId: string
-    /** The requester's branches (null = all); the entity's resolved branch
-     * must be among them. */
-    allowedBranchIds: string[] | null
-  },
-): Promise<RequestResult> {
+export interface NewRequest {
+  type: string
+  entityId: string
+  payload: unknown
+  comment: string | null
+  actorId: string
+  /** The requester's branches (null = all); the entity's resolved branch
+   * must be among them. */
+  allowedBranchIds: string[] | null
+}
+
+export async function createRequest(tenantId: string, params: NewRequest): Promise<RequestResult> {
+  try {
+    return await withTenant(tenantId, (ctx) => insertRequest(ctx, params))
+  } catch (error) {
+    if (isDuplicateKey(error)) return { ok: false, error: 'ALREADY_PENDING' }
+    throw error
+  }
+}
+
+/**
+ * Raises a request inside the caller's transaction, for a module that
+ * creates its record and the request for it together (a refund, an
+ * expense). The caller aborts its transaction when this fails.
+ */
+export async function insertRequest(ctx: TenantContext, params: NewRequest): Promise<RequestResult> {
   const def = approvalType(params.type)
   if (!def) return { ok: false, error: 'UNKNOWN_TYPE' }
   const parsed = def.payloadSchema.safeParse(params.payload)
   if (!parsed.success) return { ok: false, error: 'INVALID_PAYLOAD' }
 
-  try {
-    return await withTenant(tenantId, async (ctx): Promise<RequestResult> => {
-      const resolved = await def.resolve(ctx, params.entityId, parsed.data)
-      if (!resolved.ok) return resolved
-      if (
-        params.allowedBranchIds !== null &&
-        (resolved.branchId === null || !params.allowedBranchIds.includes(resolved.branchId))
-      ) {
-        return { ok: false, error: 'BRANCH_FORBIDDEN' }
-      }
-      const now = new Date()
-      const comments: ApprovalComment[] = params.comment
-        ? [{ id: randomUUID(), actorId: params.actorId, body: params.comment, at: now, kind: 'request' }]
-        : []
-      const _id = randomUUID()
-      const doc = {
-        _id,
-        type: def.type,
-        entity: def.entity,
-        entityId: params.entityId,
-        branchId: resolved.branchId,
-        status: 'pending' as const,
-        payload: parsed.data as Record<string, unknown>,
-        summary: resolved.summary,
-        dedupeKey: resolved.dedupeKey,
-        requestedBy: params.actorId,
-        decidedBy: null,
-        decidedAt: null,
-        comments,
-        version: 1,
-        createdAt: now,
-        updatedAt: now,
-      }
-      await ctx.approvalRequests.insertOne(doc)
-      const request = (await ctx.approvalRequests.findOne({ _id }))!
-      await recordAudit(ctx.auditLog, {
-        actorId: params.actorId,
-        action: 'approval.request',
-        entity: 'approval',
-        entityId: _id,
-        branchId: resolved.branchId,
-        after: request,
-      })
-      return { ok: true, request }
-    })
-  } catch (error) {
-    if (isDuplicateKey(error)) return { ok: false, error: 'ALREADY_PENDING' }
-    throw error
+  const resolved = await def.resolve(ctx, params.entityId, parsed.data)
+  if (!resolved.ok) return resolved
+  if (
+    params.allowedBranchIds !== null &&
+    (resolved.branchId === null || !params.allowedBranchIds.includes(resolved.branchId))
+  ) {
+    return { ok: false, error: 'BRANCH_FORBIDDEN' }
   }
+  const now = new Date()
+  const comments: ApprovalComment[] = params.comment
+    ? [{ id: randomUUID(), actorId: params.actorId, body: params.comment, at: now, kind: 'request' }]
+    : []
+  const _id = randomUUID()
+  const doc = {
+    _id,
+    type: def.type,
+    entity: def.entity,
+    entityId: params.entityId,
+    branchId: resolved.branchId,
+    status: 'pending' as const,
+    payload: parsed.data as Record<string, unknown>,
+    summary: resolved.summary,
+    dedupeKey: resolved.dedupeKey,
+    requestedBy: params.actorId,
+    decidedBy: null,
+    decidedAt: null,
+    comments,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+  }
+  await ctx.approvalRequests.insertOne(doc)
+  const request = (await ctx.approvalRequests.findOne({ _id }))!
+  await recordAudit(ctx.auditLog, {
+    actorId: params.actorId,
+    action: 'approval.request',
+    entity: 'approval',
+    entityId: _id,
+    branchId: resolved.branchId,
+    after: request,
+  })
+  return { ok: true, request }
+}
+
+/** Cancels the pending request of `type` for an entity, if any, inside the
+ * caller's transaction (e.g. a refund withdrawn by its requester). */
+export async function cancelPendingFor(
+  ctx: TenantContext,
+  type: string,
+  entityId: string,
+  actorId: string,
+  comment: string | null,
+): Promise<void> {
+  const pending = await ctx.approvalRequests.findOne({ type, entityId, status: 'pending' })
+  if (!pending) return
+  const now = new Date()
+  const after = await ctx.approvalRequests.findOneAndUpdate(
+    { _id: pending._id, status: 'pending', version: pending.version },
+    {
+      $set: {
+        status: 'cancelled',
+        decidedBy: actorId,
+        decidedAt: now,
+        updatedAt: now,
+        comments: [
+          ...pending.comments,
+          ...(comment ? [{ id: randomUUID(), actorId, body: comment, at: now, kind: 'cancel' as const }] : []),
+        ],
+      },
+      $inc: { version: 1 },
+    },
+    { returnDocument: 'after' },
+  )
+  await recordAudit(ctx.auditLog, {
+    actorId,
+    action: 'approval.cancel',
+    entity: 'approval',
+    entityId: pending._id,
+    branchId: pending.branchId,
+    before: pending,
+    after,
+  })
 }
 
 /** Approve, reject or cancel a pending request. */
@@ -139,6 +185,8 @@ export async function transition(
       if (params.to === 'approved') {
         const applied = await def!.onApproved(ctx, after, params.actorId)
         if (!applied.ok) throw new ApprovalAbort(applied.error)
+      } else {
+        await def?.onClosed?.(ctx, after, params.to, params.actorId)
       }
       await recordAudit(ctx.auditLog, {
         actorId: params.actorId,

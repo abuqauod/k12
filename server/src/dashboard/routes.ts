@@ -40,6 +40,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
       parents: await callerHasPermission(request, 'parents.read'),
       enrollments: await callerHasPermission(request, 'enrollments.read'),
       students: await callerHasPermission(request, 'students.read'),
+      admissions: await callerHasPermission(request, 'admissions.read'),
     }
     const toDecide = await toDecideFilter(request)
 
@@ -82,6 +83,18 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
         result.students = {
           enrolled: enrolled.length,
           incomplete: enrolled.filter((s) => !completeness.get(s._id)?.complete).length,
+        }
+      }
+
+      if (can.admissions) {
+        // SAMS 2.5: applications waiting on the school, and accepted ones
+        // not yet converted into students.
+        result.admissions = {
+          open: await ctx.applications.countDocuments({
+            ...branchFilter,
+            status: { $in: ['submitted', 'under_review', 'waitlisted'] },
+          }),
+          accepted: await ctx.applications.countDocuments({ ...branchFilter, status: 'accepted' }),
         }
       }
 

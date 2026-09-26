@@ -34,6 +34,15 @@ export interface ApprovalType<P = Record<string, unknown>> {
    * decision; an error rolls the decision back and the request stays
    * pending. Must re-check current data — it may have changed since. */
   onApproved(ctx: TenantContext, request: ApprovalRequestDoc, actorId: string): Promise<ApprovalOutcome>
+  /** Optional: runs in the same transaction when a request is rejected or
+   * cancelled — for types whose entity carries its own status (a refund,
+   * an expense) and must follow the decision. */
+  onClosed?(
+    ctx: TenantContext,
+    request: ApprovalRequestDoc,
+    outcome: 'rejected' | 'cancelled',
+    actorId: string,
+  ): Promise<void>
 }
 
 const types = new Map<string, ApprovalType>()

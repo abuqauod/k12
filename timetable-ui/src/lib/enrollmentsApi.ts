@@ -177,3 +177,89 @@ export async function cancelEnrollment(
     return { kind: 'error', error: 'NETWORK_ERROR' }
   }
 }
+
+// ------------------------------------------------ year end (SAMS 2.6) --
+
+export type RolloverAction = 'promote' | 'hold' | 'graduate' | 'withdraw'
+
+export interface RolloverProposalRow {
+  studentId: string
+  studentNumber: string
+  name: string
+  fromClassId: string
+  fromGradeLevel: string
+  existing: { enrollmentId: string; status: EnrollmentStatus; classId: string } | null
+  suggested: { action: RolloverAction; toClassId: string | null }
+}
+
+export interface RolloverClass {
+  id: string
+  gradeLevel: string
+  name: string
+  label: string
+}
+
+export interface RolloverRowInput {
+  studentId: string
+  action: RolloverAction
+  toClassId?: string | null
+  reasonCode?: string | null
+}
+
+export interface RolloverYears {
+  branchId: string
+  fromYearId: string
+  toYearId: string
+}
+
+export async function getRollover(
+  getToken: TokenGetter,
+  years: RolloverYears,
+): Promise<EnrollmentsResult<{ rows: RolloverProposalRow[]; toClasses: RolloverClass[] }>> {
+  try {
+    return parse(await call(`/enrollments/rollover?${new URLSearchParams({ ...years })}`, { method: 'GET' }, getToken))
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export interface RolloverCheck {
+  ok: boolean
+  rows: { studentId: string; ok: boolean; error?: string }[]
+  summary: Partial<Record<RolloverAction, number>>
+  startDate: string
+  closeDate: string
+}
+
+export async function previewRollover(
+  getToken: TokenGetter,
+  body: RolloverYears & { rows: RolloverRowInput[] },
+): Promise<EnrollmentsResult<RolloverCheck>> {
+  try {
+    return parse(await call('/enrollments/rollover/preview', { method: 'POST', body: JSON.stringify(body) }, getToken))
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function commitRollover(
+  getToken: TokenGetter,
+  body: RolloverYears & { rows: RolloverRowInput[] },
+): Promise<EnrollmentsResult<{ ok: true; summary: Record<RolloverAction, number> }>> {
+  try {
+    return parse(await call('/enrollments/rollover/commit', { method: 'POST', body: JSON.stringify(body) }, getToken))
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}
+
+export async function startNewYear(
+  getToken: TokenGetter,
+  body: { branchId: string; toYearId: string },
+): Promise<EnrollmentsResult<{ started: number }>> {
+  try {
+    return parse(await call('/enrollments/rollover/start', { method: 'POST', body: JSON.stringify(body) }, getToken))
+  } catch {
+    return { kind: 'error', error: 'NETWORK_ERROR' }
+  }
+}

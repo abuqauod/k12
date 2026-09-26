@@ -41,6 +41,31 @@ export interface InvoiceLineItem {
   netAmount: number
 }
 
+/** SAMS 3.2: an invoice-level discount or scholarship. */
+export interface InvoiceAdjustment {
+  id: string
+  source: 'discount' | 'scholarship'
+  refId: string
+  label: string
+  type: DiscountType
+  value: number
+  amount: number
+  appliedAt: string
+  appliedBy: string | null
+}
+
+export type InstallmentStatus = 'paid' | 'partial' | 'due' | 'overdue'
+
+/** SAMS 3.1; `paid`/`status` are present when the invoice was read with
+ * its payments (list and detail). */
+export interface InvoiceInstallment {
+  id: string
+  dueDate: string
+  amount: number
+  paid?: number
+  status?: InstallmentStatus
+}
+
 export interface Invoice {
   id: string
   studentId: string
@@ -51,7 +76,15 @@ export interface Invoice {
   issueDate: string
   dueDate: string | null
   lineItems: InvoiceLineItem[]
+  subtotal: number
+  adjustments: InvoiceAdjustment[]
   total: number
+  installments: InvoiceInstallment[]
+  installmentsMatchTotal: boolean
+  /** Present on list and detail reads. */
+  paidTotal?: number
+  outstanding?: number
+  overdue?: number
   status: InvoiceStatus
   notes: string | null
   createdAt: string
@@ -70,6 +103,11 @@ export interface Payment {
   payerName: string
   payerParentId: string | null
   notes: string | null
+  batchId: string | null
+  confirmation: 'pending' | 'confirmed' | 'rejected'
+  confirmedAt: string | null
+  /** On queue listings. */
+  invoiceNumber?: string | null
   createdAt: string
   voidedAt: string | null
 }
@@ -84,7 +122,127 @@ export interface Receipt {
   method: PaymentMethod
   payerName: string
   issueDate: string
+  allocations: { paymentId: string; invoiceId: string; invoiceNumber: string | null; amount: number }[]
   createdAt: string
+}
+
+/** SAMS 3.2: a named discount on the price list. */
+export interface DiscountTypeDef {
+  id: string
+  name: string
+  nameAr: string | null
+  type: DiscountType
+  value: number
+  active: boolean
+}
+
+export type ScholarshipStatus = 'pending' | 'active' | 'rejected' | 'cancelled' | 'revoked'
+export interface Scholarship {
+  id: string
+  studentId: string
+  studentName: string | null
+  branchId: string
+  academicYearId: string
+  name: string
+  type: DiscountType
+  value: number
+  reason: string
+  status: ScholarshipStatus
+  requestedBy: string
+  decidedAt: string | null
+  revokedAt: string | null
+  revokeReason: string | null
+  createdAt: string
+}
+
+export type RefundStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'paid'
+export interface Refund {
+  id: string
+  refundNumber: string
+  invoiceId: string
+  invoiceNumber: string | null
+  studentId: string
+  branchId: string
+  amount: number
+  reason: string
+  status: RefundStatus
+  requestedBy: string
+  decidedAt: string | null
+  paidAt: string | null
+  method: string | null
+  reference: string | null
+  createdAt: string
+}
+
+export interface Vendor {
+  id: string
+  name: string
+  contactName: string | null
+  phone: string | null
+  email: string | null
+  taxNumber: string | null
+  notes: string | null
+  active: boolean
+}
+
+export type ExpenseStatus = RefundStatus
+export interface Expense {
+  id: string
+  expenseNumber: string
+  branchId: string
+  categoryCode: string
+  vendorId: string | null
+  vendorName: string | null
+  description: string
+  amount: number
+  expenseDate: string
+  reference: string | null
+  status: ExpenseStatus
+  requestedBy: string
+  decidedAt: string | null
+  paidAt: string | null
+  method: string | null
+  paymentReference: string | null
+  createdAt: string
+}
+
+/** SAMS 3.6: GET /finance/reports/summary. */
+export interface FinanceSummary {
+  from: string
+  to: string
+  asOf: string
+  revenue: { invoices: number; gross: number; lineDiscounts: number; discounts: number; scholarships: number; billed: number }
+  collections: {
+    total: number
+    count: number
+    byMethod: { method: string; amount: number; count: number }[]
+    awaitingConfirmation: number
+    awaitingConfirmationCount: number
+  }
+  refunds: { paid: number; paidCount: number; inProgress: number; inProgressCount: number }
+  expenses: {
+    paid: number
+    paidCount: number
+    byCategory: { categoryCode: string; amount: number; count: number }[]
+    awaitingApproval: number
+    awaitingPayment: number
+  }
+  net: { cashIn: number; cashOut: number; net: number }
+  aging: { current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number; total: number }
+  overdue: {
+    total: number
+    count: number
+    invoices: {
+      invoiceId: string
+      invoiceNumber: string
+      studentId: string
+      studentName: string
+      overdue: number
+      outstanding: number
+      oldestDueDate: string
+      daysOverdue: number
+    }[]
+  }
 }
 
 export interface StudentBalance {

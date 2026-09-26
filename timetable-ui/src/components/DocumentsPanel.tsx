@@ -42,9 +42,19 @@ const TONE = { unverified: 'warn', verified: 'ok', rejected: 'bad' } as const
  * verify, replace with a new version, history, archive. Each action is
  * shown only with the scope the API enforces for it.
  */
+/** Besides documents.upload, the staff who raise a kind of record collect
+ * its papers (mirrors the server's OWNER_UPLOAD_SCOPE). */
+const OWNER_UPLOAD_SCOPE: Partial<Record<DocumentOwnerType, string>> = {
+  application: 'admissions.manage',
+  scholarship: 'finance.scholarship.request',
+  expense: 'finance.expense.create',
+}
+
 export function DocumentsPanel({ ownerType, ownerId }: { ownerType: DocumentOwnerType; ownerId: string }) {
   const { t, n, lang } = useI18n()
   const { getAccessToken, can } = useAuth()
+  const ownScope = OWNER_UPLOAD_SCOPE[ownerType]
+  const canUpload = can('documents.upload') || (ownScope !== undefined && can(ownScope))
   const [docs, setDocs] = useState<SchoolDocument[] | null>(null)
   const [categories, setCategories] = useState<LookupItem[]>([])
   const [showArchived, setShowArchived] = useState(false)
@@ -123,7 +133,7 @@ export function DocumentsPanel({ ownerType, ownerId }: { ownerType: DocumentOwne
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
           {t('docs.showArchived')}
         </label>
-        {can('documents.upload') && (
+        {canUpload && (
           <button type="button" className="btn btn--sm" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
             {t('docs.upload')}
           </button>
@@ -210,7 +220,7 @@ export function DocumentsPanel({ ownerType, ownerId }: { ownerType: DocumentOwne
                       {t('docs.reject')}
                     </button>
                   )}
-                  {current && can('documents.upload') && (
+                  {current && canUpload && (
                     <button
                       type="button"
                       className="btn btn--sm"

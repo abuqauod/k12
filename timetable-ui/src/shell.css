@@ -2363,3 +2363,157 @@ tr.is-muted td {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ============================================= admissions (SAMS 2.5) ===== */
+.checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.checklist li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* ============================================= year end (SAMS 2.6) ====== */
+.row--error td {
+  background: var(--bad-soft);
+}
+
+/* ============================================= finance (SAMS Phase 3) === */
+.finance-page .tabs {
+  padding: 0;
+  background: transparent;
+  overflow-x: auto;
+  position: static;
+  /* A scrolling row in the page grid would otherwise collapse to nothing
+     once the content below is long. */
+  min-height: max-content;
+}
+
+.finance-page .tabs button {
+  padding: 10px 14px;
+  font-size: var(--text-sm);
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.finance-panel,
+.finance-side,
+.report {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-width: 0;
+}
+
+.card-row--wide-first {
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .card-row--wide-first {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A row of small inputs and buttons that wraps on narrow screens. */
+.inline-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.stack-form {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0 10px;
+}
+
+.field--inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+}
+
+/* Paid / outstanding / overdue under an invoice's total. */
+.money-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.money-strip b {
+  color: var(--ink);
+  margin-inline-start: 4px;
+}
+
+.money-strip__bad,
+.money-strip__bad b {
+  color: var(--bad);
+}
+
+.stat-tile__sub {
+  grid-area: hint;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* Scholarships and expenses: a row that opens to its documents. */
+.record-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.record-list__item {
+  padding: 8px 0;
+  border-block-end: 1px solid var(--line);
+}
+
+.record-list__item:last-child {
+  border-block-end: 0;
+}
+
+.record-list__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.record-list__main {
+  flex: 1;
+  min-width: 200px;
+  text-align: start;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.record-list__item .card__hint {
+  margin: 4px 0 0;
+}
